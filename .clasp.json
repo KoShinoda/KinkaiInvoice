@@ -11,6 +11,13 @@
   "jsonExtensions": [
     ".json"
   ],
-  "filePushOrder": [],
+  "filePushOrder": [
+    "00_Config.js",
+    "01_Utils.js",
+    "02_WorkListRepository.js",
+    "03_InputSheetWriter.js",
+    "04_SelectionService.js",
+    "05_Triggers.js"
+  ],
   "skipSubdirectories": false
 }
