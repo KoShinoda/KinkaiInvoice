@@ -129,9 +129,8 @@ function applyMajorSelection_(ctx, major, resetMidValue) {
 
 /**
  * 中項目選択時：
- * - 作業内容が空でない行 → 選択行のすぐ下へ縦に出す（C=作業内容, D=技術料）
+ * - 作業内容が空でない行 → 選択行のすぐ下の空行へ上書き（C=作業内容, D=技術料）
  * - 作業内容が空の行 → その技術料を中項目行の D 列へ載せる
- * 次の大項目行は上書きせず、明細行の挿入・削除で共存する。
  *
  * @param {object} ctx
  * @param {number} selectRow

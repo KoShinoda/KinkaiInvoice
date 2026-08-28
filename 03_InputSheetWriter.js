@@ -58,9 +58,49 @@ function getFeeCol_(ctx) {
 }
 
 /**
+ * 下行へ上書きできる最終行（入力枠 200 行と、実際に使っている末尾の大きい方）。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @return {number}
+ */
+function getOverwriteEndRow_(sheet) {
+  return Math.max(
+    CONFIG.input.dataStartRow + CONFIG.input.maxSelectRows - 1,
+    sheet.getLastRow()
+  );
+}
+
+/**
+ * 選択行のすぐ下で、大項目（B）が空の連続行数。次の大項目より上だけ上書き可能。
+ *
+ * @param {object} ctx
+ * @param {number} selectRow
+ * @return {number}
+ */
+function countOverwriteCapacity_(ctx, selectRow) {
+  const sheet = ctx.inputSheet;
+  const end = getOverwriteEndRow_(sheet);
+  if (selectRow >= end) {
+    return 0;
+  }
+
+  const majorCol = ctx.inputCols.major;
+  const start = selectRow + 1;
+  const num = end - selectRow;
+  const majors = sheet.getRange(start, majorCol, num, 1).getValues();
+  let count = 0;
+  for (let i = 0; i < majors.length; i++) {
+    if (normalize_(majors[i][0]) !== '') {
+      break;
+    }
+    count++;
+  }
+  return count;
+}
+
+/**
  * 選択行のすぐ下にある「展開済み作業内容」の行数。
- * 大項目（B）が空で、作業内容（C）か技術料（D）が入っている連続行だけを明細とみなす。
- * 次の大項目行や、B/C/D がすべて空の入力枠は残す。
+ * 大項目（B）が空で、作業内容（C）か技術料（D）が入っている連続行。
  *
  * @param {object} ctx
  * @param {number} selectRow
@@ -68,8 +108,8 @@ function getFeeCol_(ctx) {
  */
 function countExpandedDetailRows_(ctx, selectRow) {
   const sheet = ctx.inputSheet;
-  const last = sheet.getLastRow();
-  if (selectRow >= last) {
+  const end = getOverwriteEndRow_(sheet);
+  if (selectRow >= end) {
     return 0;
   }
 
@@ -77,7 +117,7 @@ function countExpandedDetailRows_(ctx, selectRow) {
   const midCol = ctx.inputCols.mid;
   const feeCol = getFeeCol_(ctx);
   const start = selectRow + 1;
-  const num = last - selectRow;
+  const num = end - selectRow;
   const minCol = Math.min(majorCol, midCol, feeCol);
   const maxCol = Math.max(majorCol, midCol, feeCol);
   const values = sheet.getRange(start, minCol, num, maxCol - minCol + 1).getValues();
@@ -99,8 +139,8 @@ function countExpandedDetailRows_(ctx, selectRow) {
 }
 
 /**
- * 中項目行の直下を、作業内容＋技術料の明細で差し替える。
- * 次の大項目行は削除せず、足りなければ行挿入、多ければ明細行だけ削除する。
+ * 中項目行の直下へ作業内容＋技術料を上書きする。行の挿入・削除はしない。
+ * 次の大項目（B に値がある行）は上書きしない。余った旧明細は C・D を空にする。
  *
  * @param {object} ctx
  * @param {number} selectRow
@@ -111,48 +151,73 @@ function replaceExpandedDetailsBelow_(ctx, selectRow, contentRows) {
   const midCol = ctx.inputCols.mid;
   const feeCol = getFeeCol_(ctx);
   const existing = countExpandedDetailRows_(ctx, selectRow);
+  const capacity = countOverwriteCapacity_(ctx, selectRow);
   const needed = contentRows.length;
+  const writeCount = Math.min(needed, capacity);
+  const clearCount = Math.max(existing, writeCount);
 
   Logger.log(
-    '%s replaceExpandedDetailsBelow_: 選択行=%s 既存明細=%s 必要=%s',
+    '%s replaceExpandedDetailsBelow_: 選択行=%s 既存明細=%s 上書き可能=%s 必要=%s 実際に書く=%s',
     CONFIG.logPrefix,
     selectRow,
     existing,
-    needed
+    capacity,
+    needed,
+    writeCount
   );
 
+  if (needed > capacity) {
+    Logger.log(
+      '%s 下行の空きが足りません。%s 件中 %s 件だけ上書きします（次の大項目行は維持）',
+      CONFIG.logPrefix,
+      needed,
+      writeCount
+    );
+  }
+
   writeInternal_(function () {
-    if (existing > 0) {
-      sheet.deleteRows(selectRow + 1, existing);
-      Logger.log('%s 旧明細 %s 行を削除しました（%s行目から）', CONFIG.logPrefix, existing, selectRow + 1);
+    if (clearCount > 0) {
+      const minCol = Math.min(midCol, feeCol);
+      const maxCol = Math.max(midCol, feeCol);
+      const width = maxCol - minCol + 1;
+      const blanks = [];
+      for (let i = 0; i < clearCount; i++) {
+        const line = new Array(width);
+        for (let c = 0; c < width; c++) {
+          line[c] = '';
+        }
+        blanks.push(line);
+      }
+      sheet.getRange(selectRow + 1, minCol, clearCount, width).setValues(blanks);
+      sheet.getRange(selectRow + 1, midCol, clearCount, 1).clearDataValidations();
     }
 
-    if (needed === 0) {
+    if (writeCount === 0) {
       return;
     }
-
-    sheet.insertRowsAfter(selectRow, needed);
 
     const minCol = Math.min(midCol, feeCol);
     const maxCol = Math.max(midCol, feeCol);
     const width = maxCol - minCol + 1;
-    const values = contentRows.map(function (row) {
+    const values = [];
+    for (let i = 0; i < writeCount; i++) {
+      const row = contentRows[i];
       const line = new Array(width);
-      for (let i = 0; i < width; i++) {
-        line[i] = '';
+      for (let c = 0; c < width; c++) {
+        line[c] = '';
       }
       line[midCol - minCol] = row.content;
       line[feeCol - minCol] = isFilled_(row.fee) ? row.fee : '';
-      return line;
-    });
+      values.push(line);
+    }
 
-    sheet.getRange(selectRow + 1, minCol, needed, width).setValues(values);
-    sheet.getRange(selectRow + 1, midCol, needed, 1).clearDataValidations();
+    sheet.getRange(selectRow + 1, minCol, writeCount, width).setValues(values);
+    sheet.getRange(selectRow + 1, midCol, writeCount, 1).clearDataValidations();
 
     Logger.log(
-      '%s 作業内容を %s 行、%s行目から出力しました。先頭=%s',
+      '%s 作業内容を %s 行上書きしました（%s行目から）。先頭=%s',
       CONFIG.logPrefix,
-      needed,
+      writeCount,
       selectRow + 1,
       JSON.stringify(values[0])
     );
