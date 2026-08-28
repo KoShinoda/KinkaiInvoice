@@ -118,12 +118,24 @@ function columnOverlaps_(startCol, numCols, targetCol) {
   return startCol <= targetCol && targetCol < startCol + numCols;
 }
 
+function log_() {
+  if (CONFIG.verboseLog === false) {
+    return;
+  }
+  Logger.log.apply(Logger, arguments);
+}
+
 /**
  * インストール型 onEdit が、スクリプト自身の書き込みで再発火するのを防ぐ。
+ * 簡易 onEdit ではプログラムからの書き込みは再発火しないので、既定ではガードしない（高速化）。
  *
  * @param {Function} fn
  */
 function writeInternal_(fn) {
+  if (!CONFIG.useWriteGuard) {
+    fn();
+    return;
+  }
   const cache = CacheService.getScriptCache();
   cache.put(CONFIG.internalWriteCacheKey, '1', 15);
   try {
@@ -139,5 +151,8 @@ function writeInternal_(fn) {
  * @return {boolean}
  */
 function isInternalWrite_() {
+  if (!CONFIG.useWriteGuard) {
+    return false;
+  }
   return CacheService.getScriptCache().get(CONFIG.internalWriteCacheKey) === '1';
 }

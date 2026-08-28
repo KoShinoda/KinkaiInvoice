@@ -25,6 +25,14 @@
  */
 
 const CONFIG = {
+  /**
+   * false にすると Logger と Cache ガードを省いて応答を速くする。
+   * インストール型 onEdit を使ってループする場合だけ useWriteGuard を true。
+   */
+  verboseLog: false,
+  useWriteGuard: false,
+
+  /** マスタ（縦持ち 1 行 = 1 レコード） */
   /** マスタ（縦持ち 1 行 = 1 レコード） */
   workList: {
     sheetName: '作業リスト',
@@ -60,6 +68,17 @@ const CONFIG = {
     maxSelectRows: 200,
     /** 単一行処理の既定行（dataStartRow と同じでよい） */
     selectRow: 9,
+    /**
+     * 列番号を固定すると、編集のたびに見出し行を読まない（高速化）。
+     * 車検_入力：B=大項目, C=中項目, D=技術料。
+     */
+    fixedCols: {
+      major: 2,
+      mid: 3,
+      fee: 4
+    },
+    /** 下行を何行まで見て旧明細を消すか（200 行全読みはしない） */
+    detailPeekRows: 80,
     headers: {
       serial: ['連番'],
       major: ['作業_大項目', '作業内容_大項目', '大項目'],

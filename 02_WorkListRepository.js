@@ -15,6 +15,10 @@
  * }}
  */
 function loadContext_() {
+  if (loadContext_.memo_) {
+    return loadContext_.memo_;
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const workSheet = ss.getSheetByName(CONFIG.workList.sheetName);
   const inputSheet = ss.getSheetByName(CONFIG.input.sheetName);
@@ -33,41 +37,89 @@ function loadContext_() {
     throw new Error('作業リストに「大項目」「中項目」ヘッダーが見つかりません。1行目を確認してください。');
   }
 
-  const inputHeaderRow = inputSheet
-    .getRange(CONFIG.input.headerRow, 1, 1, Math.max(inputSheet.getLastColumn(), 1))
-    .getValues()[0];
-  const inputCols = resolveColumns_(inputHeaderRow, CONFIG.input.headers);
-
-  // 入力シートにヘッダーが無い・名前が違う場合のフォールバック（仕様の B9 / C9）
-  if (!inputCols.major) {
-    inputCols.major = 2;
-    Logger.log('%s 入力シートに大項目ヘッダーが無いため B 列を使います', CONFIG.logPrefix);
-  }
-  if (!inputCols.mid) {
-    inputCols.mid = 3;
-    Logger.log('%s 入力シートに中項目/作業内容ヘッダーが無いため C 列を使います', CONFIG.logPrefix);
-  }
-  if (!inputCols.fee) {
-    inputCols.fee = 4;
-    Logger.log('%s 入力シートに技術料ヘッダーが無いため D 列を使います', CONFIG.logPrefix);
-  }
-
+  const inputCols = resolveInputCols_(inputSheet);
   const workRows = parseWorkList_(workValues, workCols);
+  const index = buildWorkIndex_(workRows);
 
-  Logger.log(
-    '%s loadContext_: 作業リスト行=%s / 作業列=%s / 入力列=%s',
+  log_(
+    '%s loadContext_: 作業リスト行=%s / 中項目グループ=%s',
     CONFIG.logPrefix,
     workRows.length,
-    JSON.stringify(workCols),
-    JSON.stringify(inputCols)
+    Object.keys(index.midsByMajor).length
   );
 
-  return {
+  const ctx = {
     workSheet: workSheet,
     inputSheet: inputSheet,
     workCols: workCols,
     inputCols: inputCols,
-    workRows: workRows
+    workRows: workRows,
+    midsByMajor: index.midsByMajor,
+    recordsByMajorMid: index.recordsByMajorMid
+  };
+  loadContext_.memo_ = ctx;
+  return ctx;
+}
+
+/**
+ * 入力シートの列。fixedCols があれば見出しを読まない。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} inputSheet
+ * @return {Object<string, number>}
+ */
+function resolveInputCols_(inputSheet) {
+  if (CONFIG.input.fixedCols) {
+    return {
+      major: CONFIG.input.fixedCols.major,
+      mid: CONFIG.input.fixedCols.mid,
+      fee: CONFIG.input.fixedCols.fee
+    };
+  }
+
+  const inputHeaderRow = inputSheet
+    .getRange(CONFIG.input.headerRow, 1, 1, Math.max(inputSheet.getLastColumn(), 1))
+    .getValues()[0];
+  const inputCols = resolveColumns_(inputHeaderRow, CONFIG.input.headers);
+  if (!inputCols.major) {
+    inputCols.major = 2;
+  }
+  if (!inputCols.mid) {
+    inputCols.mid = 3;
+  }
+  if (!inputCols.fee) {
+    inputCols.fee = 4;
+  }
+  return inputCols;
+}
+
+/**
+ * 大項目 → 中項目一覧、大項目+中項目 → レコード、を一回で作る。
+ *
+ * @param {object[]} rows
+ * @return {{midsByMajor: Object<string, string[]>, recordsByMajorMid: Object<string, object[]>}}
+ */
+function buildWorkIndex_(rows) {
+  const midsByMajor = {};
+  const recordsByMajorMid = {};
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!midsByMajor[row.major]) {
+      midsByMajor[row.major] = [];
+    }
+    if (row.mid && midsByMajor[row.major].indexOf(row.mid) === -1) {
+      midsByMajor[row.major].push(row.mid);
+    }
+    const key = row.major + '\t' + row.mid;
+    if (!recordsByMajorMid[key]) {
+      recordsByMajorMid[key] = [];
+    }
+    recordsByMajorMid[key].push(row);
+  }
+
+  return {
+    midsByMajor: midsByMajor,
+    recordsByMajorMid: recordsByMajorMid
   };
 }
 

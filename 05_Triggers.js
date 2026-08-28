@@ -149,7 +149,7 @@ function handleEdit_(e) {
   const startCol = e.range.getColumn();
   const numCols = e.range.getNumColumns();
   const firstRow = Math.max(startRow, CONFIG.input.dataStartRow);
-  const lastRow = Math.min(startRow + numRows - 1, getInputDataEndRow_(sheet));
+  const lastRow = Math.min(startRow + numRows - 1, getInputDataEndRow_());
 
   if (firstRow > lastRow) {
     return;
@@ -172,7 +172,7 @@ function handleEdit_(e) {
     return;
   }
 
-  Logger.log(
+  log_(
     '%s handleEdit_: シート=%s 範囲=%s 行=%s〜%s touchedMajor=%s touchedMid=%s',
     CONFIG.logPrefix,
     sheet.getName(),
@@ -184,22 +184,28 @@ function handleEdit_(e) {
   );
 
   if (touchedMajor) {
-    for (let row = firstRow; row <= lastRow; row++) {
-      const major = normalize_(sheet.getRange(row, majorCol).getValue());
-      applyMidDropdownForRow_(ctx, row, major, true);
+    const height = lastRow - firstRow + 1;
+    const majors = height === 1 && e.value !== undefined
+      ? [[e.value]]
+      : sheet.getRange(firstRow, majorCol, height, 1).getValues();
+    for (let i = 0; i < majors.length; i++) {
+      applyMidDropdownForRow_(ctx, firstRow + i, normalize_(majors[i][0]), true);
     }
     return;
   }
 
   if (touchedMid) {
-    for (let row = firstRow; row <= lastRow; row++) {
-      const major = normalize_(sheet.getRange(row, majorCol).getValue());
+    const height = lastRow - firstRow + 1;
+    const pairs = sheet.getRange(firstRow, Math.min(majorCol, midCol), height, Math.abs(majorCol - midCol) + 1).getValues();
+    const majorOff = majorCol - Math.min(majorCol, midCol);
+    const midOff = midCol - Math.min(majorCol, midCol);
+    for (let i = 0; i < pairs.length; i++) {
+      const major = normalize_(pairs[i][majorOff]);
       if (!major) {
-        Logger.log('%s %s行目は大項目が空のため作業内容展開をスキップ（明細行の編集とみなす）', CONFIG.logPrefix, row);
         continue;
       }
-      const mid = normalize_(sheet.getRange(row, midCol).getValue());
-      applyMidSelectionForRow_(ctx, row, major, mid);
+      const mid = normalize_(pairs[i][midOff]);
+      applyMidSelectionForRow_(ctx, firstRow + i, major, mid);
     }
   }
 }
