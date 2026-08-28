@@ -47,6 +47,10 @@ function loadContext_() {
     inputCols.mid = 3;
     Logger.log('%s 入力シートに中項目/作業内容ヘッダーが無いため C 列を使います', CONFIG.logPrefix);
   }
+  if (!inputCols.fee) {
+    inputCols.fee = 4;
+    Logger.log('%s 入力シートに技術料ヘッダーが無いため D 列を使います', CONFIG.logPrefix);
+  }
 
   const workRows = parseWorkList_(workValues, workCols);
 

@@ -48,152 +48,123 @@ function clearDropdown_(sheet, col, row) {
 }
 
 /**
- * 部品名：部品_中項目（または部品名）があればそれ、なければ部品_大項目。
+ * 技術料列。ヘッダーが無ければ D 列。
  *
- * @param {object} row
- * @return {*}
+ * @param {object} ctx
+ * @return {number}
  */
-function pickPartName_(row) {
-  if (row.partMid !== '' && row.partMid !== null && row.partMid !== undefined) {
-    return row.partMid;
-  }
-  return row.partMajor;
+function getFeeCol_(ctx) {
+  return ctx.inputCols.fee || 4;
 }
 
 /**
- * 入力シート 1 行分を、存在する列だけ組み立てる。
+ * 選択行のすぐ下にある「展開済み作業内容」の行数。
+ * 大項目（B）が空で、作業内容（C）か技術料（D）が入っている連続行だけを明細とみなす。
+ * 次の大項目行や、B/C/D がすべて空の入力枠は残す。
  *
  * @param {object} ctx
- * @param {{displayName:*, fee:*, partMajor:*, partName:*, qty:*, unitPrice:*}} src
- * @return {Object<number, *>}
+ * @param {number} selectRow
+ * @return {number}
  */
-function buildOutputLine_(ctx, src) {
-  const cols = ctx.inputCols;
-  const line = {};
-
-  if (cols.mid) {
-    line[cols.mid] = src.displayName;
-  }
-  if (cols.fee) {
-    line[cols.fee] = src.fee;
-  }
-  if (cols.partMajor) {
-    line[cols.partMajor] = src.partMajor;
-  }
-  if (cols.partName) {
-    line[cols.partName] = src.partName;
-  }
-  if (cols.qty) {
-    line[cols.qty] = src.qty;
-  }
-  if (cols.unitPrice) {
-    line[cols.unitPrice] = src.unitPrice;
+function countExpandedDetailRows_(ctx, selectRow) {
+  const sheet = ctx.inputSheet;
+  const last = sheet.getLastRow();
+  if (selectRow >= last) {
+    return 0;
   }
 
-  return line;
-}
+  const majorCol = ctx.inputCols.major;
+  const midCol = ctx.inputCols.mid;
+  const feeCol = getFeeCol_(ctx);
+  const start = selectRow + 1;
+  const num = last - selectRow;
+  const minCol = Math.min(majorCol, midCol, feeCol);
+  const maxCol = Math.max(majorCol, midCol, feeCol);
+  const values = sheet.getRange(start, minCol, num, maxCol - minCol + 1).getValues();
 
-/**
- * 作業リスト行から、横並び出力用の 1 行を作る。
- *
- * @param {object} ctx
- * @param {object} row displayName を付けたレコード
- * @return {Object<number, *>}
- */
-function buildOutputLineFromRow_(ctx, row) {
-  return buildOutputLine_(ctx, {
-    displayName: row.displayName,
-    fee: row.fee,
-    partMajor: row.partMajor,
-    partName: pickPartName_(row),
-    qty: row.qty,
-    unitPrice: row.unitPrice
-  });
-}
-
-/**
- * 出力列だけをまとめて書き込む。担当者・金額・連番は触らない。
- *
- * @param {object} ctx
- * @param {Array<Object<number, *>>} lines
- */
-function writeOutputRows_(ctx, lines) {
-  if (!lines.length) {
-    return;
-  }
-
-  const colNumbers = getOutputColumnNumbers_(ctx);
-  if (!colNumbers.length) {
-    Logger.log('%s 出力先列が見つかりません。入力シートのヘッダー行を確認してください', CONFIG.logPrefix);
-    return;
-  }
-
-  const startRow = CONFIG.input.outputStartRow;
-  const minCol = Math.min.apply(null, colNumbers);
-  const maxCol = Math.max.apply(null, colNumbers);
-  const width = maxCol - minCol + 1;
-  const values = lines.map(function (line) {
-    const row = new Array(width);
-    for (let i = 0; i < width; i++) {
-      row[i] = '';
+  let count = 0;
+  for (let i = 0; i < values.length; i++) {
+    const major = values[i][majorCol - minCol];
+    const content = values[i][midCol - minCol];
+    const fee = values[i][feeCol - minCol];
+    if (normalize_(major) !== '') {
+      break;
     }
-    Object.keys(line).forEach(function (colKey) {
-      const col = Number(colKey);
-      row[col - minCol] = line[col] === undefined || line[col] === null ? '' : line[col];
-    });
-    return row;
-  });
+    if (!isFilled_(content) && !isFilled_(fee)) {
+      break;
+    }
+    count++;
+  }
+  return count;
+}
+
+/**
+ * 中項目行の直下を、作業内容＋技術料の明細で差し替える。
+ * 次の大項目行は削除せず、足りなければ行挿入、多ければ明細行だけ削除する。
+ *
+ * @param {object} ctx
+ * @param {number} selectRow
+ * @param {object[]} contentRows 作業内容があるマスタ行（順番済み）
+ */
+function replaceExpandedDetailsBelow_(ctx, selectRow, contentRows) {
+  const sheet = ctx.inputSheet;
+  const midCol = ctx.inputCols.mid;
+  const feeCol = getFeeCol_(ctx);
+  const existing = countExpandedDetailRows_(ctx, selectRow);
+  const needed = contentRows.length;
 
   Logger.log(
-    '%s 出力: 開始行=%s 列=%s〜%s 行数=%s 先頭行=%s',
+    '%s replaceExpandedDetailsBelow_: 選択行=%s 既存明細=%s 必要=%s',
     CONFIG.logPrefix,
-    startRow,
-    minCol,
-    maxCol,
-    values.length,
-    JSON.stringify(values[0])
+    selectRow,
+    existing,
+    needed
   );
 
   writeInternal_(function () {
-    ctx.inputSheet.getRange(startRow, minCol, values.length, width).setValues(values);
-  });
-}
+    if (existing > 0) {
+      sheet.deleteRows(selectRow + 1, existing);
+      Logger.log('%s 旧明細 %s 行を削除しました（%s行目から）', CONFIG.logPrefix, existing, selectRow + 1);
+    }
 
-/**
- * C10 以降の「このスクリプトが書く列」だけクリアする。
- *
- * @param {object} ctx
- */
-function clearOutputArea_(ctx) {
-  const colNumbers = getOutputColumnNumbers_(ctx);
-  if (!colNumbers.length) {
-    return;
-  }
+    if (needed === 0) {
+      return;
+    }
 
-  const startRow = CONFIG.input.outputStartRow;
-  const minCol = Math.min.apply(null, colNumbers);
-  const maxCol = Math.max.apply(null, colNumbers);
-  const width = maxCol - minCol + 1;
-  const height = CONFIG.input.maxOutputRows;
+    sheet.insertRowsAfter(selectRow, needed);
 
-  Logger.log('%s 出力エリアをクリア: %s行 x %s列（%s行目, 列%s〜%s）', CONFIG.logPrefix, height, width, startRow, minCol, maxCol);
-
-  writeInternal_(function () {
-    ctx.inputSheet.getRange(startRow, minCol, height, width).clearContent();
-  });
-}
-
-/**
- * @param {object} ctx
- * @return {number[]}
- */
-function getOutputColumnNumbers_(ctx) {
-  const keys = ['mid', 'fee', 'partMajor', 'partName', 'qty', 'unitPrice'];
-  return keys
-    .map(function (key) {
-      return ctx.inputCols[key];
-    })
-    .filter(function (col) {
-      return typeof col === 'number' && col > 0;
+    const minCol = Math.min(midCol, feeCol);
+    const maxCol = Math.max(midCol, feeCol);
+    const width = maxCol - minCol + 1;
+    const values = contentRows.map(function (row) {
+      const line = new Array(width);
+      for (let i = 0; i < width; i++) {
+        line[i] = '';
+      }
+      line[midCol - minCol] = row.content;
+      line[feeCol - minCol] = isFilled_(row.fee) ? row.fee : '';
+      return line;
     });
+
+    sheet.getRange(selectRow + 1, minCol, needed, width).setValues(values);
+    sheet.getRange(selectRow + 1, midCol, needed, 1).clearDataValidations();
+
+    Logger.log(
+      '%s 作業内容を %s 行、%s行目から出力しました。先頭=%s',
+      CONFIG.logPrefix,
+      needed,
+      selectRow + 1,
+      JSON.stringify(values[0])
+    );
+  });
+}
+
+/**
+ * @param {object} ctx
+ * @param {number} row
+ * @param {*} fee
+ */
+function setFeeOnRow_(ctx, row, fee) {
+  const feeCol = getFeeCol_(ctx);
+  ctx.inputSheet.getRange(row, feeCol).setValue(isFilled_(fee) ? fee : '');
 }

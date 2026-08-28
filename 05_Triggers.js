@@ -149,7 +149,7 @@ function handleEdit_(e) {
   const startCol = e.range.getColumn();
   const numCols = e.range.getNumColumns();
   const firstRow = Math.max(startRow, CONFIG.input.dataStartRow);
-  const lastRow = Math.min(startRow + numRows - 1, getInputDataEndRow_());
+  const lastRow = Math.min(startRow + numRows - 1, getInputDataEndRow_(sheet));
 
   if (firstRow > lastRow) {
     return;
@@ -191,10 +191,15 @@ function handleEdit_(e) {
     return;
   }
 
-  if (touchedMid && CONFIG.input.expandDetailsOnMidSelect) {
-    const row = firstRow;
-    const major = normalize_(sheet.getRange(row, majorCol).getValue());
-    const mid = normalize_(sheet.getRange(row, midCol).getValue());
-    applyMidSelection_(ctx, major, mid);
+  if (touchedMid) {
+    for (let row = firstRow; row <= lastRow; row++) {
+      const major = normalize_(sheet.getRange(row, majorCol).getValue());
+      if (!major) {
+        Logger.log('%s %s行目は大項目が空のため作業内容展開をスキップ（明細行の編集とみなす）', CONFIG.logPrefix, row);
+        continue;
+      }
+      const mid = normalize_(sheet.getRange(row, midCol).getValue());
+      applyMidSelectionForRow_(ctx, row, major, mid);
+    }
   }
 }

@@ -23,7 +23,20 @@ function normalize_(value) {
  * @return {boolean}
  */
 function hasWorkContent_(row) {
-  return normalize_(row.content) !== '';
+  return isFilled_(row.content);
+}
+
+/**
+ * 0 は「値あり」。空文字・null だけを空とみなす。
+ *
+ * @param {*} value
+ * @return {boolean}
+ */
+function isFilled_(value) {
+  if (value === 0 || value === '0') {
+    return true;
+  }
+  return normalize_(value) !== '';
 }
 
 /**
