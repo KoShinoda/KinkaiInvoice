@@ -21,7 +21,7 @@ function onOpen() {
 }
 
 /**
- * セル編集時。B9（大項目）または C9（中項目）の変更だけ処理する。
+ * セル編集時。入力範囲内の大項目列なら、その行の中項目プルダウンを作り直す。
  *
  * @param {GoogleAppsScript.Events.SheetsOnEdit} e
  */
@@ -39,7 +39,9 @@ function onEditInstallable(e) {
 }
 
 /**
- * 初回セットアップ：B9 に大項目プルダウンを付ける。
+ * 初回セットアップ：
+ * - 大項目列（B9:B208 など）に、重複なし大項目のプルダウンを一度で付ける
+ * - すでに大項目が入っている行だけ、中項目プルダウンを付け直す
  */
 function setupInputDropdowns() {
   const startedAt = Date.now();
@@ -52,40 +54,41 @@ function setupInputDropdowns() {
 
   Logger.log('%s 大項目の候補数=%s / 内容=%s', CONFIG.logPrefix, majors.length, majors.join(' | '));
 
-  setDropdown_(ctx.inputSheet, ctx.inputCols.major, CONFIG.input.selectRow, majors);
+  const start = CONFIG.input.dataStartRow;
+  const num = CONFIG.input.maxSelectRows;
+  const majorRange = ctx.inputSheet.getRange(start, ctx.inputCols.major, num, 1);
+  setDropdownOnRange_(majorRange, majors);
 
-  const currentMajor = normalize_(ctx.inputSheet.getRange(CONFIG.input.selectRow, ctx.inputCols.major).getValue());
-  if (currentMajor) {
-    Logger.log('%s 既存の大項目「%s」があるため中項目プルダウンも更新します', CONFIG.logPrefix, currentMajor);
-    applyMajorSelection_(ctx, currentMajor, false);
+  const majorValues = majorRange.getValues();
+  for (let i = 0; i < majorValues.length; i++) {
+    const major = normalize_(majorValues[i][0]);
+    if (!major) {
+      continue;
+    }
+    applyMidDropdownForRow_(ctx, start + i, major, false);
   }
 
-  SpreadsheetApp.getActiveSpreadsheet().toast('大項目プルダウンを設定しました', '請求書入力', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('大項目・中項目プルダウンを設定しました', '請求書入力', 5);
   Logger.log('%s setupInputDropdowns: 完了 (%sms)', CONFIG.logPrefix, Date.now() - startedAt);
 }
 
 /**
- * 今の B9/C9 の値から、C10 以降を作り直す（手動再実行用）。
+ * 入力範囲の大項目に合わせて、各行の中項目プルダウンを作り直す。
  */
 function refreshOutputFromSelection() {
   Logger.log('%s refreshOutputFromSelection: 開始', CONFIG.logPrefix);
   const ctx = loadContext_();
-  const major = normalize_(ctx.inputSheet.getRange(CONFIG.input.selectRow, ctx.inputCols.major).getValue());
-  const mid = normalize_(ctx.inputSheet.getRange(CONFIG.input.selectRow, ctx.inputCols.mid).getValue());
+  const start = CONFIG.input.dataStartRow;
+  const num = CONFIG.input.maxSelectRows;
+  const majorValues = ctx.inputSheet.getRange(start, ctx.inputCols.major, num, 1).getValues();
 
-  if (!major) {
-    Logger.log('%s 大項目が空のため出力をクリアして終了します', CONFIG.logPrefix);
-    clearOutputArea_(ctx);
-    clearDropdown_(ctx.inputSheet, ctx.inputCols.mid, CONFIG.input.selectRow);
-    return;
+  for (let i = 0; i < majorValues.length; i++) {
+    const major = normalize_(majorValues[i][0]);
+    applyMidDropdownForRow_(ctx, start + i, major, false);
   }
 
-  applyMajorSelection_(ctx, major, false);
-  if (mid) {
-    applyMidSelection_(ctx, major, mid);
-  }
-  SpreadsheetApp.getActiveSpreadsheet().toast('再出力しました', '請求書入力', 5);
-  Logger.log('%s refreshOutputFromSelection: 完了 major=%s mid=%s', CONFIG.logPrefix, major, mid);
+  SpreadsheetApp.getActiveSpreadsheet().toast('中項目プルダウンを再設定しました', '請求書入力', 5);
+  Logger.log('%s refreshOutputFromSelection: 完了', CONFIG.logPrefix);
 }
 
 /**
@@ -145,10 +148,10 @@ function handleEdit_(e) {
   const numRows = e.range.getNumRows();
   const startCol = e.range.getColumn();
   const numCols = e.range.getNumColumns();
-  const selectRow = CONFIG.input.selectRow;
-  const touchedSelectRow = startRow <= selectRow && selectRow < startRow + numRows;
+  const firstRow = Math.max(startRow, CONFIG.input.dataStartRow);
+  const lastRow = Math.min(startRow + numRows - 1, getInputDataEndRow_());
 
-  if (!touchedSelectRow) {
+  if (firstRow > lastRow) {
     return;
   }
 
@@ -169,26 +172,29 @@ function handleEdit_(e) {
     return;
   }
 
-  const major = normalize_(sheet.getRange(selectRow, majorCol).getValue());
-  const mid = normalize_(sheet.getRange(selectRow, midCol).getValue());
-
   Logger.log(
-    '%s handleEdit_: シート=%s 範囲=%s 大項目=%s 中項目=%s touchedMajor=%s touchedMid=%s',
+    '%s handleEdit_: シート=%s 範囲=%s 行=%s〜%s touchedMajor=%s touchedMid=%s',
     CONFIG.logPrefix,
     sheet.getName(),
     e.range.getA1Notation(),
-    major,
-    mid,
+    firstRow,
+    lastRow,
     touchedMajor,
     touchedMid
   );
 
   if (touchedMajor) {
-    applyMajorSelection_(ctx, major, true);
+    for (let row = firstRow; row <= lastRow; row++) {
+      const major = normalize_(sheet.getRange(row, majorCol).getValue());
+      applyMidDropdownForRow_(ctx, row, major, true);
+    }
     return;
   }
 
-  if (touchedMid) {
+  if (touchedMid && CONFIG.input.expandDetailsOnMidSelect) {
+    const row = firstRow;
+    const major = normalize_(sheet.getRange(row, majorCol).getValue());
+    const mid = normalize_(sheet.getRange(row, midCol).getValue());
     applyMidSelection_(ctx, major, mid);
   }
 }

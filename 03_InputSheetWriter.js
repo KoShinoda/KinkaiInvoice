@@ -10,10 +10,21 @@
  * @param {string[]} list
  */
 function setDropdown_(sheet, col, row, list) {
-  const range = sheet.getRange(row, col);
+  setDropdownOnRange_(sheet.getRange(row, col), list);
+  Logger.log('%s プルダウン設定: 行%s 列%s 件数=%s', CONFIG.logPrefix, row, col, list.length);
+}
+
+/**
+ * 同じ候補でよい範囲（大項目列 B9:B208 など）に一度で入力規則を付ける。
+ * 中項目は行ごとに候補が違うので、こちらは使わない。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Range} range
+ * @param {string[]} list
+ */
+function setDropdownOnRange_(range, list) {
   if (!list.length) {
     range.clearDataValidations();
-    Logger.log('%s プルダウン候補が空のため Validation を削除: 行%s 列%s', CONFIG.logPrefix, row, col);
+    Logger.log('%s プルダウン候補が空のため Validation を削除: %s', CONFIG.logPrefix, range.getA1Notation());
     return;
   }
 
@@ -22,7 +33,7 @@ function setDropdown_(sheet, col, row, list) {
     .setAllowInvalid(false)
     .build();
   range.setDataValidation(rule);
-  Logger.log('%s プルダウン設定: 行%s 列%s 件数=%s', CONFIG.logPrefix, row, col, list.length);
+  Logger.log('%s プルダウン設定: %s 件数=%s', CONFIG.logPrefix, range.getA1Notation(), list.length);
 }
 
 /**
