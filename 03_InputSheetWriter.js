@@ -132,6 +132,16 @@ function writeMidFeeAndDetails_(ctx, selectRow, midFee, contentRows) {
       values.push(line);
     }
     sheet.getRange(selectRow + 1, minCol, clearCount, width).setValues(values);
+    if (writeCount > 0) {
+      sheet.getRange(selectRow + 1, midCol, writeCount, 1).clearDataValidations();
+    }
+    const leftover = clearCount - writeCount;
+    const lookup = sheet.getParent().getSheetByName(CONFIG.lookup.sheetName);
+    if (leftover > 0 && lookup) {
+      for (let i = 0; i < leftover; i++) {
+        bindMidValidationForRow_(sheet, lookup, selectRow + 1 + writeCount + i);
+      }
+    }
   });
 }
 

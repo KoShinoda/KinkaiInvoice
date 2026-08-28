@@ -10,7 +10,8 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('請求書入力')
-    .addItem('初期設定（プルダウン作成）', 'setupInputDropdowns')
+    .addItem('初期設定（候補マスタとプルダウン）', 'setupInputDropdowns')
+    .addItem('中項目候補を再生成', 'rebuildMidCandidates')
     .addItem('選択内容を再出力', 'refreshOutputFromSelection')
     .addSeparator()
     .addItem('作業リストの列マップをログ出力', 'logWorkListColumnMap')
@@ -21,7 +22,10 @@ function onOpen() {
 }
 
 /**
- * セル編集時。入力範囲内の大項目列なら、その行の中項目プルダウンを作り直す。
+ * セル編集時。
+ * 作業リスト変更 → 中項目候補を再生成。
+ * 大項目変更 → 入力規則は触らず、値のクリア／自動セットのみ。
+ * 中項目変更 → 作業内容を下行へ上書き。
  *
  * @param {GoogleAppsScript.Events.SheetsOnEdit} e
  */
@@ -39,56 +43,26 @@ function onEditInstallable(e) {
 }
 
 /**
- * 初回セットアップ：
- * - 大項目列（B9:B208 など）に、重複なし大項目のプルダウンを一度で付ける
- * - すでに大項目が入っている行だけ、中項目プルダウンを付け直す
+ * 初回セットアップ：中項目候補マスタを作り、B/C の入力規則を範囲参照にする。
  */
+function rebuildMidCandidates() {
+  rebuildMidCandidateSheet_();
+}
+
 function setupInputDropdowns() {
   const startedAt = Date.now();
   Logger.log('%s setupInputDropdowns: 開始', CONFIG.logPrefix);
-
-  const ctx = loadContext_();
-  const majors = uniqueValues_(ctx.workRows.map(function (row) {
-    return row.major;
-  }));
-
-  Logger.log('%s 大項目の候補数=%s / 内容=%s', CONFIG.logPrefix, majors.length, majors.join(' | '));
-
-  const start = CONFIG.input.dataStartRow;
-  const num = CONFIG.input.maxSelectRows;
-  const majorRange = ctx.inputSheet.getRange(start, ctx.inputCols.major, num, 1);
-  setDropdownOnRange_(majorRange, majors);
-
-  const majorValues = majorRange.getValues();
-  for (let i = 0; i < majorValues.length; i++) {
-    const major = normalize_(majorValues[i][0]);
-    if (!major) {
-      continue;
-    }
-    applyMidDropdownForRow_(ctx, start + i, major, false);
-  }
-
-  SpreadsheetApp.getActiveSpreadsheet().toast('大項目・中項目プルダウンを設定しました', '請求書入力', 5);
+  rebuildMidCandidateSheet_();
+  SpreadsheetApp.getActiveSpreadsheet().toast('中項目候補とプルダウンを設定しました', '請求書入力', 5);
   Logger.log('%s setupInputDropdowns: 完了 (%sms)', CONFIG.logPrefix, Date.now() - startedAt);
 }
 
 /**
- * 入力範囲の大項目に合わせて、各行の中項目プルダウンを作り直す。
+ * 候補マスタを作り直し、入力規則を張り直す。
  */
 function refreshOutputFromSelection() {
-  Logger.log('%s refreshOutputFromSelection: 開始', CONFIG.logPrefix);
-  const ctx = loadContext_();
-  const start = CONFIG.input.dataStartRow;
-  const num = CONFIG.input.maxSelectRows;
-  const majorValues = ctx.inputSheet.getRange(start, ctx.inputCols.major, num, 1).getValues();
-
-  for (let i = 0; i < majorValues.length; i++) {
-    const major = normalize_(majorValues[i][0]);
-    applyMidDropdownForRow_(ctx, start + i, major, false);
-  }
-
-  SpreadsheetApp.getActiveSpreadsheet().toast('中項目プルダウンを再設定しました', '請求書入力', 5);
-  Logger.log('%s refreshOutputFromSelection: 完了', CONFIG.logPrefix);
+  rebuildMidCandidateSheet_();
+  SpreadsheetApp.getActiveSpreadsheet().toast('中項目候補を再生成しました', '請求書入力', 5);
 }
 
 /**
@@ -140,7 +114,16 @@ function handleEdit_(e) {
   }
 
   const sheet = e.range.getSheet();
-  if (sheet.getName() !== CONFIG.input.sheetName) {
+  const sheetName = sheet.getName();
+
+  if (sheetName === CONFIG.workList.sheetName) {
+    if (e.range.getColumn() <= 2) {
+      rebuildMidCandidateSheet_();
+    }
+    return;
+  }
+
+  if (sheetName !== CONFIG.input.sheetName) {
     return;
   }
 
@@ -189,7 +172,7 @@ function handleEdit_(e) {
       ? [[e.value]]
       : sheet.getRange(firstRow, majorCol, height, 1).getValues();
     for (let i = 0; i < majors.length; i++) {
-      applyMidDropdownForRow_(ctx, firstRow + i, normalize_(majors[i][0]), true);
+      applyMajorChangeForRow_(ctx, firstRow + i, normalize_(majors[i][0]));
     }
     return;
   }
@@ -201,9 +184,6 @@ function handleEdit_(e) {
     const midOff = midCol - Math.min(majorCol, midCol);
     for (let i = 0; i < pairs.length; i++) {
       const major = normalize_(pairs[i][majorOff]);
-      if (!major) {
-        continue;
-      }
       const mid = normalize_(pairs[i][midOff]);
       applyMidSelectionForRow_(ctx, firstRow + i, major, mid);
     }

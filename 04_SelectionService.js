@@ -1,6 +1,6 @@
 /**
  * 選択ロジック。
- * 大項目 → 中項目プルダウン。中項目 → 作業内容を下行へ上書き。
+ * 中項目プルダウンはシート数式側。ここでは値のクリアと明細展開だけ行う。
  */
 
 function getInputDataEndRow_() {
@@ -11,67 +11,83 @@ function isInputDataRow_(row) {
   return row >= CONFIG.input.dataStartRow && row <= getInputDataEndRow_();
 }
 
-/**
- * @param {object} ctx
- * @param {string} major
- * @return {string[]}
- */
 function getUniqueMidsByMajor_(ctx, major) {
   return ctx.midsByMajor[major] || [];
 }
 
 /**
- * 大項目選択時：同じ行の中項目プルダウンを付け替える。
+ * 大項目が変わったとき。入力規則は触らない（数式が候補を切り替える）。
+ * 空にしたときは中項目を残し、全中項目から選び直せるようにする。
  *
  * @param {object} ctx
  * @param {number} targetRow
  * @param {string} major
- * @param {boolean} resetMidValue
  */
-function applyMidDropdownForRow_(ctx, targetRow, major, resetMidValue) {
+function applyMajorChangeForRow_(ctx, targetRow, major) {
   const midRange = ctx.inputSheet.getRange(targetRow, ctx.inputCols.mid);
+  const lookup = ctx.inputSheet.getParent().getSheetByName(CONFIG.lookup.sheetName);
+  if (lookup) {
+    bindMidValidationForRow_(ctx.inputSheet, lookup, targetRow, ctx.inputCols.mid);
+  }
 
   if (!major) {
-    writeInternal_(function () {
-      if (resetMidValue) {
-        midRange.clearContent();
-      }
-      midRange.clearDataValidations();
-    });
-    if (resetMidValue) {
-      writeMidFeeAndDetails_(ctx, targetRow, '', []);
-    }
     return;
   }
 
   const mids = getUniqueMidsByMajor_(ctx, major);
+  if (mids.length === 1) {
+    writeInternal_(function () {
+      midRange.setValue(mids[0]);
+    });
+    applyMidSelectionForRow_(ctx, targetRow, major, mids[0]);
+    return;
+  }
 
   writeInternal_(function () {
-    setDropdown_(ctx.inputSheet, ctx.inputCols.mid, targetRow, mids);
-    if (resetMidValue) {
-      if (mids.length === 1) {
-        midRange.setValue(mids[0]);
-      } else {
-        midRange.clearContent();
-      }
-    }
+    midRange.clearContent();
   });
+  writeMidFeeAndDetails_(ctx, targetRow, '', []);
+}
 
+function applyMidDropdownForRow_(ctx, targetRow, major, resetMidValue) {
   if (resetMidValue) {
-    if (mids.length === 1) {
-      applyMidSelectionForRow_(ctx, targetRow, major, mids[0]);
-    } else {
-      writeMidFeeAndDetails_(ctx, targetRow, '', []);
-    }
+    applyMajorChangeForRow_(ctx, targetRow, major);
   }
 }
 
 function applyMajorSelection_(ctx, major, resetMidValue) {
-  applyMidDropdownForRow_(ctx, CONFIG.input.selectRow, major, resetMidValue);
+  if (resetMidValue) {
+    applyMajorChangeForRow_(ctx, CONFIG.input.selectRow, major);
+  }
 }
 
 /**
- * 中項目選択時。作業リストは事前インデックスから取る（全件スキャンしない）。
+ * @param {object} ctx
+ * @param {string} major
+ * @param {string} mid
+ * @return {object[]}
+ */
+function getRecordsForSelection_(ctx, major, mid) {
+  if (major) {
+    return ctx.recordsByMajorMid[major + '\t' + mid] || [];
+  }
+  const rows = [];
+  const suffix = '\t' + mid;
+  const keys = Object.keys(ctx.recordsByMajorMid);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key.length >= suffix.length && key.substring(key.length - suffix.length) === suffix) {
+      const group = ctx.recordsByMajorMid[key];
+      for (let j = 0; j < group.length; j++) {
+        rows.push(group[j]);
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * 中項目選択時。大項目が空でも、選んだ中項目の作業内容を展開する。
  *
  * @param {object} ctx
  * @param {number} selectRow
@@ -79,12 +95,12 @@ function applyMajorSelection_(ctx, major, resetMidValue) {
  * @param {string} mid
  */
 function applyMidSelectionForRow_(ctx, selectRow, major, mid) {
-  if (!major || !mid) {
+  if (!mid) {
     writeMidFeeAndDetails_(ctx, selectRow, '', []);
     return;
   }
 
-  const records = ctx.recordsByMajorMid[major + '\t' + mid] || [];
+  const records = getRecordsForSelection_(ctx, major, mid);
   const sorted = sortByOrder_(records);
   const blankContentRows = [];
   const contentRows = [];

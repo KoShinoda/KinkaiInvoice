@@ -114,6 +114,17 @@ function toOrderNumber_(value) {
  * @param {number} targetCol
  * @return {boolean}
  */
+function toA1Col_(n) {
+  let s = '';
+  let num = n;
+  while (num > 0) {
+    const m = (num - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    num = Math.floor((num - 1) / 26);
+  }
+  return s;
+}
+
 function columnOverlaps_(startCol, numCols, targetCol) {
   return startCol <= targetCol && targetCol < startCol + numCols;
 }

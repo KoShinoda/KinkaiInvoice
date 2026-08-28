@@ -17,7 +17,8 @@
     "02_WorkListRepository.js",
     "03_InputSheetWriter.js",
     "04_SelectionService.js",
-    "05_Triggers.js"
+    "05_Triggers.js",
+    "06_CandidateSheet.js"
   ],
   "skipSubdirectories": false
 }
