@@ -99,20 +99,34 @@ function applyMidSelectionForRow_(ctx, selectRow, major, mid) {
     writeMidFeeAndDetails_(ctx, selectRow, '', []);
     return;
   }
+  const resolved = resolveMidOutput_(ctx, major, mid);
+  writeMidFeeAndDetails_(ctx, selectRow, resolved.midFee, resolved.workRows);
+}
 
+/**
+ * 中項目に対する技術料・作業内容。シートへは書かない（Web アプリからも使う）。
+ *
+ * @param {object} ctx
+ * @param {string} major
+ * @param {string} mid
+ * @return {{midFee: *, workRows: object[]}}
+ */
+function resolveMidOutput_(ctx, major, mid) {
   const records = getRecordsForSelection_(ctx, major, mid);
   const sorted = sortByOrder_(records);
   const blankContentRows = [];
-  const contentRows = [];
+  const workRows = [];
   for (let i = 0; i < sorted.length; i++) {
     if (hasWorkContent_(sorted[i])) {
-      contentRows.push(sorted[i]);
+      workRows.push(sorted[i]);
     } else {
       blankContentRows.push(sorted[i]);
     }
   }
-
-  writeMidFeeAndDetails_(ctx, selectRow, pickMidFee_(blankContentRows), contentRows);
+  return {
+    midFee: pickMidFee_(blankContentRows),
+    workRows: workRows
+  };
 }
 
 function pickMidFee_(blankContentRows) {

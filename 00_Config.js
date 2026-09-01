@@ -10,7 +10,7 @@
  * 03_InputSheetWriter.js  … プルダウン設定と、中項目直下への作業内容・技術料の書き込み。
  * 04_SelectionService.js  … 大項目変更時のクリア／中項目選択時の明細展開。
  * 05_Triggers.js          … onOpen / onEdit / メニュー。
- * 06_CandidateSheet.js    … 中項目候補マスタの生成と、入力規則の一度きり設定。
+ * 07_WebApp.js            … 入力 Web アプリ（doGet / メニュー）と印刷用シート出力。
  *
  * 【中項目プルダウン】
  * 大項目を選ぶたびに GAS で候補を付け替えない。
@@ -109,6 +109,36 @@ const CONFIG = {
    */
   lookup: {
     sheetName: '中項目_参照'
+  },
+
+  /**
+   * 印刷用。テンプレ「車検　原紙」をコピーし、明細を 30 行ずつ流し込む。
+   * 列番号は原紙の結合セル左上（連番=B, 作業=C, 技術料=T など）。
+   * ヘッダー位置が違う場合は header の A1 だけ直す。
+   */
+  print: {
+    templateSheetName: '車検　原紙',
+    sheetNamePrefix: '印刷_',
+    linesPerPage: 30,
+    firstLineRow: 8,
+    cols: {
+      serial: 2,
+      work: 3,
+      fee: 20,
+      staff: 25,
+      part: 28,
+      qty: 39,
+      unitPrice: 42,
+      amount: 47
+    },
+    header: {
+      kNo: 'I3',
+      plate: 'F4',
+      staff: 'F5',
+      inDate: 'AP3',
+      doneDate: 'AP4',
+      billDate: 'AP5'
+    }
   },
 
   /** インストール型 onEdit の再入防止用キャッシュキー */

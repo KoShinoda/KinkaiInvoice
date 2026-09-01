@@ -18,7 +18,8 @@
     "03_InputSheetWriter.js",
     "04_SelectionService.js",
     "05_Triggers.js",
-    "06_CandidateSheet.js"
+    "06_CandidateSheet.js",
+    "07_WebApp.js"
   ],
   "skipSubdirectories": false
 }

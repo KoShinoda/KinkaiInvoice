@@ -10,6 +10,8 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('請求書入力')
+    .addItem('入力アプリを開く', 'openInputApp')
+    .addSeparator()
     .addItem('初期設定（候補マスタとプルダウン）', 'setupInputDropdowns')
     .addItem('中項目候補を再生成', 'rebuildMidCandidates')
     .addItem('選択内容を再出力', 'refreshOutputFromSelection')

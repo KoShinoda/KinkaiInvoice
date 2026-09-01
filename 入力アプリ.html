@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #fff;
+      --line: #d8dee6;
+      --text: #1c2430;
+      --muted: #667085;
+      --accent: #1a6f4c;
+      --accent-soft: #e7f4ee;
+      --work: #eef2f6;
+      --danger: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Hiragino Sans", Meiryo, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+    header {
+      background: #16382c;
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    header span { font-size: 12px; opacity: .8; }
+    main { padding: 16px 20px 88px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+    }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    input, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .row-add {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:disabled { opacity: .5; cursor: wait; }
+    .btn-ghost { background: var(--accent-soft); color: var(--accent); }
+    .btn-danger { background: transparent; color: var(--danger); padding: 4px 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { font-size: 12px; color: var(--muted); font-weight: 600; }
+    tr.mid td { background: #fff; font-weight: 600; }
+    tr.work td { background: var(--work); color: #334155; }
+    td.num { width: 88px; }
+    td.num input { padding: 6px 8px; }
+    .kind { font-size: 11px; color: var(--muted); font-weight: 500; margin-right: 6px; }
+    footer.bar {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      background: #fff;
+      border-top: 1px solid var(--line);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    #status { color: var(--muted); font-size: 13px; }
+    #status.err { color: var(--danger); }
+    .empty { color: var(--muted); padding: 18px 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>車検 請求入力</h1>
+    <span>30行ごとに印刷用シートへ分割します</span>
+  </header>
+  <main>
+    <section class="card">
+      <h2>ヘッダー</h2>
+      <div class="grid">
+        <div><label>K-No</label><input id="kNo" placeholder="0120"></div>
+        <div><label>登録番号</label><input id="plate"></div>
+        <div><label>担当</label><input id="staff"></div>
+        <div><label>入庫日</label><input id="inDate" placeholder="例 6月8日"></div>
+        <div><label>完成日</label><input id="doneDate"></div>
+        <div><label>請求日</label><input id="billDate"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>明細の追加</h2>
+      <div class="row-add">
+        <div>
+          <label>作業 大項目（空なら中項目は全件）</label>
+          <select id="major"><option value="">（未選択・全中項目）</option></select>
+        </div>
+        <div>
+          <label>作業 中項目</label>
+          <select id="mid"></select>
+        </div>
+        <button type="button" class="btn-ghost" id="btnAdd">追加</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>明細プレビュー</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px">#</th>
+            <th>内容</th>
+            <th class="num">技術料</th>
+            <th>部品</th>
+            <th class="num">数量</th>
+            <th class="num">単価</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty" id="empty">まだ明細がありません。中項目を選んで追加してください。</div>
+    </section>
+  </main>
+  <footer class="bar">
+    <div id="status">読み込み中…</div>
+    <button type="button" class="btn-primary" id="btnPrint">印刷用シートを作成</button>
+  </footer>
+
+  <script>
+    var master = { majors: [], allMids: [], midsByMajor: {}, linesPerPage: 30 };
+    var items = [];
+
+    function $(id) { return document.getElementById(id); }
+
+    function setStatus(msg, isErr) {
+      var el = $('status');
+      el.textContent = msg;
+      el.className = isErr ? 'err' : '';
+    }
+
+    function fillSelect(sel, values, placeholder) {
+      sel.innerHTML = '';
+      var opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = placeholder;
+      sel.appendChild(opt0);
+      (values || []).forEach(function (v) {
+        var o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      });
+    }
+
+    function currentMids() {
+      var major = $('major').value;
+      if (!major) return master.allMids || [];
+      return (master.midsByMajor && master.midsByMajor[major]) || [];
+    }
+
+    function refreshMids() {
+      fillSelect($('mid'), currentMids(), '中項目を選択');
+    }
+
+    function render() {
+      var tb = $('tbody');
+      tb.innerHTML = '';
+      $('empty').style.display = items.length ? 'none' : 'block';
+      items.forEach(function (it, i) {
+        var tr = document.createElement('tr');
+        tr.className = it.kind === 'mid' ? 'mid' : 'work';
+        tr.innerHTML =
+          '<td>' + (i + 1) + '</td>' +
+          '<td><span class="kind">' + (it.kind === 'mid' ? '中項目' : '作業') + '</span>' + escapeHtml(it.name || '') + '</td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="fee" value="' + escapeAttr(it.fee) + '"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="part" value="' + escapeAttr(it.part) + '"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="qty" value="' + escapeAttr(it.qty) + '"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="unitPrice" value="' + escapeAttr(it.unitPrice) + '"></td>' +
+          '<td><button type="button" class="btn-danger" data-del="' + i + '">削</button></td>';
+        tb.appendChild(tr);
+      });
+      var pages = items.length ? Math.ceil(items.length / master.linesPerPage) : 0;
+      setStatus('明細 ' + items.length + ' 行 ／ 印刷 ' + pages + ' 枚（' + master.linesPerPage + '行ごと）');
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escapeAttr(s) {
+      return String(s == null ? '' : s).replace(/"/g, '&quot;');
+    }
+
+    $('tbody').addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t.dataset || t.dataset.i == null) return;
+      items[Number(t.dataset.i)][t.dataset.k] = t.value;
+    });
+    $('tbody').addEventListener('click', function (e) {
+      var t = e.target;
+      if (t.dataset.del == null) return;
+      items.splice(Number(t.dataset.del), 1);
+      render();
+    });
+
+    $('major').addEventListener('change', refreshMids);
+
+    $('btnAdd').addEventListener('click', function () {
+      var major = $('major').value;
+      var mid = $('mid').value;
+      if (!mid) {
+        setStatus('中項目を選んでください', true);
+        return;
+      }
+      setStatus('作業内容を展開しています…');
+      $('btnAdd').disabled = true;
+      google.script.run
+        .withSuccessHandler(function (res) {
+          items.push({
+            kind: 'mid',
+            major: major,
+            mid: mid,
+            name: mid,
+            fee: res.midFee,
+            part: '',
+            qty: '',
+            unitPrice: ''
+          });
+          (res.works || []).forEach(function (w) {
+            items.push({
+              kind: 'work',
+              major: major,
+              mid: mid,
+              name: w.name,
+              fee: w.fee,
+              part: w.part,
+              qty: w.qty,
+              unitPrice: w.unitPrice
+            });
+          });
+          $('btnAdd').disabled = false;
+          render();
+        })
+        .withFailureHandler(function (err) {
+          $('btnAdd').disabled = false;
+          setStatus(err.message || String(err), true);
+        })
+        .expandMidSelection(major, mid);
+    });
+
+    $('btnPrint').addEventListener('click', function () {
+      if (!items.length) {
+        setStatus('明細がありません', true);
+        return;
+      }
+      var payload = {
+        header: {
+          kNo: $('kNo').value,
+          plate: $('plate').value,
+          staff: $('staff').value,
+          inDate: $('inDate').value,
+          doneDate: $('doneDate').value,
+          billDate: $('billDate').value
+        },
+        items: items
+      };
+      $('btnPrint').disabled = true;
+      setStatus('印刷用シートを作成しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          $('btnPrint').disabled = false;
+          setStatus('完了: ' + res.sheetNames.join('、') + '（' + res.lineCount + '行 / ' + res.pageCount + '枚）');
+        })
+        .withFailureHandler(function (err) {
+          $('btnPrint').disabled = false;
+          setStatus(err.message || String(err), true);
+        })
+        .publishInvoices(payload);
+    });
+
+    google.script.run
+      .withSuccessHandler(function (data) {
+        master = data || master;
+        fillSelect($('major'), master.majors, '（未選択・全中項目）');
+        refreshMids();
+        setStatus('大項目・中項目を選んで追加できます');
+      })
+      .withFailureHandler(function (err) {
+        setStatus(err.message || String(err), true);
+      })
+      .getInvoiceMaster();
+  </script>
+</body>
+</html>
