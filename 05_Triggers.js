@@ -13,7 +13,7 @@ function onOpen() {
     .addItem('入力アプリを開く', 'openInputApp')
     .addSeparator()
     .addItem('初期設定（候補マスタとプルダウン）', 'setupInputDropdowns')
-    .addItem('中項目候補を再生成', 'rebuildMidCandidates')
+    .addItem('整備情報シートを整理', 'tidyServiceInfoSheet')
     .addItem('選択内容を再出力', 'refreshOutputFromSelection')
     .addSeparator()
     .addItem('作業リストの列マップをログ出力', 'logWorkListColumnMap')

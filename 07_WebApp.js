@@ -41,6 +41,7 @@ function getInvoiceMaster() {
     };
   });
   const parts = loadPartCatalog_(ctx.workRows);
+  const service = loadServiceInfo_();
   return {
     majors: majors,
     allMids: allMids,
@@ -51,6 +52,9 @@ function getInvoiceMaster() {
     partMidsByMajor: parts.partMidsByMajor,
     partLines: parts.partLines,
     workerCodes: loadWorkerCodes_(),
+    departments: service.departments,
+    typesByDept: service.typesByDept,
+    receptionists: service.receptionists,
     lineCount: CONFIG.input.appRows || 120,
     linesPerPage: CONFIG.print.linesPerPage
   };
@@ -357,9 +361,11 @@ function fillPrintSheet_(sheet, header, lines) {
   const map = CONFIG.print.header;
   setIfMapped_(sheet, map.kNo, header.kNo);
   setIfMapped_(sheet, map.plate, header.plate);
-  setIfMapped_(sheet, map.staff, header.staff);
+  setIfMapped_(sheet, map.receptionist, header.receptionist || header.staff);
+  setIfMapped_(sheet, map.staff, header.receptionist || header.staff);
   setIfMapped_(sheet, map.inDate, header.inDate);
-  setIfMapped_(sheet, map.doneDate, header.doneDate);
+  setIfMapped_(sheet, map.outDate, header.outDate || header.doneDate);
+  setIfMapped_(sheet, map.doneDate, header.outDate || header.doneDate);
   setIfMapped_(sheet, map.billDate, header.billDate);
 
   const cols = CONFIG.print.cols;
@@ -393,7 +399,7 @@ function fillPrintSheet_(sheet, header, lines) {
     serials.push([i + 1]);
     works.push([it.mid || it.name || '']);
     fees.push([it.fee === undefined || it.fee === null ? '' : it.fee]);
-    staffs.push([it.workerCode || header.staff || '']);
+    staffs.push([it.workerCode || header.receptionist || header.staff || '']);
     parts.push([it.partMid || it.part || '']);
     qtys.push([qty]);
     prices.push([price]);

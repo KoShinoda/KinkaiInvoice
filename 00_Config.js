@@ -122,6 +122,10 @@ const CONFIG = {
     sheetName: '作業者リスト'
   },
 
+  serviceInfo: {
+    sheetName: '整備情報'
+  },
+
   /**
    * 車検_入力のヘッダー付近にある小計・値引（無ければ書き込みスキップ）。
    */
@@ -157,9 +161,9 @@ const CONFIG = {
     header: {
       kNo: 'I3',
       plate: 'F4',
-      staff: 'F5',
+      receptionist: 'F5',
       inDate: 'AP3',
-      doneDate: 'AP4',
+      outDate: 'AP4',
       billDate: 'AP5'
     }
   },

@@ -69,7 +69,7 @@
     }
     table {
       width: 100%;
-      min-width: 1180px;
+      min-width: 1100px;
       border-collapse: collapse;
       table-layout: fixed;
     }
@@ -106,11 +106,25 @@
       grid-template-columns: 1fr;
     }
     td { padding: 3px 4px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
-    td.no { width: 40px; color: var(--muted); text-align: center; }
-    td.num { width: 78px; }
-    td.staff { width: 92px; }
-    td.major, td.part-major { width: 11%; }
-    td.mid, td.part-mid { width: 13%; }
+    td.no { width: 28px; color: var(--muted); text-align: center; }
+    td.num { width: 54px; }
+    td.staff { width: 72px; }
+    td.major, td.part-major { width: 9%; }
+    td.mid, td.part-mid { width: 20%; }
+    .grid.header-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .date-wrap {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .date-wrap .date-text { flex: 1; min-width: 0; }
+    .date-wrap .date-cal {
+      width: 34px;
+      padding: 4px 2px;
+      flex: 0 0 34px;
+    }
     .combo { position: relative; }
     .combo input { width: 100%; }
     .combo-list {
@@ -172,18 +186,39 @@
 <body>
   <header>
     <h1>車検 請求入力</h1>
-    <span>明細は左右を詰めて表示　／　値引は1％刻み</span>
+    <span>ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd</span>
   </header>
   <main>
     <section class="card">
       <h2>ヘッダー</h2>
-      <div class="grid">
+      <div class="grid header-grid">
+        <div><label>ユーザー</label><input id="userName"></div>
         <div><label>K-No</label><input id="kNo"></div>
         <div><label>登録番号</label><input id="plate"></div>
-        <div><label>担当</label><input id="staff"></div>
-        <div><label>入庫日</label><input id="inDate"></div>
-        <div><label>完成日</label><input id="doneDate"></div>
-        <div><label>請求日</label><input id="billDate"></div>
+        <div><label>整備部門</label><select id="dept"></select></div>
+        <div><label>整備種別</label><select id="serviceType"></select></div>
+        <div><label>受付担当</label><select id="receptionist"></select></div>
+        <div>
+          <label>入庫日</label>
+          <div class="date-wrap">
+            <input id="inDate" class="date-text" placeholder="yyyy/mm/dd" autocomplete="off">
+            <input id="inDateCal" class="date-cal" type="date" tabindex="-1" title="カレンダー">
+          </div>
+        </div>
+        <div>
+          <label>出庫日</label>
+          <div class="date-wrap">
+            <input id="outDate" class="date-text" placeholder="yyyy/mm/dd" autocomplete="off">
+            <input id="outDateCal" class="date-cal" type="date" tabindex="-1" title="カレンダー">
+          </div>
+        </div>
+        <div>
+          <label>請求日</label>
+          <div class="date-wrap">
+            <input id="billDate" class="date-text" placeholder="yyyy/mm/dd" autocomplete="off">
+            <input id="billDateCal" class="date-cal" type="date" tabindex="-1" title="カレンダー">
+          </div>
+        </div>
       </div>
     </section>
     <section class="card">
@@ -255,6 +290,9 @@
       majors: [], allMids: [], midsByMajor: {}, workLines: [],
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
       workerCodes: [],
+      departments: [],
+      typesByDept: {},
+      receptionists: [],
       lineCount: 120
     };
     var items = [];
@@ -279,7 +317,86 @@
       var n = Number(String(v == null ? '' : v).replace(/,/g, ''));
       return isFinite(n) ? n : 0;
     }
-    function filled(v) { return v !== '' && v != null; }
+    function pad2(n) {
+      return (n < 10 ? '0' : '') + n;
+    }
+    function formatYmd(raw) {
+      var s = String(raw == null ? '' : raw).trim();
+      if (!s) return '';
+      var iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (iso) {
+        return iso[1] + '/' + pad2(Number(iso[2])) + '/' + pad2(Number(iso[3]));
+      }
+      var slash = s.match(/^(\d{4})[\/\.年](\d{1,2})[\/\.月](\d{1,2})/);
+      if (slash) {
+        return slash[1] + '/' + pad2(Number(slash[2])) + '/' + pad2(Number(slash[3]));
+      }
+      var digits = s.replace(/\D/g, '');
+      if (digits.length === 8) {
+        return digits.slice(0, 4) + '/' + digits.slice(4, 6) + '/' + digits.slice(6, 8);
+      }
+      return s;
+    }
+    function ymdToIso(ymd) {
+      var m = String(ymd || '').match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+      return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
+    }
+    function applyDateField(textId, calId, formatted) {
+      $(textId).value = formatted;
+      var iso = ymdToIso(formatted);
+      $(calId).value = iso;
+    }
+    function bindDateField(textId, calId, onSet) {
+      var text = $(textId);
+      var cal = $(calId);
+      function commit(raw, fromCal) {
+        var f = formatYmd(raw);
+        applyDateField(textId, calId, f);
+        if (onSet) onSet(f, fromCal);
+      }
+      text.addEventListener('blur', function () { commit(text.value, false); });
+      text.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit(text.value, false);
+        }
+      });
+      cal.addEventListener('change', function () {
+        if (cal.value) commit(cal.value, true);
+      });
+    }
+
+    function typesForDept(dept) {
+      if (!dept) return [];
+      return (master.typesByDept && master.typesByDept[dept]) || [];
+    }
+    function fillHeaderSelect(sel, values, selected) {
+      fillSelect(sel, values, selected);
+    }
+    function applyDeptDefaults() {
+      var dept = $('dept').value;
+      var types = typesForDept(dept);
+      var cur = $('serviceType').value;
+      var next = cur && types.indexOf(cur) !== -1 ? cur : '';
+      if (types.length === 1) {
+        next = types[0];
+      }
+      if (dept === '部品販売' && types.indexOf('部品販売') !== -1 && types.length === 1) {
+        next = '部品販売';
+      }
+      if (dept === '板金塗装' && types.indexOf('BP板金') !== -1) {
+        next = 'BP板金';
+      } else if (dept === '板金塗装' && types.length === 1) {
+        next = types[0];
+      }
+      fillHeaderSelect($('serviceType'), types, next);
+      if (next) $('serviceType').value = next;
+    }
+    function initHeaderMasters() {
+      fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
+      fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
+      applyDeptDefaults();
+    }
     function clampPct(v) {
       var n = Math.round(num(v));
       if (n < 0) return 0;
@@ -954,11 +1071,16 @@
       var summary = recalc();
       var payload = {
         header: {
+          userName: $('userName').value,
           kNo: $('kNo').value,
           plate: $('plate').value,
-          staff: $('staff').value,
+          dept: $('dept').value,
+          serviceType: $('serviceType').value,
+          receptionist: $('receptionist').value,
+          staff: $('receptionist').value,
           inDate: $('inDate').value,
-          doneDate: $('doneDate').value,
+          outDate: $('outDate').value,
+          doneDate: $('outDate').value,
           billDate: $('billDate').value
         },
         items: items,
@@ -982,7 +1104,14 @@
       .withSuccessHandler(function (data) {
         master = data || master;
         renderGrid();
-        setStatus('明細は上から詰めて表示します。合計は数量×単価です。');
+        initHeaderMasters();
+        bindDateField('inDate', 'inDateCal');
+        bindDateField('outDate', 'outDateCal', function (f) {
+          if (f) applyDateField('billDate', 'billDateCal', f);
+        });
+        bindDateField('billDate', 'billDateCal');
+        $('dept').addEventListener('change', applyDeptDefaults);
+        setStatus('ヘッダーは整備情報マスタ、日付はカレンダーまたは yyyymmdd で入力できます。');
       })
       .withFailureHandler(function (err) {
         setStatus(err.message || String(err), true);
