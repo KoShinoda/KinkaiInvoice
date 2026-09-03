@@ -31,7 +31,7 @@
     }
     header h1 { margin: 0; font-size: 17px; font-weight: 600; }
     header span { font-size: 12px; opacity: .8; }
-    main { padding: 14px 18px 84px; }
+    main { padding: 14px 18px 96px; }
     .card {
       background: var(--card);
       border: 1px solid var(--line);
@@ -51,15 +51,16 @@
       gap: 8px 12px;
     }
     label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
-    input {
+    input, select {
       width: 100%;
-      padding: 7px 8px;
+      padding: 6px 8px;
       border: 1px solid var(--line);
       border-radius: 7px;
       font-size: 13px;
+      background: #fff;
     }
     .table-wrap {
-      max-height: 420px;
+      max-height: 340px;
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -71,14 +72,41 @@
       font-size: 11px;
       color: var(--muted);
       text-align: left;
-      padding: 7px 6px;
+      padding: 7px 5px;
       border-bottom: 1px solid var(--line);
     }
-    td { padding: 4px 5px; border-bottom: 1px solid #eef1f4; }
-    td.no { width: 28px; color: var(--muted); text-align: center; }
-    td.num { width: 78px; }
-    td.major { width: 22%; }
-    td.mid { width: 28%; }
+    tfoot th {
+      position: sticky; bottom: 0;
+      background: #e8f0ec;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    td { padding: 3px 4px; border-bottom: 1px solid #eef1f4; }
+    td.no { width: 26px; color: var(--muted); text-align: center; }
+    td.num { width: 72px; }
+    td.major { width: 16%; }
+    td.mid { width: 18%; }
+    td.content { width: 22%; }
+    .totals {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .totals h3 { margin: 0 0 8px; font-size: 13px; }
+    .disc {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    .sum-line {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+    .sum-line.strong { font-weight: 700; font-size: 15px; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
     button {
       border: 0;
       border-radius: 8px;
@@ -100,45 +128,18 @@
     }
     #status { color: var(--muted); font-size: 13px; }
     #status.err { color: var(--danger); }
-
-    .combo { position: relative; }
-    .combo input { padding-right: 22px; }
-    .combo-list {
-      display: none;
-      position: absolute;
-      left: 0; right: 0;
-      top: 100%;
-      z-index: 20;
-      max-height: 180px;
-      overflow: auto;
-      margin: 0;
-      padding: 4px 0;
-      list-style: none;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: 0 8px 20px rgba(16, 24, 40, .12);
-    }
-    .combo.open .combo-list { display: block; }
-    .combo-list li {
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-    .combo-list li:hover,
-    .combo-list li.active { background: #e7f4ee; }
-    .combo-list li.new { color: var(--accent); font-size: 12px; }
   </style>
 </head>
 <body>
   <header>
     <h1>車検 請求入力</h1>
-    <span>30行を直接編集 → 印刷用シートへ出力</span>
+    <span>30行を直接編集　／　中項目に作業内容が複数あれば下行へ展開</span>
   </header>
   <main>
     <section class="card">
       <h2>ヘッダー</h2>
       <div class="grid">
-        <div><label>K-No</label><input id="kNo" placeholder="0120"></div>
+        <div><label>K-No</label><input id="kNo"></div>
         <div><label>登録番号</label><input id="plate"></div>
         <div><label>担当</label><input id="staff"></div>
         <div><label>入庫日</label><input id="inDate"></div>
@@ -147,23 +148,59 @@
       </div>
     </section>
     <section class="card">
-      <h2>明細（30行）　大項目・中項目は入力すると候補が絞られます。リストに無い文言もそのまま使えます。</h2>
+      <h2>明細（30行）　作業内容・部品大項目はリストから選択のみ</h2>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>#</th>
               <th>大項目</th>
-              <th>中項目・作業内容</th>
+              <th>中項目</th>
+              <th>作業内容</th>
               <th>技術料</th>
-              <th>部品</th>
+              <th>部品大項目</th>
               <th>数量</th>
               <th>単価</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
+          <tfoot>
+            <tr>
+              <th></th>
+              <th colspan="3">合計</th>
+              <th id="footTech">0</th>
+              <th>数量×単価</th>
+              <th colspan="2" id="footPart">0</th>
+            </tr>
+          </tfoot>
         </table>
       </div>
+    </section>
+    <section class="card">
+      <h2>合計・値引</h2>
+      <div class="totals">
+        <div>
+          <h3>技術料</h3>
+          <div class="sum-line"><span>合計</span><span id="techSub">0</span></div>
+          <div class="disc">
+            <div><label>値引（円）</label><input id="techYen" type="number" value="0"></div>
+            <div><label>値引（%）</label><input id="techPct" type="number" value="0" step="0.1"></div>
+          </div>
+          <div class="sum-line"><span>値引額</span><span id="techDisc">0</span></div>
+          <div class="sum-line strong"><span>差引</span><span id="techTotal">0</span></div>
+        </div>
+        <div>
+          <h3>部品（数量×単価）</h3>
+          <div class="sum-line"><span>合計</span><span id="partSub">0</span></div>
+          <div class="disc">
+            <div><label>値引（円）</label><input id="partYen" type="number" value="0"></div>
+            <div><label>値引（%）</label><input id="partPct" type="number" value="0" step="0.1"></div>
+          </div>
+          <div class="sum-line"><span>値引額</span><span id="partDisc">0</span></div>
+          <div class="sum-line strong"><span>差引</span><span id="partTotal">0</span></div>
+        </div>
+      </div>
+      <div class="sum-line strong" style="margin-top:12px;"><span>総合計</span><span id="grand">0</span></div>
     </section>
   </main>
   <footer class="bar">
@@ -172,20 +209,26 @@
   </footer>
 
   <script>
-    var master = { majors: [], allMids: [], midsByMajor: {}, linesPerPage: 30 };
+    var master = { majors: [], allMids: [], midsByMajor: {}, workLines: [], partMajors: [], linesPerPage: 30 };
     var items = [];
-    var openCombo = null;
 
     function $(id) { return document.getElementById(id); }
-
     function setStatus(msg, isErr) {
-      var el = $('status');
-      el.textContent = msg;
-      el.className = isErr ? 'err' : '';
+      $('status').textContent = msg;
+      $('status').className = isErr ? 'err' : '';
     }
-
     function emptyRow() {
-      return { major: '', name: '', fee: '', part: '', qty: '', unitPrice: '' };
+      return { major: '', mid: '', name: '', fee: '', part: '', qty: '', unitPrice: '' };
+    }
+    function yen(n) {
+      return Math.round(n || 0).toLocaleString('ja-JP');
+    }
+    function num(v) {
+      var n = Number(String(v == null ? '' : v).replace(/,/g, ''));
+      return isFinite(n) ? n : 0;
+    }
+    function filled(v) {
+      return v !== '' && v != null;
     }
 
     function midsFor(major) {
@@ -193,177 +236,248 @@
       return (master.midsByMajor && master.midsByMajor[major]) || [];
     }
 
-    function remember(major, mid) {
-      if (major && master.majors.indexOf(major) === -1) master.majors.push(major);
-      if (!mid) return;
-      if (master.allMids.indexOf(mid) === -1) master.allMids.push(mid);
-      if (major) {
-        if (!master.midsByMajor[major]) master.midsByMajor[major] = [];
-        if (master.midsByMajor[major].indexOf(mid) === -1) master.midsByMajor[major].push(mid);
-      }
-    }
-
-    function filterList(all, q) {
-      q = String(q || '').toLowerCase();
-      if (!q) return all.slice(0, 80);
-      return all.filter(function (v) {
-        return String(v).toLowerCase().indexOf(q) !== -1;
-      }).slice(0, 80);
-    }
-
-    function closeCombos() {
-      document.querySelectorAll('.combo.open').forEach(function (el) {
-        el.classList.remove('open');
+    function contentsFor(major, mid) {
+      var lines = master.workLines || [];
+      var out = [];
+      var seen = {};
+      lines.forEach(function (r) {
+        if (!r.content) return;
+        if (major && r.major !== major) return;
+        if (mid && r.mid !== mid) return;
+        if (seen[r.content]) return;
+        seen[r.content] = true;
+        out.push(r.content);
       });
-      openCombo = null;
+      return out;
     }
 
-    function renderComboList(combo, options, query) {
-      var ul = combo.querySelector('.combo-list');
-      var filtered = filterList(options, query);
-      ul.innerHTML = '';
-      filtered.forEach(function (v, idx) {
-        var li = document.createElement('li');
-        li.textContent = v;
-        if (idx === 0) li.className = 'active';
-        li.addEventListener('mousedown', function (e) {
-          e.preventDefault();
-          pickCombo(combo, v);
-        });
-        ul.appendChild(li);
+    function linesForMid(major, mid) {
+      return (master.workLines || []).filter(function (r) {
+        if (r.mid !== mid) return false;
+        if (major && r.major !== major) return false;
+        return true;
       });
-      var typed = String(query || '').trim();
-      if (typed && options.indexOf(typed) === -1) {
-        var add = document.createElement('li');
-        add.className = 'new';
-        add.textContent = '「' + typed + '」をそのまま使う';
-        add.addEventListener('mousedown', function (e) {
-          e.preventDefault();
-          pickCombo(combo, typed);
-        });
-        ul.appendChild(add);
-      }
-      combo.classList.add('open');
-      openCombo = combo;
     }
 
-    function pickCombo(combo, value) {
-      var input = combo.querySelector('input');
-      input.value = value;
-      var i = Number(combo.dataset.i);
-      var k = combo.dataset.k;
-      items[i][k] = value;
-      combo.classList.remove('open');
-      if (k === 'major') remember(value, '');
-      if (k === 'name') {
-        remember(items[i].major, value);
-        fillFeeIfKnown(i);
-      }
-    }
-
-    function fillFeeIfKnown(i) {
-      var it = items[i];
-      if (!it.name) return;
-      if (it.fee !== '' && it.fee != null) return;
-      google.script.run
-        .withSuccessHandler(function (res) {
-          if (!res) return;
-          if ((it.fee === '' || it.fee == null) && res.midFee !== '' && res.midFee != null) {
-            it.fee = res.midFee;
-            var feeInput = document.querySelector('input[data-i="' + i + '"][data-k="fee"]');
-            if (feeInput) feeInput.value = res.midFee;
-          }
-        })
-        .expandMidSelection(it.major || '', it.name);
-    }
-
-    function bindCombo(combo, getOptions) {
-      var input = combo.querySelector('input');
-      input.addEventListener('focus', function () {
-        renderComboList(combo, getOptions(), input.value);
+    function fillSelect(sel, values, selected) {
+      var cur = selected == null ? sel.value : selected;
+      sel.innerHTML = '';
+      var z = document.createElement('option');
+      z.value = '';
+      z.textContent = '';
+      sel.appendChild(z);
+      (values || []).forEach(function (v) {
+        var o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
       });
-      input.addEventListener('input', function () {
-        var i = Number(combo.dataset.i);
-        items[i][combo.dataset.k] = input.value;
-        renderComboList(combo, getOptions(), input.value);
-      });
-      input.addEventListener('keydown', function (e) {
-        var lis = combo.querySelectorAll('.combo-list li');
-        var cur = combo.querySelector('.combo-list li.active');
-        var idx = Array.prototype.indexOf.call(lis, cur);
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          if (lis[idx + 1]) {
-            if (cur) cur.classList.remove('active');
-            lis[idx + 1].classList.add('active');
-            lis[idx + 1].scrollIntoView({ block: 'nearest' });
-          }
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          if (lis[idx - 1]) {
-            if (cur) cur.classList.remove('active');
-            lis[idx - 1].classList.add('active');
-            lis[idx - 1].scrollIntoView({ block: 'nearest' });
-          }
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          if (cur) pickCombo(combo, cur.classList.contains('new') ? input.value.trim() : cur.textContent);
-          else pickCombo(combo, input.value.trim());
-        } else if (e.key === 'Escape') {
-          combo.classList.remove('open');
+      if (cur) {
+        if (!values || values.indexOf(cur) === -1) {
+          var extra = document.createElement('option');
+          extra.value = cur;
+          extra.textContent = cur;
+          sel.appendChild(extra);
         }
-      });
-      input.addEventListener('blur', function () {
-        setTimeout(function () { combo.classList.remove('open'); }, 120);
-      });
+        sel.value = cur;
+      }
+    }
+
+    function refreshRowSelects(i) {
+      var tr = $('tbody').rows[i];
+      if (!tr) return;
+      var it = items[i];
+      fillSelect(tr.querySelector('[data-k="major"]'), master.majors, it.major);
+      fillSelect(tr.querySelector('[data-k="mid"]'), midsFor(it.major), it.mid);
+      fillSelect(tr.querySelector('[data-k="name"]'), contentsFor(it.major, it.mid), it.name);
+      fillSelect(tr.querySelector('[data-k="part"]'), master.partMajors, it.part);
+      tr.querySelector('[data-k="fee"]').value = it.fee == null ? '' : it.fee;
+      tr.querySelector('[data-k="qty"]').value = it.qty == null ? '' : it.qty;
+      tr.querySelector('[data-k="unitPrice"]').value = it.unitPrice == null ? '' : it.unitPrice;
     }
 
     function renderGrid() {
       var n = master.linesPerPage || 30;
-      items = [];
+      while (items.length < n) items.push(emptyRow());
+      items = items.slice(0, n);
       var tb = $('tbody');
       tb.innerHTML = '';
       for (var i = 0; i < n; i++) {
-        items.push(emptyRow());
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td class="no">' + (i + 1) + '</td>' +
-          '<td class="major"><div class="combo" data-i="' + i + '" data-k="major">' +
-            '<input data-i="' + i + '" data-k="major" autocomplete="off">' +
-            '<ul class="combo-list"></ul></div></td>' +
-          '<td class="mid"><div class="combo" data-i="' + i + '" data-k="name">' +
-            '<input data-i="' + i + '" data-k="name" autocomplete="off">' +
-            '<ul class="combo-list"></ul></div></td>' +
+          '<td class="major"><select data-i="' + i + '" data-k="major"></select></td>' +
+          '<td class="mid"><select data-i="' + i + '" data-k="mid"></select></td>' +
+          '<td class="content"><select data-i="' + i + '" data-k="name"></select></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="fee"></td>' +
-          '<td><input data-i="' + i + '" data-k="part"></td>' +
+          '<td><select data-i="' + i + '" data-k="part"></select></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>';
         tb.appendChild(tr);
+        refreshRowSelects(i);
       }
-      tb.querySelectorAll('.combo[data-k="major"]').forEach(function (combo) {
-        bindCombo(combo, function () { return master.majors || []; });
-      });
-      tb.querySelectorAll('.combo[data-k="name"]').forEach(function (combo) {
-        bindCombo(combo, function () {
-          var i = Number(combo.dataset.i);
-          return midsFor(items[i].major);
-        });
-      });
-      setStatus('30行を直接編集できます。候補に無い項目も入力できます。');
+      recalc();
     }
+
+    function rowIsEmpty(r) {
+      return !r || (!r.major && !r.mid && !r.name && !filled(r.fee) && !r.part && !filled(r.qty) && !filled(r.unitPrice));
+    }
+
+    function padItems() {
+      var n = master.linesPerPage || 30;
+      while (items.length < n) items.push(emptyRow());
+      items = items.slice(0, n);
+    }
+
+    function applyContentExpand(rowIndex) {
+      var it = items[rowIndex];
+      if (!it.name) {
+        refreshRowSelects(rowIndex);
+        recalc();
+        return;
+      }
+      var mid = it.mid;
+      var major = it.major;
+      if (!mid) {
+        var hit = (master.workLines || []).filter(function (r) { return r.content === it.name; })[0];
+        if (hit) {
+          mid = hit.mid;
+          major = major || hit.major;
+          it.mid = mid;
+          it.major = major;
+        }
+      }
+      var group = linesForMid(major, mid);
+      var works = group.filter(function (r) { return r.content; });
+      var blanks = group.filter(function (r) { return !r.content; });
+      var self = works.filter(function (r) { return r.content === it.name; })[0];
+      if (self) {
+        if (!filled(it.fee)) it.fee = self.fee;
+        if (!it.part && self.part) it.part = self.part;
+        if (!filled(it.qty) && filled(self.qty)) it.qty = self.qty;
+        if (!filled(it.unitPrice) && filled(self.unitPrice)) it.unitPrice = self.unitPrice;
+      } else if (works.length === 0 && blanks.length) {
+        if (!filled(it.fee)) it.fee = blanks[0].fee;
+      }
+      if (works.length > 1) {
+        var rest = works.filter(function (r) { return r.content !== it.name; });
+        var j = rowIndex + 1;
+        while (j < items.length) {
+          var r = items[j];
+          var sameGroup = r.mid === mid && (!major || r.major === major || !r.major);
+          if (rowIsEmpty(r) || sameGroup) {
+            items.splice(j, 1);
+            continue;
+          }
+          break;
+        }
+        rest.forEach(function (w, k) {
+          items.splice(rowIndex + 1 + k, 0, {
+            major: major,
+            mid: mid,
+            name: w.content,
+            fee: w.fee,
+            part: w.part || '',
+            qty: w.qty || '',
+            unitPrice: w.unitPrice || ''
+          });
+        });
+        padItems();
+        renderGrid();
+        setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ展開しました');
+        return;
+      }
+      refreshRowSelects(rowIndex);
+      recalc();
+    }
+
+    function onMidChosen(rowIndex) {
+      var it = items[rowIndex];
+      if (!it.mid) {
+        refreshRowSelects(rowIndex);
+        return;
+      }
+      var group = linesForMid(it.major, it.mid);
+      var works = group.filter(function (r) { return r.content; });
+      var blanks = group.filter(function (r) { return !r.content; });
+      if (works.length === 1) {
+        it.name = works[0].content;
+        if (!filled(it.fee)) it.fee = works[0].fee;
+        if (!it.part && works[0].part) it.part = works[0].part;
+        if (!filled(it.qty) && filled(works[0].qty)) it.qty = works[0].qty;
+        if (!filled(it.unitPrice) && filled(works[0].unitPrice)) it.unitPrice = works[0].unitPrice;
+      } else if (works.length === 0 && blanks.length) {
+        it.name = '';
+        if (!filled(it.fee)) it.fee = blanks[0].fee;
+      }
+      refreshRowSelects(rowIndex);
+      recalc();
+    }
+
+    $('tbody').addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t.dataset || t.dataset.i == null) return;
+      var i = Number(t.dataset.i);
+      var k = t.dataset.k;
+      items[i][k] = t.value;
+      if (k === 'major') {
+        items[i].mid = '';
+        items[i].name = '';
+        refreshRowSelects(i);
+      } else if (k === 'mid') {
+        items[i].name = '';
+        onMidChosen(i);
+      } else if (k === 'name') {
+        applyContentExpand(i);
+      } else {
+        recalc();
+      }
+    });
 
     $('tbody').addEventListener('input', function (e) {
       var t = e.target;
-      if (!t.dataset || t.dataset.i == null) return;
-      if (t.closest('.combo')) return;
+      if (!t.dataset || t.tagName !== 'INPUT') return;
       items[Number(t.dataset.i)][t.dataset.k] = t.value;
+      recalc();
     });
 
-    document.addEventListener('click', function (e) {
-      if (!e.target.closest('.combo')) closeCombos();
+    ['techYen', 'techPct', 'partYen', 'partPct'].forEach(function (id) {
+      $(id).addEventListener('input', recalc);
     });
+
+    function recalc() {
+      var techSum = 0;
+      var partSum = 0;
+      items.forEach(function (it) {
+        techSum += num(it.fee);
+        partSum += num(it.qty) * num(it.unitPrice);
+      });
+      var techDisc = num($('techYen').value) + techSum * num($('techPct').value) / 100;
+      var partDisc = num($('partYen').value) + partSum * num($('partPct').value) / 100;
+      var techNet = Math.max(0, techSum - techDisc);
+      var partNet = Math.max(0, partSum - partDisc);
+      $('techSub').textContent = yen(techSum);
+      $('techDisc').textContent = yen(techDisc);
+      $('techTotal').textContent = yen(techNet);
+      $('partSub').textContent = yen(partSum);
+      $('partDisc').textContent = yen(partDisc);
+      $('partTotal').textContent = yen(partNet);
+      $('grand').textContent = yen(techNet + partNet);
+      if ($('footTech')) $('footTech').textContent = yen(techSum);
+      if ($('footPart')) $('footPart').textContent = yen(partSum);
+      return {
+        techSub: techSum,
+        techDisc: techDisc,
+        techTotal: techNet,
+        partSub: partSum,
+        partDisc: partDisc,
+        partTotal: partNet,
+        grand: techNet + partNet
+      };
+    }
 
     $('btnPrint').addEventListener('click', function () {
+      var summary = recalc();
       var payload = {
         header: {
           kNo: $('kNo').value,
@@ -373,7 +487,8 @@
           doneDate: $('doneDate').value,
           billDate: $('billDate').value
         },
-        items: items
+        items: items,
+        summary: summary
       };
       $('btnPrint').disabled = true;
       setStatus('印刷用シートを作成しています…');
@@ -393,6 +508,7 @@
       .withSuccessHandler(function (data) {
         master = data || master;
         renderGrid();
+        setStatus('30行を編集できます。作業内容・部品はリスト選択です。');
       })
       .withFailureHandler(function (err) {
         setStatus(err.message || String(err), true);

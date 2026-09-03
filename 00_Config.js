@@ -111,6 +111,22 @@ const CONFIG = {
     sheetName: '中項目_参照'
   },
 
+  parts: {
+    sheetName: '部品リスト'
+  },
+
+  /**
+   * 車検_入力のヘッダー付近にある小計・値引（無ければ書き込みスキップ）。
+   */
+  summary: {
+    techSub: 'E1',
+    techDisc: 'E2',
+    techTotal: 'E3',
+    partSub: 'H1',
+    partDisc: 'H2',
+    grand: 'H5'
+  },
+
   /**
    * 印刷用。テンプレ「車検　原紙」をコピーし、明細を 30 行ずつ流し込む。
    * 列番号は原紙の結合セル左上（連番=B, 作業=C, 技術料=T など）。

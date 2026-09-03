@@ -11,8 +11,8 @@ function doGet() {
 
 function openInputApp() {
   const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
-    .setWidth(1180)
-    .setHeight(780);
+    .setWidth(1240)
+    .setHeight(820);
   SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
 }
 
@@ -28,12 +28,41 @@ function getInvoiceMaster() {
   const allMids = uniqueValues_(ctx.workRows.map(function (row) {
     return row.mid;
   }));
+  const workLines = ctx.workRows.map(function (row) {
+    return {
+      major: row.major,
+      mid: row.mid,
+      content: normalize_(row.content),
+      fee: row.fee,
+      part: pickPartDisplay_(row),
+      qty: row.qty,
+      unitPrice: row.unitPrice
+    };
+  });
   return {
     majors: majors,
     allMids: allMids,
     midsByMajor: ctx.midsByMajor,
+    workLines: workLines,
+    partMajors: loadPartMajors_(ctx.workRows),
     linesPerPage: CONFIG.print.linesPerPage
   };
+}
+
+function loadPartMajors_(workRows) {
+  const fromWork = uniqueValues_(workRows.map(function (row) {
+    return row.partMajor;
+  }));
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.parts.sheetName);
+  if (!sh) {
+    return fromWork;
+  }
+  const vals = sh.getDataRange().getValues();
+  const fromSheet = uniqueValues_(vals.map(function (r) {
+    return r[0];
+  }));
+  return uniqueValues_(fromSheet.concat(fromWork));
 }
 
 /**
@@ -89,6 +118,7 @@ function publishInvoices(payload) {
   }
 
   writeInputSheetFromApp_(inputSheet, payload);
+  writeSummaryToInput_(inputSheet, payload.summary);
   const names = writePrintSheets_(ss, payload);
 
   return {
@@ -102,7 +132,7 @@ function rowHasContent_(it) {
   if (!it) {
     return false;
   }
-  return isFilled_(it.major) || isFilled_(it.name) || isFilled_(it.fee) ||
+  return isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
     isFilled_(it.part) || isFilled_(it.qty) || isFilled_(it.unitPrice);
 }
 
@@ -126,7 +156,7 @@ function writeInputSheetFromApp_(sheet, payload) {
     const amount = qty !== '' && price !== '' ? Number(qty) * Number(price) : '';
     values[i][0] = i + 1;
     values[i][1] = it.major || '';
-    values[i][2] = it.name || '';
+    values[i][2] = it.name || it.mid || '';
     values[i][3] = it.fee === undefined || it.fee === null ? '' : it.fee;
     values[i][4] = (payload.header && payload.header.staff) || '';
     values[i][5] = it.part || '';
@@ -136,6 +166,19 @@ function writeInputSheetFromApp_(sheet, payload) {
     values[i][9] = amount;
   }
   sheet.getRange(start, 1, values.length, width).setValues(values);
+}
+
+function writeSummaryToInput_(sheet, summary) {
+  if (!summary || !CONFIG.summary) {
+    return;
+  }
+  const map = CONFIG.summary;
+  setIfMapped_(sheet, map.techSub, summary.techSub);
+  setIfMapped_(sheet, map.techDisc, summary.techDisc);
+  setIfMapped_(sheet, map.techTotal, summary.techTotal);
+  setIfMapped_(sheet, map.partSub, summary.partSub);
+  setIfMapped_(sheet, map.partDisc, summary.partDisc);
+  setIfMapped_(sheet, map.grand, summary.grand);
 }
 
 /**
@@ -232,7 +275,7 @@ function fillPrintSheet_(sheet, header, lines) {
     const price = toNumberOrBlank_(it.unitPrice);
     const amount = qty !== '' && price !== '' ? Number(qty) * Number(price) : '';
     serials.push([i + 1]);
-    works.push([it.name || '']);
+    works.push([it.name || it.mid || '']);
     fees.push([it.fee === undefined || it.fee === null ? '' : it.fee]);
     staffs.push([header.staff || '']);
     parts.push([it.part || '']);
