@@ -51,23 +51,31 @@
       gap: 8px 12px;
     }
     label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
-    input[readonly] { background: #f3f5f7; }
+    input, select {
       width: 100%;
+      min-width: 0;
       padding: 6px 8px;
       border: 1px solid var(--line);
       border-radius: 7px;
       font-size: 13px;
       background: #fff;
     }
+    input[readonly] { background: #f3f5f7; }
     .table-wrap {
-      max-height: 380px;
+      max-height: min(56vh, 560px);
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
     }
-    table { width: 100%; border-collapse: collapse; }
+    table {
+      width: 100%;
+      min-width: 1180px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
     th {
       position: sticky; top: 0;
+      z-index: 2;
       background: #eef3f0;
       font-size: 11px;
       color: var(--muted);
@@ -75,19 +83,34 @@
       padding: 7px 5px;
       border-bottom: 1px solid var(--line);
     }
-    tfoot th {
-      position: sticky; bottom: auto;
+    .detail-foot {
+      margin-top: 8px;
       background: #e8f0ec;
-      color: var(--text);
-      font-weight: 700;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
       font-size: 13px;
     }
-    td { padding: 3px 4px; border-bottom: 1px solid #eef1f4; }
-    td.no { width: 26px; color: var(--muted); text-align: center; }
-    td.num { width: 70px; }
-    td.pct { width: 64px; }
-    td.major, td.part-major { width: 12%; }
-    td.mid, td.part-mid { width: 14%; }
+    .detail-foot .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px 16px;
+      padding: 4px 0;
+    }
+    .detail-foot .row.grand {
+      font-weight: 700;
+      font-size: 15px;
+      border-top: 1px solid var(--line);
+      margin-top: 6px;
+      padding-top: 8px;
+      grid-template-columns: 1fr;
+    }
+    td { padding: 3px 4px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
+    td.no { width: 40px; color: var(--muted); text-align: center; }
+    td.num { width: 78px; }
+    td.staff { width: 92px; }
+    td.major, td.part-major { width: 11%; }
+    td.mid, td.part-mid { width: 13%; }
     .combo { position: relative; }
     .combo input { width: 100%; }
     .combo-list {
@@ -158,7 +181,7 @@
       </div>
     </section>
     <section class="card">
-      <h2>明細（30行）　大項目はリスト選択　／　中項目は入力可</h2>
+      <h2>明細（120行・表内スクロール）　大項目はリスト選択　／　中項目は入力可</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -167,6 +190,7 @@
               <th>大項目</th>
               <th>中項目</th>
               <th>技術料</th>
+              <th>作業者コード</th>
               <th>部品大項目</th>
               <th>部品中項目</th>
               <th>単価</th>
@@ -176,29 +200,22 @@
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
-          <tfoot>
-            <tr>
-              <th></th>
-              <th colspan="2">作業 合計</th>
-              <th id="footTech">0</th>
-              <th colspan="2">部品 合計</th>
-              <th></th>
-              <th></th>
-              <th id="footPartAmt">0</th>
-              <th id="footPartDisc">0</th>
-            </tr>
-            <tr>
-              <th></th>
-              <th colspan="2">作業 値引額</th>
-              <th id="footTechDisc">0</th>
-              <th colspan="2">部品 値引額</th>
-              <th></th>
-              <th></th>
-              <th></th>
-              <th id="footPartDiscRow">0</th>
-            </tr>
-          </tfoot>
         </table>
+      </div>
+      <div class="detail-foot">
+        <div class="row">
+          <div>技術料 小計　<span id="footTech">0</span></div>
+          <div>値引額　<span id="footTechDisc">0</span></div>
+          <div>差引（小計−値引）　<span id="footTechNet">0</span></div>
+        </div>
+        <div class="row">
+          <div>部品 小計　<span id="footPartAmt">0</span></div>
+          <div>値引額　<span id="footPartDisc">0</span></div>
+          <div>差引（小計−値引）　<span id="footPartNet">0</span></div>
+        </div>
+        <div class="row grand">
+          総合計（技術料差引 + 部品差引）　<span id="footGrand">0</span>
+        </div>
       </div>
     </section>
     <section class="card">
@@ -217,7 +234,7 @@
           <div class="sum-line strong"><span>差引</span><span id="partTotal">0</span></div>
         </div>
       </div>
-      <div class="sum-line strong" style="margin-top:12px;"><span>総合計</span><span id="grand">0</span></div>
+      <div class="sum-line strong" style="margin-top:12px;"><span>総合計（技術料差引 + 部品差引）</span><span id="grand">0</span></div>
     </section>
   </main>
   <footer class="bar">
@@ -229,7 +246,8 @@
     var master = {
       majors: [], allMids: [], midsByMajor: {}, workLines: [],
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
-      linesPerPage: 30
+      workerCodes: [],
+      lineCount: 120
     };
     var items = [];
 
@@ -240,7 +258,7 @@
     }
     function emptyRow() {
       return {
-        major: '', mid: '', fee: '',
+        major: '', mid: '', fee: '', workerCode: '',
         partMajor: '', partMid: '',
         qty: '', unitPrice: '', amount: '', discYen: '',
         kind: ''
@@ -318,6 +336,7 @@
       var it = items[i];
       fillSelect(tr.querySelector('select[data-k="major"]'), master.majors, it.major);
       fillSelect(tr.querySelector('select[data-k="partMajor"]'), master.partMajors, it.partMajor);
+      fillSelect(tr.querySelector('select[data-k="workerCode"]'), master.workerCodes, it.workerCode);
       var midInput = tr.querySelector('input[data-k="mid"]');
       if (midInput) {
         midInput.value = it.mid || '';
@@ -335,8 +354,12 @@
       tr.querySelector('[data-k="discYen"]').value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
     }
 
+    function lineCount() {
+      return master.lineCount || 120;
+    }
+
     function renderGrid() {
-      var n = master.linesPerPage || 30;
+      var n = lineCount();
       while (items.length < n) items.push(emptyRow());
       items = items.slice(0, n);
       var tb = $('tbody');
@@ -348,6 +371,7 @@
           '<td class="major"><select data-i="' + i + '" data-k="major"></select></td>' +
           '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="fee"></td>' +
+          '<td class="staff"><select data-i="' + i + '" data-k="workerCode"></select></td>' +
           '<td class="part-major"><select data-i="' + i + '" data-k="partMajor"></select></td>' +
           '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
@@ -361,11 +385,11 @@
     }
 
     function rowIsEmpty(r) {
-      return !r || (!r.major && !r.mid && !filled(r.fee) && !r.partMajor && !r.partMid &&
+      return !r || (!r.major && !r.mid && !filled(r.fee) && !r.workerCode && !r.partMajor && !r.partMid &&
         !filled(r.qty) && !filled(r.unitPrice) && !filled(r.amount));
     }
     function padItems() {
-      var n = master.linesPerPage || 30;
+      var n = lineCount();
       while (items.length < n) items.push(emptyRow());
       items = items.slice(0, n);
     }
@@ -449,6 +473,7 @@
         row.major = it.major || w.major || '';
         row.mid = w.content;
         row.fee = w.fee;
+        row.workerCode = it.workerCode || '';
         row.kind = 'work';
         copyWorkPart(row, w);
         return row;
@@ -662,9 +687,11 @@
       $('grand').textContent = yen(techNet + partNet);
       $('footTech').textContent = yen(techSum);
       $('footTechDisc').textContent = yen(techDisc);
+      $('footTechNet').textContent = yen(techNet);
       $('footPartAmt').textContent = yen(partList);
       $('footPartDisc').textContent = yen(partDisc);
-      $('footPartDiscRow').textContent = yen(partDisc);
+      $('footPartNet').textContent = yen(partNet);
+      $('footGrand').textContent = yen(techNet + partNet);
       return {
         techSub: techSum,
         techDisc: techDisc,

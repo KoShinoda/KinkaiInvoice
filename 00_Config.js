@@ -65,6 +65,8 @@ const CONFIG = {
      * 候補はシートに書き出さず、各セルの入力規則だけを更新する（行は増えない）。
      */
     dataStartRow: 9,
+    /** 入力アプリの明細行数（表内スクロール） */
+    appRows: 120,
     /** 大項目を並べられる行数（B9 なら 208 行目まで） */
     maxSelectRows: 200,
     /** 単一行処理の既定行（dataStartRow と同じでよい） */
@@ -86,6 +88,7 @@ const CONFIG = {
       /** C9 は中項目選択。C10 以降は明細名。同じ列を使う */
       mid: ['作業_中項目', '作業内容', '中項目'],
       fee: ['技術料'],
+      workerCode: ['作業者コード', '作業者', '担当コード'],
       partMajor: ['部品_大項目'],
       partName: ['部品名', '部品_中項目'],
       qty: ['数量'],
@@ -113,6 +116,10 @@ const CONFIG = {
 
   parts: {
     sheetName: '部品リスト'
+  },
+
+  workers: {
+    sheetName: '作業者リスト'
   },
 
   /**

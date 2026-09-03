@@ -11,7 +11,7 @@ function doGet() {
 
 function openInputApp() {
   const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
-    .setWidth(1480)
+    .setWidth(1560)
     .setHeight(860);
   SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
 }
@@ -50,8 +50,36 @@ function getInvoiceMaster() {
     allPartMids: parts.allPartMids,
     partMidsByMajor: parts.partMidsByMajor,
     partLines: parts.partLines,
+    workerCodes: loadWorkerCodes_(),
+    lineCount: CONFIG.input.appRows || 120,
     linesPerPage: CONFIG.print.linesPerPage
   };
+}
+
+function loadWorkerCodes_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.workers.sheetName);
+  if (!sh) {
+    return [];
+  }
+  const vals = sh.getDataRange().getValues();
+  let start = 0;
+  if (vals.length) {
+    const h = normalize_(vals[0][0]);
+    if (h.indexOf('コード') !== -1 || h.indexOf('作業者') !== -1 || h.indexOf('担当') !== -1) {
+      start = 1;
+    }
+  }
+  const codes = [];
+  for (let i = start; i < vals.length; i++) {
+    const code = normalize_(vals[i][0]);
+    const name = vals[i].length > 1 ? normalize_(vals[i][1]) : '';
+    if (!code && !name) {
+      continue;
+    }
+    codes.push(name ? code + ' ' + name : code);
+  }
+  return uniqueValues_(codes);
 }
 
 function loadPartCatalog_(workRows) {
@@ -219,7 +247,7 @@ function rowHasContent_(it) {
   }
   return isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
     isFilled_(it.partMajor) || isFilled_(it.partMid) || isFilled_(it.part) ||
-    isFilled_(it.qty) || isFilled_(it.unitPrice) || isFilled_(it.amount);
+    isFilled_(it.qty) || isFilled_(it.unitPrice) || isFilled_(it.amount) || isFilled_(it.workerCode);
 }
 
 /**
@@ -244,7 +272,7 @@ function writeInputSheetFromApp_(sheet, payload) {
     values[i][1] = it.major || '';
     values[i][2] = it.mid || it.name || '';
     values[i][3] = it.fee === undefined || it.fee === null ? '' : it.fee;
-    values[i][4] = (payload.header && payload.header.staff) || '';
+    values[i][4] = it.workerCode || (payload.header && payload.header.staff) || '';
     values[i][5] = it.partMajor || '';
     values[i][6] = it.partMid || it.part || '';
     values[i][7] = qty;
@@ -280,8 +308,10 @@ function writePrintSheets_(ss, payload) {
   }
 
   const per = CONFIG.print.linesPerPage;
-  const items = payload.items;
-  const pageCount = Math.ceil(items.length / per);
+  const items = payload.items.filter(function (it) {
+    return rowHasContent_(it);
+  });
+  const pageCount = Math.max(1, Math.ceil(items.length / per));
   const created = [];
 
   deleteOldPrintSheets_(ss);
@@ -363,7 +393,7 @@ function fillPrintSheet_(sheet, header, lines) {
     serials.push([i + 1]);
     works.push([it.mid || it.name || '']);
     fees.push([it.fee === undefined || it.fee === null ? '' : it.fee]);
-    staffs.push([header.staff || '']);
+    staffs.push([it.workerCode || header.staff || '']);
     parts.push([it.partMid || it.part || '']);
     qtys.push([qty]);
     prices.push([price]);
