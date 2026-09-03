@@ -51,7 +51,7 @@
       gap: 8px 12px;
     }
     label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
-    input, select {
+    input[readonly] { background: #f3f5f7; }
       width: 100%;
       padding: 6px 8px;
       border: 1px solid var(--line);
@@ -143,7 +143,7 @@
 <body>
   <header>
     <h1>車検 請求入力</h1>
-    <span>作業・部品とも中項目を入力可　／　複数なら下行へ展開　／　値引は1％刻み</span>
+    <span>明細は詰めて表示　／　合計は数量×単価　／　値引額＝合計−請求</span>
   </header>
   <main>
     <section class="card">
@@ -169,10 +169,10 @@
               <th>技術料</th>
               <th>部品大項目</th>
               <th>部品中項目</th>
-              <th>数量</th>
               <th>単価</th>
+              <th>数量</th>
               <th>合計</th>
-              <th>値引％</th>
+              <th>値引額</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -182,37 +182,38 @@
               <th colspan="2">作業 合計</th>
               <th id="footTech">0</th>
               <th colspan="2">部品 合計</th>
-              <th colspan="2" id="footPartList">0</th>
-              <th id="footPartAmt">0</th>
               <th></th>
+              <th></th>
+              <th id="footPartAmt">0</th>
+              <th id="footPartDisc">0</th>
             </tr>
             <tr>
               <th></th>
               <th colspan="2">作業 値引額</th>
               <th id="footTechDisc">0</th>
               <th colspan="2">部品 値引額</th>
-              <th colspan="3" id="footPartDisc">0</th>
               <th></th>
+              <th></th>
+              <th></th>
+              <th id="footPartDiscRow">0</th>
             </tr>
           </tfoot>
         </table>
       </div>
     </section>
     <section class="card">
-      <h2>合計・値引（％は1％刻み）</h2>
+      <h2>合計・値引額</h2>
       <div class="totals">
         <div>
           <h3>技術料</h3>
           <div class="sum-line"><span>合計</span><span id="techSub">0</span></div>
-          <div class="disc"><label>値引（％）</label><input id="techPct" type="number" min="0" max="100" step="1" value="0"></div>
-          <div class="sum-line"><span>値引額</span><span id="techDisc">0</span></div>
+          <div class="disc"><label>値引額</label><input id="techDiscIn" type="number" min="0" step="1" value="0"></div>
           <div class="sum-line strong"><span>差引</span><span id="techTotal">0</span></div>
         </div>
         <div>
           <h3>部品</h3>
           <div class="sum-line"><span>合計（数量×単価）</span><span id="partSub">0</span></div>
-          <div class="disc"><label>値引（％）</label><input id="partPct" type="number" min="0" max="100" step="1" value="0"></div>
-          <div class="sum-line"><span>値引額</span><span id="partDisc">0</span></div>
+          <div class="disc"><label>値引額</label><input id="partDiscIn" type="number" min="0" step="1" value="0"></div>
           <div class="sum-line strong"><span>差引</span><span id="partTotal">0</span></div>
         </div>
       </div>
@@ -241,7 +242,7 @@
       return {
         major: '', mid: '', fee: '',
         partMajor: '', partMid: '',
-        qty: '', unitPrice: '', amount: '', discYen: 0, discPct: 0,
+        qty: '', unitPrice: '', amount: '', discYen: '',
         kind: ''
       };
     }
@@ -251,53 +252,16 @@
       return isFinite(n) ? n : 0;
     }
     function filled(v) { return v !== '' && v != null; }
-    function clampPct(v) {
-      var n = Math.round(num(v));
-      if (n < 0) return 0;
-      if (n > 100) return 100;
-      return n;
-    }
     function listPrice(it) { return num(it.qty) * num(it.unitPrice); }
 
-    function applyPctToAmount(it) {
+    function syncLineTotals(it) {
       var list = listPrice(it);
-      it.discPct = clampPct(it.discPct);
       if (!filled(it.qty) && !filled(it.unitPrice)) {
-        it.discYen = 0;
-        if (!filled(it.amount)) it.amount = '';
+        it.amount = '';
         return;
       }
-      it.discYen = Math.round(list * it.discPct / 100);
-      it.amount = Math.max(0, Math.round(list - it.discYen));
-    }
-
-    function applyAmountToDisc(it) {
-      var list = listPrice(it);
-      var amt = num(it.amount);
-      if (list <= 0) {
-        it.discYen = 0;
-        it.discPct = 0;
-        return;
-      }
-      if (amt < list) {
-        it.discYen = Math.round(list - amt);
-        it.discPct = clampPct(it.discYen / list * 100);
-        it.discYen = Math.round(list * it.discPct / 100);
-      } else {
-        it.amount = Math.round(list);
-        it.discYen = 0;
-        it.discPct = 0;
-      }
-    }
-
-    function applyPartFields(target, src) {
-      if (!src) return;
-      if (src.partMajor) target.partMajor = src.partMajor;
-      if (src.partMid) target.partMid = src.partMid;
-      if (src.major && !src.mid && src.partMajor === undefined) target.partMajor = src.major;
-      if (filled(src.qty)) target.qty = src.qty;
-      if (filled(src.unitPrice)) target.unitPrice = src.unitPrice;
-      applyPctToAmount(target);
+      it.amount = Math.round(list);
+      if (num(it.discYen) > it.amount) it.discYen = it.amount;
     }
 
     function midsFor(major) {
@@ -368,7 +332,7 @@
       tr.querySelector('[data-k="qty"]').value = it.qty == null ? '' : it.qty;
       tr.querySelector('[data-k="unitPrice"]').value = it.unitPrice == null ? '' : it.unitPrice;
       tr.querySelector('[data-k="amount"]').value = it.amount == null || it.amount === '' ? '' : it.amount;
-      tr.querySelector('[data-k="discPct"]').value = it.discPct || 0;
+      tr.querySelector('[data-k="discYen"]').value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
     }
 
     function renderGrid() {
@@ -386,10 +350,10 @@
           '<td class="num"><input data-i="' + i + '" data-k="fee"></td>' +
           '<td class="part-major"><select data-i="' + i + '" data-k="partMajor"></select></td>' +
           '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
-          '<td class="pct"><input data-i="' + i + '" data-k="discPct" type="number" min="0" max="100" step="1"></td>';
+          '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="amount" readonly tabindex="-1"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>';
         tb.appendChild(tr);
         refreshRowSelects(i);
       }
@@ -405,16 +369,36 @@
       while (items.length < n) items.push(emptyRow());
       items = items.slice(0, n);
     }
-    function clearExpandedBelow(rowIndex, kind) {
-      var j = rowIndex + 1;
-      while (j < items.length) {
-        var r = items[j];
-        if (r.kind === kind || rowIsEmpty(r)) {
-          items.splice(j, 1);
-          continue;
-        }
-        break;
+    function compactItems() {
+      var kept = [];
+      for (var i = 0; i < items.length; i++) {
+        if (!rowIsEmpty(items[i])) kept.push(items[i]);
       }
+      items = kept;
+      padItems();
+    }
+
+    function writeBelow(rowIndex, kind, details) {
+      var j = rowIndex + 1;
+      while (j < items.length && items[j].kind === kind) {
+        items.splice(j, 1);
+      }
+      for (var k = 0; k < details.length; k++) {
+        var pos = rowIndex + 1 + k;
+        var cur = items[pos];
+        if (cur && rowIsEmpty(cur)) {
+          items[pos] = details[k];
+        } else if (cur && kind === 'part' && cur.kind !== 'part') {
+          cur.partMajor = details[k].partMajor;
+          cur.partMid = details[k].partMid;
+          if (filled(details[k].qty)) cur.qty = details[k].qty;
+          if (filled(details[k].unitPrice)) cur.unitPrice = details[k].unitPrice;
+          syncLineTotals(cur);
+        } else {
+          items.splice(pos, 0, details[k]);
+        }
+      }
+      compactItems();
     }
     function firstFilled(rows, key) {
       for (var i = 0; i < rows.length; i++) {
@@ -428,7 +412,7 @@
       if (w.partMid) target.partMid = w.partMid;
       if (filled(w.qty)) target.qty = w.qty;
       if (filled(w.unitPrice)) target.unitPrice = w.unitPrice;
-      applyPctToAmount(target);
+      syncLineTotals(target);
     }
 
     function onMidChosen(rowIndex) {
@@ -438,8 +422,7 @@
       it.kind = it.kind === 'part' ? it.kind : 'mid';
       if (!mid) {
         it.fee = '';
-        clearExpandedBelow(rowIndex, 'work');
-        padItems();
+        compactItems();
         renderGrid();
         return;
       }
@@ -447,34 +430,32 @@
       if (!group.length && it.major) group = linesForMid('', mid);
       var works = group.filter(function (r) { return r.content; });
       var blanks = group.filter(function (r) { return !r.content; });
-      clearExpandedBelow(rowIndex, 'work');
 
       if (group.length <= 1) {
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
         if (only) copyWorkPart(it, only);
-        padItems();
+        compactItems();
         renderGrid();
         setStatus('中項目「' + mid + '」を入力しました');
         return;
       }
 
       it.fee = firstFilled(blanks, 'fee');
-      var parentPart = blanks[0] || null;
-      if (parentPart) copyWorkPart(it, parentPart);
-      works.forEach(function (w, k) {
+      if (blanks[0]) copyWorkPart(it, blanks[0]);
+      var details = works.map(function (w) {
         var row = emptyRow();
         row.major = it.major || w.major || '';
         row.mid = w.content;
         row.fee = w.fee;
         row.kind = 'work';
         copyWorkPart(row, w);
-        items.splice(rowIndex + 1 + k, 0, row);
+        return row;
       });
-      padItems();
+      writeBelow(rowIndex, 'work', details);
       renderGrid();
-      setStatus('中項目「' + mid + '」の明細 ' + works.length + ' 件を下行の中項目へ出力しました');
+      setStatus('中項目「' + mid + '」の明細 ' + works.length + ' 件を下行へ詰めました');
     }
 
     function onPartMidChosen(rowIndex) {
@@ -482,8 +463,7 @@
       var mid = String(it.partMid || '').trim();
       it.partMid = mid;
       if (!mid) {
-        clearExpandedBelow(rowIndex, 'part');
-        padItems();
+        compactItems();
         renderGrid();
         return;
       }
@@ -491,7 +471,6 @@
       if (!group.length && it.partMajor) group = linesForPartMid('', mid);
       var works = group.filter(function (r) { return r.content; });
       var blanks = group.filter(function (r) { return !r.content; });
-      clearExpandedBelow(rowIndex, 'part');
 
       if (group.length <= 1 || works.length === 0) {
         var only = group[0];
@@ -499,10 +478,10 @@
         if (only) {
           if (filled(only.qty)) it.qty = only.qty;
           if (filled(only.unitPrice)) it.unitPrice = only.unitPrice;
-          it.discPct = 0;
-          applyPctToAmount(it);
+          it.discYen = '';
+          syncLineTotals(it);
         }
-        padItems();
+        compactItems();
         renderGrid();
         setStatus('部品中項目「' + mid + '」を入力しました');
         return;
@@ -513,28 +492,21 @@
         if (!it.partMajor && parent.major) it.partMajor = parent.major;
         if (filled(parent.qty)) it.qty = parent.qty;
         if (filled(parent.unitPrice)) it.unitPrice = parent.unitPrice;
-        it.discPct = 0;
-        applyPctToAmount(it);
-      } else {
-        it.qty = '';
-        it.unitPrice = '';
-        it.amount = '';
-        it.discPct = 0;
-        it.discYen = 0;
+        syncLineTotals(it);
       }
-      works.forEach(function (w, k) {
+      var details = works.map(function (w) {
         var row = emptyRow();
         row.partMajor = it.partMajor || w.major || '';
         row.partMid = w.content;
         row.qty = w.qty;
         row.unitPrice = w.unitPrice;
         row.kind = 'part';
-        applyPctToAmount(row);
-        items.splice(rowIndex + 1 + k, 0, row);
+        syncLineTotals(row);
+        return row;
       });
-      padItems();
+      writeBelow(rowIndex, 'part', details);
       renderGrid();
-      setStatus('部品中項目「' + mid + '」の明細 ' + works.length + ' 件を下行へ出力しました');
+      setStatus('部品中項目「' + mid + '」の明細 ' + works.length + ' 件を下行へ詰めました');
     }
 
     function hideComboLists() {
@@ -629,10 +601,8 @@
       } else if (k === 'partMajor') {
         items[i].partMid = '';
         refreshRowSelects(i);
-      } else if (k === 'discPct') {
-        items[i].discPct = clampPct(t.value);
-        applyPctToAmount(items[i]);
-        refreshRowSelects(i);
+      } else if (k === 'discYen') {
+        items[i].discYen = t.value;
         recalc();
       } else {
         recalc();
@@ -649,63 +619,52 @@
       }
       items[i][k] = t.value;
       if (k === 'qty' || k === 'unitPrice') {
-        applyPctToAmount(items[i]);
-        t.parentNode.parentNode.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
-        t.parentNode.parentNode.querySelector('[data-k="discPct"]').value = items[i].discPct || 0;
-      } else if (k === 'amount') {
-        applyAmountToDisc(items[i]);
-        t.parentNode.parentNode.querySelector('[data-k="discPct"]').value = items[i].discPct || 0;
-      } else if (k === 'discPct') {
-        items[i].discPct = clampPct(t.value);
-        applyPctToAmount(items[i]);
-        t.parentNode.parentNode.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
+        syncLineTotals(items[i]);
+        var tr = t.parentNode.parentNode;
+        tr.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
+      } else if (k === 'discYen') {
+        var list = listPrice(items[i]);
+        if (num(items[i].discYen) > list) {
+          items[i].discYen = list;
+          t.value = list || '';
+        }
       }
       recalc();
     });
 
-    ['techPct', 'partPct'].forEach(function (id) {
+    ['techDiscIn', 'partDiscIn'].forEach(function (id) {
       $(id).addEventListener('input', recalc);
-      $(id).addEventListener('change', function () {
-        $(id).value = clampPct($(id).value);
-        recalc();
-      });
     });
 
     function recalc() {
       var techSum = 0;
       var partList = 0;
       var partLineDisc = 0;
-      var partAmt = 0;
       items.forEach(function (it) {
         techSum += num(it.fee);
         var list = listPrice(it);
         partList += list;
         partLineDisc += num(it.discYen);
-        partAmt += filled(it.amount) || list ? num(it.amount !== '' ? it.amount : list) : 0;
       });
-      var techPct = clampPct($('techPct').value);
-      $('techPct').value = techPct;
-      var techDisc = Math.round(techSum * techPct / 100);
+      var techDisc = Math.max(0, num($('techDiscIn').value));
+      if (techDisc > techSum) techDisc = techSum;
       var techNet = Math.max(0, techSum - techDisc);
 
-      var partPct = clampPct($('partPct').value);
-      $('partPct').value = partPct;
-      var partExtra = Math.round(partList * partPct / 100);
+      var partExtra = Math.max(0, num($('partDiscIn').value));
       var partDisc = partLineDisc + partExtra;
+      if (partDisc > partList) partDisc = partList;
       var partNet = Math.max(0, partList - partDisc);
 
       $('techSub').textContent = yen(techSum);
-      $('techDisc').textContent = yen(techDisc);
       $('techTotal').textContent = yen(techNet);
       $('partSub').textContent = yen(partList);
-      $('partDisc').textContent = yen(partDisc);
       $('partTotal').textContent = yen(partNet);
       $('grand').textContent = yen(techNet + partNet);
       $('footTech').textContent = yen(techSum);
       $('footTechDisc').textContent = yen(techDisc);
-      $('footPartList').textContent = yen(partList);
-      $('footPartAmt').textContent = yen(partAmt);
+      $('footPartAmt').textContent = yen(partList);
       $('footPartDisc').textContent = yen(partDisc);
+      $('footPartDiscRow').textContent = yen(partDisc);
       return {
         techSub: techSum,
         techDisc: techDisc,
@@ -749,7 +708,7 @@
       .withSuccessHandler(function (data) {
         master = data || master;
         renderGrid();
-        setStatus('30行を編集できます。中項目は入力、値引は1％刻みです。');
+        setStatus('明細は上から詰めて表示します。合計は数量×単価です。');
       })
       .withFailureHandler(function (err) {
         setStatus(err.message || String(err), true);
