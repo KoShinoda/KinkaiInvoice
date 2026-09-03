@@ -125,7 +125,13 @@
       box-shadow: 0 6px 16px rgba(28, 36, 48, .12);
     }
     .combo-list div { padding: 5px 8px; cursor: pointer; }
-    .combo-list div:hover { background: #e8f0ec; }
+    .combo-list div:hover,
+    .combo-list div.active { background: #e8f0ec; }
+    input.warn-neg {
+      background: #fde8e8;
+      color: #b42318;
+      border-color: #f04438;
+    }
     .totals {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -196,7 +202,7 @@
               <th>単価</th>
               <th>数量</th>
               <th>合計</th>
-              <th>値引％</th>
+              <th>値引額</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -252,6 +258,8 @@
       lineCount: 120
     };
     var items = [];
+    var pendingFocus = null;
+    var comboActiveIndex = -1;
 
     function $(id) { return document.getElementById(id); }
     function setStatus(msg, isErr) {
@@ -262,7 +270,7 @@
       return {
         major: '', mid: '', fee: '', workerCode: '',
         partMajor: '', partMid: '',
-        qty: '', unitPrice: '', amount: '', discPct: 0,
+        qty: '', unitPrice: '', amount: '', discYen: 0,
         kind: ''
       };
     }
@@ -280,16 +288,29 @@
     }
     function listPrice(it) { return num(it.qty) * num(it.unitPrice); }
 
-    function syncLineTotals(it) {
+    function calcFromQtyPrice(it) {
       var list = listPrice(it);
-      it.discPct = clampPct(it.discPct);
       if (!filled(it.qty) && !filled(it.unitPrice)) {
-        it.amount = '';
-        it.discYen = 0;
+        if (!filled(it.amount)) {
+          it.discYen = 0;
+        } else {
+          it.discYen = Math.round(0 - num(it.amount));
+        }
         return;
       }
       it.amount = Math.round(list);
-      it.discYen = Math.round(list * it.discPct / 100);
+      it.discYen = 0;
+    }
+
+    function calcDiscFromAmount(it) {
+      var list = listPrice(it);
+      it.discYen = Math.round(list - num(it.amount));
+    }
+
+    function paintDiscWarn(tr, it) {
+      var el = tr.querySelector('[data-k="discYen"]');
+      if (!el) return;
+      el.classList.toggle('warn-neg', num(it.discYen) < 0);
     }
 
     function hasWork(r) {
@@ -312,8 +333,8 @@
       if (!target.partMid) target.partMid = src.partMid || '';
       if (!filled(target.qty)) target.qty = src.qty;
       if (!filled(target.unitPrice)) target.unitPrice = src.unitPrice;
-      if (!target.discPct && src.discPct) target.discPct = src.discPct;
-      syncLineTotals(target);
+      if (!target.discYen && src.discYen) target.discYen = src.discYen;
+      calcFromQtyPrice(target);
     }
     function clearWorkSide(r) {
       r.major = '';
@@ -327,7 +348,6 @@
       r.qty = '';
       r.unitPrice = '';
       r.amount = '';
-      r.discPct = 0;
       r.discYen = 0;
     }
 
@@ -400,7 +420,8 @@
       tr.querySelector('[data-k="qty"]').value = it.qty == null ? '' : it.qty;
       tr.querySelector('[data-k="unitPrice"]').value = it.unitPrice == null ? '' : it.unitPrice;
       tr.querySelector('[data-k="amount"]').value = it.amount == null || it.amount === '' ? '' : it.amount;
-      tr.querySelector('[data-k="discPct"]').value = it.discPct || 0;
+      tr.querySelector('[data-k="discYen"]').value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
+      paintDiscWarn(tr, it);
     }
 
     function lineCount() {
@@ -425,12 +446,28 @@
           '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="amount" readonly tabindex="-1"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="discPct" type="number" min="0" max="100" step="1"></td>';
+          '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>';
         tb.appendChild(tr);
         refreshRowSelects(i);
       }
       recalc();
+      applyPendingFocus();
+    }
+
+    function applyPendingFocus() {
+      if (!pendingFocus) return;
+      var i = pendingFocus.i;
+      var k = pendingFocus.k;
+      pendingFocus = null;
+      var tr = $('tbody').rows[i];
+      if (!tr) return;
+      var el = tr.querySelector('[data-k="' + k + '"]');
+      if (!el) return;
+      el.focus();
+      if (el.select) {
+        try { el.select(); } catch (err) {}
+      }
     }
 
     function rowIsEmpty(r) {
@@ -528,7 +565,7 @@
       if (w.partMid) target.partMid = w.partMid;
       if (filled(w.qty)) target.qty = w.qty;
       if (filled(w.unitPrice)) target.unitPrice = w.unitPrice;
-      syncLineTotals(target);
+      calcFromQtyPrice(target);
     }
 
     function onMidChosen(rowIndex) {
@@ -595,8 +632,8 @@
         if (only) {
           if (filled(only.qty)) it.qty = only.qty;
           if (filled(only.unitPrice)) it.unitPrice = only.unitPrice;
-          it.discPct = 0;
-          syncLineTotals(it);
+          it.discYen = 0;
+          calcFromQtyPrice(it);
         }
         compactItems();
         renderGrid();
@@ -609,7 +646,7 @@
         if (!it.partMajor && parent.major) it.partMajor = parent.major;
         if (filled(parent.qty)) it.qty = parent.qty;
         if (filled(parent.unitPrice)) it.unitPrice = parent.unitPrice;
-        syncLineTotals(it);
+        calcFromQtyPrice(it);
       }
       var details = works.map(function (w) {
         var row = emptyRow();
@@ -618,7 +655,7 @@
         row.qty = w.qty;
         row.unitPrice = w.unitPrice;
         row.kind = 'part';
-        syncLineTotals(row);
+        calcFromQtyPrice(row);
         return row;
       });
       writeBelow(rowIndex, 'part', details);
@@ -630,12 +667,23 @@
       Array.prototype.forEach.call(document.querySelectorAll('.combo-list'), function (el) {
         el.hidden = true;
       });
+      comboActiveIndex = -1;
     }
     function comboOptions(input) {
       try { return JSON.parse(input.dataset.options || '[]'); } catch (e) { return []; }
     }
-    function showComboList(input) {
-      var list = input.parentNode.querySelector('.combo-list');
+    function comboListEl(input) {
+      return input.parentNode.querySelector('.combo-list');
+    }
+    function highlightCombo(list, idx) {
+      var nodes = list.querySelectorAll('div');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].classList.toggle('active', i === idx);
+      }
+      if (idx >= 0 && nodes[idx]) nodes[idx].scrollIntoView({ block: 'nearest' });
+    }
+    function showComboList(input, keepActive) {
+      var list = comboListEl(input);
       if (!list) return;
       var q = String(input.value || '').toLowerCase();
       var opts = comboOptions(input).filter(function (v) {
@@ -649,11 +697,34 @@
         list.appendChild(d);
       });
       list.hidden = opts.length === 0;
+      if (!keepActive) comboActiveIndex = -1;
+      if (comboActiveIndex >= opts.length) comboActiveIndex = opts.length - 1;
+      highlightCombo(list, comboActiveIndex);
+    }
+    function moveComboHighlight(input, dir) {
+      var list = comboListEl(input);
+      if (!list || list.hidden || !list.children.length) {
+        showComboList(input);
+        list = comboListEl(input);
+        if (!list || list.hidden || !list.children.length) return;
+        comboActiveIndex = dir > 0 ? 0 : list.children.length - 1;
+      } else {
+        comboActiveIndex += dir;
+        if (comboActiveIndex < 0) comboActiveIndex = list.children.length - 1;
+        if (comboActiveIndex >= list.children.length) comboActiveIndex = 0;
+      }
+      highlightCombo(list, comboActiveIndex);
+      input.value = list.children[comboActiveIndex].dataset.value;
     }
     function commitCombo(input) {
       var i = Number(input.dataset.i);
       var k = input.dataset.k;
+      var list = comboListEl(input);
+      if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
+        input.value = list.children[comboActiveIndex].dataset.value;
+      }
       var v = input.value;
+      hideComboLists();
       if (k === 'mid') {
         if (items[i].mid === v) return;
         items[i].mid = v;
@@ -663,6 +734,32 @@
         items[i].partMid = v;
         onPartMidChosen(i);
       }
+    }
+    function focusGridCell(row, key) {
+      pendingFocus = { i: row, k: key };
+      applyPendingFocus();
+    }
+    function moveDown(el, dir) {
+      var i = Number(el.dataset.i);
+      var k = el.dataset.k;
+      var next = i + dir;
+      if (next < 0 || next >= lineCount()) return;
+      if (k === 'mid' || k === 'partMid') {
+        var list = comboListEl(el);
+        if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
+          el.value = list.children[comboActiveIndex].dataset.value;
+        }
+        hideComboLists();
+        pendingFocus = { i: next, k: k };
+        if (items[i][k] !== el.value) {
+          items[i][k] = el.value;
+          if (k === 'mid') onMidChosen(i);
+          else onPartMidChosen(i);
+        }
+        applyPendingFocus();
+        return;
+      }
+      focusGridCell(next, k);
     }
 
     $('tbody').addEventListener('mousedown', function (e) {
@@ -688,11 +785,32 @@
       }
     });
     $('tbody').addEventListener('keydown', function (e) {
-      if (!e.target.dataset) return;
-      if ((e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid') && e.key === 'Enter') {
+      if (!e.target.dataset || e.target.dataset.i == null) return;
+      var k = e.target.dataset.k;
+      if (e.key === 'Tab') {
         e.preventDefault();
-        hideComboLists();
-        commitCombo(e.target);
+        moveDown(e.target, e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (k === 'mid' || k === 'partMid') {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          moveComboHighlight(e.target, 1);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          moveComboHighlight(e.target, -1);
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitCombo(e.target);
+          return;
+        }
+        if (e.key === 'Escape') {
+          hideComboLists();
+        }
       }
     });
     $('tbody').addEventListener('focusout', function (e) {
@@ -718,11 +836,6 @@
       } else if (k === 'partMajor') {
         items[i].partMid = '';
         refreshRowSelects(i);
-      } else if (k === 'discPct') {
-        items[i].discPct = clampPct(t.value);
-        syncLineTotals(items[i]);
-        refreshRowSelects(i);
-        recalc();
       } else {
         recalc();
       }
@@ -737,15 +850,19 @@
         return;
       }
       items[i][k] = t.value;
+      var tr = t.parentNode.parentNode;
       if (k === 'qty' || k === 'unitPrice') {
-        syncLineTotals(items[i]);
-        var tr = t.parentNode.parentNode;
+        calcFromQtyPrice(items[i]);
         tr.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
-        tr.querySelector('[data-k="discPct"]').value = items[i].discPct || 0;
-      } else if (k === 'discPct') {
-        items[i].discPct = clampPct(t.value);
-        t.value = items[i].discPct;
-        syncLineTotals(items[i]);
+        tr.querySelector('[data-k="discYen"]').value = items[i].discYen;
+        paintDiscWarn(tr, items[i]);
+      } else if (k === 'amount') {
+        calcDiscFromAmount(items[i]);
+        tr.querySelector('[data-k="discYen"]').value = items[i].discYen;
+        paintDiscWarn(tr, items[i]);
+      } else if (k === 'discYen') {
+        items[i].discYen = t.value;
+        paintDiscWarn(tr, items[i]);
       }
       recalc();
     });
@@ -767,7 +884,6 @@
       var partLineDisc = 0;
       items.forEach(function (it) {
         techSum += num(it.fee);
-        syncLineTotals(it);
         var list = listPrice(it);
         partList += list;
         partLineDisc += num(it.discYen);
