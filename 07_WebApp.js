@@ -11,8 +11,8 @@ function doGet() {
 
 function openInputApp() {
   const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
-    .setWidth(1040)
-    .setHeight(740);
+    .setWidth(1180)
+    .setHeight(780);
   SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
 }
 
@@ -72,7 +72,13 @@ function pickPartDisplay_(row) {
  */
 function publishInvoices(payload) {
   if (!payload || !payload.items || !payload.items.length) {
-    throw new Error('明細がありません。中項目を追加してください。');
+    throw new Error('明細がありません。');
+  }
+  const filled = payload.items.filter(function (it) {
+    return rowHasContent_(it);
+  });
+  if (!filled.length) {
+    throw new Error('1行以上入力してください。');
   }
 
   invalidateContext_();
@@ -87,9 +93,17 @@ function publishInvoices(payload) {
 
   return {
     pageCount: names.length,
-    lineCount: payload.items.length,
+    lineCount: filled.length,
     sheetNames: names
   };
+}
+
+function rowHasContent_(it) {
+  if (!it) {
+    return false;
+  }
+  return isFilled_(it.major) || isFilled_(it.name) || isFilled_(it.fee) ||
+    isFilled_(it.part) || isFilled_(it.qty) || isFilled_(it.unitPrice);
 }
 
 /**
@@ -111,7 +125,7 @@ function writeInputSheetFromApp_(sheet, payload) {
     const price = toNumberOrBlank_(it.unitPrice);
     const amount = qty !== '' && price !== '' ? Number(qty) * Number(price) : '';
     values[i][0] = i + 1;
-    values[i][1] = it.kind === 'mid' ? (it.major || '') : '';
+    values[i][1] = it.major || '';
     values[i][2] = it.name || '';
     values[i][3] = it.fee === undefined || it.fee === null ? '' : it.fee;
     values[i][4] = (payload.header && payload.header.staff) || '';
