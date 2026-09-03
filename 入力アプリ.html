@@ -88,6 +88,25 @@
     td.major { width: 16%; }
     td.mid { width: 18%; }
     td.content { width: 22%; }
+    .combo { position: relative; }
+    .combo input { width: 100%; }
+    .combo-list {
+      position: absolute;
+      left: 0; right: 0; top: 100%;
+      z-index: 20;
+      max-height: 180px;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: 0 6px 16px rgba(28, 36, 48, .12);
+    }
+    .combo-list div {
+      padding: 5px 8px;
+      cursor: pointer;
+    }
+    .combo-list div:hover,
+    .combo-list div.active { background: #e8f0ec; }
     .totals {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -133,7 +152,7 @@
 <body>
   <header>
     <h1>車検 請求入力</h1>
-    <span>30行を直接編集　／　中項目に作業内容が複数あれば下行へ展開</span>
+    <span>30行を直接編集　／　中項目は入力可　／　複数なら下行へ作業内容を展開</span>
   </header>
   <main>
     <section class="card">
@@ -148,7 +167,7 @@
       </div>
     </section>
     <section class="card">
-      <h2>明細（30行）　作業内容・部品大項目はリストから選択のみ</h2>
+      <h2>明細（30行）　中項目は入力可　／　作業内容・部品大項目はリスト選択のみ</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -218,7 +237,7 @@
       $('status').className = isErr ? 'err' : '';
     }
     function emptyRow() {
-      return { major: '', mid: '', name: '', fee: '', part: '', qty: '', unitPrice: '' };
+      return { major: '', mid: '', name: '', fee: '', part: '', qty: '', unitPrice: '', kind: '' };
     }
     function yen(n) {
       return Math.round(n || 0).toLocaleString('ja-JP');
@@ -253,7 +272,7 @@
 
     function linesForMid(major, mid) {
       return (master.workLines || []).filter(function (r) {
-        if (r.mid !== mid) return false;
+        if (String(r.mid || '') !== String(mid || '')) return false;
         if (major && r.major !== major) return false;
         return true;
       });
@@ -287,10 +306,14 @@
       var tr = $('tbody').rows[i];
       if (!tr) return;
       var it = items[i];
-      fillSelect(tr.querySelector('[data-k="major"]'), master.majors, it.major);
-      fillSelect(tr.querySelector('[data-k="mid"]'), midsFor(it.major), it.mid);
-      fillSelect(tr.querySelector('[data-k="name"]'), contentsFor(it.major, it.mid), it.name);
-      fillSelect(tr.querySelector('[data-k="part"]'), master.partMajors, it.part);
+      fillSelect(tr.querySelector('select[data-k="major"]'), master.majors, it.major);
+      var midInput = tr.querySelector('input[data-k="mid"]');
+      if (midInput) {
+        midInput.value = it.mid || '';
+        midInput.dataset.options = JSON.stringify(midsFor(it.major));
+      }
+      fillSelect(tr.querySelector('select[data-k="name"]'), contentsFor(it.major, it.mid), it.name);
+      fillSelect(tr.querySelector('select[data-k="part"]'), master.partMajors, it.part);
       tr.querySelector('[data-k="fee"]').value = it.fee == null ? '' : it.fee;
       tr.querySelector('[data-k="qty"]').value = it.qty == null ? '' : it.qty;
       tr.querySelector('[data-k="unitPrice"]').value = it.unitPrice == null ? '' : it.unitPrice;
@@ -307,7 +330,7 @@
         tr.innerHTML =
           '<td class="no">' + (i + 1) + '</td>' +
           '<td class="major"><select data-i="' + i + '" data-k="major"></select></td>' +
-          '<td class="mid"><select data-i="' + i + '" data-k="mid"></select></td>' +
+          '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="content"><select data-i="' + i + '" data-k="name"></select></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="fee"></td>' +
           '<td><select data-i="' + i + '" data-k="part"></select></td>' +
@@ -329,106 +352,161 @@
       items = items.slice(0, n);
     }
 
-    function applyContentExpand(rowIndex) {
-      var it = items[rowIndex];
-      if (!it.name) {
-        refreshRowSelects(rowIndex);
-        recalc();
-        return;
-      }
-      var mid = it.mid;
-      var major = it.major;
-      if (!mid) {
-        var hit = (master.workLines || []).filter(function (r) { return r.content === it.name; })[0];
-        if (hit) {
-          mid = hit.mid;
-          major = major || hit.major;
-          it.mid = mid;
-          it.major = major;
+    function clearExpandedBelow(rowIndex) {
+      var j = rowIndex + 1;
+      while (j < items.length) {
+        var r = items[j];
+        if (r.kind === 'work' || rowIsEmpty(r)) {
+          items.splice(j, 1);
+          continue;
         }
+        break;
       }
-      var group = linesForMid(major, mid);
-      var works = group.filter(function (r) { return r.content; });
-      var blanks = group.filter(function (r) { return !r.content; });
-      var self = works.filter(function (r) { return r.content === it.name; })[0];
-      if (self) {
-        if (!filled(it.fee)) it.fee = self.fee;
-        if (!it.part && self.part) it.part = self.part;
-        if (!filled(it.qty) && filled(self.qty)) it.qty = self.qty;
-        if (!filled(it.unitPrice) && filled(self.unitPrice)) it.unitPrice = self.unitPrice;
-      } else if (works.length === 0 && blanks.length) {
-        if (!filled(it.fee)) it.fee = blanks[0].fee;
+    }
+
+    function midFeeFrom(blanks) {
+      for (var i = 0; i < blanks.length; i++) {
+        if (filled(blanks[i].fee)) return blanks[i].fee;
       }
-      if (works.length > 1) {
-        var rest = works.filter(function (r) { return r.content !== it.name; });
-        var j = rowIndex + 1;
-        while (j < items.length) {
-          var r = items[j];
-          var sameGroup = r.mid === mid && (!major || r.major === major || !r.major);
-          if (rowIsEmpty(r) || sameGroup) {
-            items.splice(j, 1);
-            continue;
-          }
-          break;
-        }
-        rest.forEach(function (w, k) {
-          items.splice(rowIndex + 1 + k, 0, {
-            major: major,
-            mid: mid,
-            name: w.content,
-            fee: w.fee,
-            part: w.part || '',
-            qty: w.qty || '',
-            unitPrice: w.unitPrice || ''
-          });
-        });
-        padItems();
-        renderGrid();
-        setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ展開しました');
-        return;
-      }
-      refreshRowSelects(rowIndex);
-      recalc();
+      return '';
     }
 
     function onMidChosen(rowIndex) {
       var it = items[rowIndex];
-      if (!it.mid) {
-        refreshRowSelects(rowIndex);
+      var mid = String(it.mid || '').trim();
+      it.mid = mid;
+      it.kind = 'mid';
+      if (!mid) {
+        it.name = '';
+        it.fee = '';
+        clearExpandedBelow(rowIndex);
+        padItems();
+        renderGrid();
         return;
       }
-      var group = linesForMid(it.major, it.mid);
+      var group = linesForMid(it.major, mid);
+      if (!group.length && it.major) {
+        group = linesForMid('', mid);
+        if (group.length && !it.major) it.major = group[0].major;
+      }
       var works = group.filter(function (r) { return r.content; });
       var blanks = group.filter(function (r) { return !r.content; });
-      if (works.length === 1) {
-        it.name = works[0].content;
-        if (!filled(it.fee)) it.fee = works[0].fee;
-        if (!it.part && works[0].part) it.part = works[0].part;
-        if (!filled(it.qty) && filled(works[0].qty)) it.qty = works[0].qty;
-        if (!filled(it.unitPrice) && filled(works[0].unitPrice)) it.unitPrice = works[0].unitPrice;
-      } else if (works.length === 0 && blanks.length) {
-        it.name = '';
-        if (!filled(it.fee)) it.fee = blanks[0].fee;
+
+      clearExpandedBelow(rowIndex);
+      it.name = '';
+
+      if (group.length <= 1) {
+        var only = group[0];
+        it.fee = only ? only.fee : '';
+        if (only && !it.major && only.major) it.major = only.major;
+        padItems();
+        renderGrid();
+        setStatus('中項目「' + mid + '」を入力しました');
+        return;
       }
-      refreshRowSelects(rowIndex);
-      recalc();
+
+      it.fee = midFeeFrom(blanks);
+      works.forEach(function (w, k) {
+        items.splice(rowIndex + 1 + k, 0, {
+          major: it.major || w.major || '',
+          mid: '',
+          name: w.content,
+          fee: w.fee,
+          part: w.part || '',
+          qty: w.qty || '',
+          unitPrice: w.unitPrice || '',
+          kind: 'work'
+        });
+      });
+      padItems();
+      renderGrid();
+      setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ展開しました');
     }
+
+    function hideComboLists(except) {
+      Array.prototype.forEach.call(document.querySelectorAll('.combo-list'), function (el) {
+        if (el !== except) el.hidden = true;
+      });
+    }
+
+    function comboOptions(input) {
+      try {
+        return JSON.parse(input.dataset.options || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function showComboList(input) {
+      var list = input.parentNode.querySelector('.combo-list');
+      if (!list) return;
+      var q = String(input.value || '').toLowerCase();
+      var opts = comboOptions(input).filter(function (v) {
+        return !q || String(v).toLowerCase().indexOf(q) !== -1;
+      });
+      list.innerHTML = '';
+      opts.forEach(function (v) {
+        var d = document.createElement('div');
+        d.textContent = v;
+        d.dataset.value = v;
+        list.appendChild(d);
+      });
+      list.hidden = opts.length === 0;
+    }
+
+    $('tbody').addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.combo-list div');
+      if (!opt) return;
+      e.preventDefault();
+      var input = opt.parentNode.parentNode.querySelector('input');
+      var i = Number(input.dataset.i);
+      input.value = opt.dataset.value;
+      items[i].mid = opt.dataset.value;
+      hideComboLists();
+      onMidChosen(i);
+    });
+
+    $('tbody').addEventListener('focusin', function (e) {
+      if (e.target.dataset && e.target.dataset.k === 'mid') {
+        hideComboLists();
+        showComboList(e.target);
+      }
+    });
+
+    $('tbody').addEventListener('keydown', function (e) {
+      if (!e.target.dataset || e.target.dataset.k !== 'mid') return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        hideComboLists();
+        items[Number(e.target.dataset.i)].mid = e.target.value;
+        onMidChosen(Number(e.target.dataset.i));
+      }
+    });
+
+    $('tbody').addEventListener('focusout', function (e) {
+      if (!e.target.dataset || e.target.dataset.k !== 'mid') return;
+      var input = e.target;
+      setTimeout(function () {
+        hideComboLists();
+        var i = Number(input.dataset.i);
+        if (!items[i]) return;
+        if (items[i].mid === input.value) return;
+        items[i].mid = input.value;
+        onMidChosen(i);
+      }, 120);
+    });
 
     $('tbody').addEventListener('change', function (e) {
       var t = e.target;
       if (!t.dataset || t.dataset.i == null) return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
+      if (k === 'mid') return;
       items[i][k] = t.value;
       if (k === 'major') {
         items[i].mid = '';
         items[i].name = '';
         refreshRowSelects(i);
-      } else if (k === 'mid') {
-        items[i].name = '';
-        onMidChosen(i);
-      } else if (k === 'name') {
-        applyContentExpand(i);
       } else {
         recalc();
       }
@@ -437,7 +515,13 @@
     $('tbody').addEventListener('input', function (e) {
       var t = e.target;
       if (!t.dataset || t.tagName !== 'INPUT') return;
-      items[Number(t.dataset.i)][t.dataset.k] = t.value;
+      var i = Number(t.dataset.i);
+      var k = t.dataset.k;
+      if (k === 'mid') {
+        showComboList(t);
+        return;
+      }
+      items[i][k] = t.value;
       recalc();
     });
 
@@ -508,7 +592,7 @@
       .withSuccessHandler(function (data) {
         master = data || master;
         renderGrid();
-        setStatus('30行を編集できます。作業内容・部品はリスト選択です。');
+        setStatus('30行を編集できます。中項目は入力、作業内容・部品はリスト選択です。');
       })
       .withFailureHandler(function (err) {
         setStatus(err.message || String(err), true);
