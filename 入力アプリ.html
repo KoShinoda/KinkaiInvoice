@@ -60,7 +60,7 @@
       background: #fff;
     }
     .table-wrap {
-      max-height: 340px;
+      max-height: 380px;
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -76,7 +76,7 @@
       border-bottom: 1px solid var(--line);
     }
     tfoot th {
-      position: sticky; bottom: 0;
+      position: sticky; bottom: auto;
       background: #e8f0ec;
       color: var(--text);
       font-weight: 700;
@@ -84,10 +84,10 @@
     }
     td { padding: 3px 4px; border-bottom: 1px solid #eef1f4; }
     td.no { width: 26px; color: var(--muted); text-align: center; }
-    td.num { width: 72px; }
-    td.major { width: 16%; }
-    td.mid { width: 18%; }
-    td.content { width: 22%; }
+    td.num { width: 70px; }
+    td.pct { width: 64px; }
+    td.major, td.part-major { width: 12%; }
+    td.mid, td.part-mid { width: 14%; }
     .combo { position: relative; }
     .combo input { width: 100%; }
     .combo-list {
@@ -101,24 +101,15 @@
       border-radius: 6px;
       box-shadow: 0 6px 16px rgba(28, 36, 48, .12);
     }
-    .combo-list div {
-      padding: 5px 8px;
-      cursor: pointer;
-    }
-    .combo-list div:hover,
-    .combo-list div.active { background: #e8f0ec; }
+    .combo-list div { padding: 5px 8px; cursor: pointer; }
+    .combo-list div:hover { background: #e8f0ec; }
     .totals {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
     .totals h3 { margin: 0 0 8px; font-size: 13px; }
-    .disc {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin: 8px 0;
-    }
+    .disc { margin: 8px 0; max-width: 160px; }
     .sum-line {
       display: flex;
       justify-content: space-between;
@@ -152,7 +143,7 @@
 <body>
   <header>
     <h1>車検 請求入力</h1>
-    <span>30行を直接編集　／　中項目は入力可　／　複数なら下行へ作業内容を展開</span>
+    <span>作業・部品とも中項目を入力可　／　複数なら下行へ展開　／　値引は1％刻み</span>
   </header>
   <main>
     <section class="card">
@@ -167,7 +158,7 @@
       </div>
     </section>
     <section class="card">
-      <h2>明細（30行）　中項目は入力可　／　作業内容・部品大項目はリスト選択のみ</h2>
+      <h2>明細（30行）　大項目はリスト選択　／　中項目は入力可</h2>
       <div class="table-wrap">
         <table>
           <thead>
@@ -175,46 +166,52 @@
               <th>#</th>
               <th>大項目</th>
               <th>中項目</th>
-              <th>作業内容</th>
               <th>技術料</th>
               <th>部品大項目</th>
+              <th>部品中項目</th>
               <th>数量</th>
               <th>単価</th>
+              <th>合計</th>
+              <th>値引％</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
           <tfoot>
             <tr>
               <th></th>
-              <th colspan="3">合計</th>
+              <th colspan="2">作業 合計</th>
               <th id="footTech">0</th>
-              <th>数量×単価</th>
-              <th colspan="2" id="footPart">0</th>
+              <th colspan="2">部品 合計</th>
+              <th colspan="2" id="footPartList">0</th>
+              <th id="footPartAmt">0</th>
+              <th></th>
+            </tr>
+            <tr>
+              <th></th>
+              <th colspan="2">作業 値引額</th>
+              <th id="footTechDisc">0</th>
+              <th colspan="2">部品 値引額</th>
+              <th colspan="3" id="footPartDisc">0</th>
+              <th></th>
             </tr>
           </tfoot>
         </table>
       </div>
     </section>
     <section class="card">
-      <h2>合計・値引</h2>
+      <h2>合計・値引（％は1％刻み）</h2>
       <div class="totals">
         <div>
           <h3>技術料</h3>
           <div class="sum-line"><span>合計</span><span id="techSub">0</span></div>
-          <div class="disc">
-            <div><label>値引（円）</label><input id="techYen" type="number" value="0"></div>
-            <div><label>値引（%）</label><input id="techPct" type="number" value="0" step="0.1"></div>
-          </div>
+          <div class="disc"><label>値引（％）</label><input id="techPct" type="number" min="0" max="100" step="1" value="0"></div>
           <div class="sum-line"><span>値引額</span><span id="techDisc">0</span></div>
           <div class="sum-line strong"><span>差引</span><span id="techTotal">0</span></div>
         </div>
         <div>
-          <h3>部品（数量×単価）</h3>
-          <div class="sum-line"><span>合計</span><span id="partSub">0</span></div>
-          <div class="disc">
-            <div><label>値引（円）</label><input id="partYen" type="number" value="0"></div>
-            <div><label>値引（%）</label><input id="partPct" type="number" value="0" step="0.1"></div>
-          </div>
+          <h3>部品</h3>
+          <div class="sum-line"><span>合計（数量×単価）</span><span id="partSub">0</span></div>
+          <div class="disc"><label>値引（％）</label><input id="partPct" type="number" min="0" max="100" step="1" value="0"></div>
           <div class="sum-line"><span>値引額</span><span id="partDisc">0</span></div>
           <div class="sum-line strong"><span>差引</span><span id="partTotal">0</span></div>
         </div>
@@ -228,7 +225,11 @@
   </footer>
 
   <script>
-    var master = { majors: [], allMids: [], midsByMajor: {}, workLines: [], partMajors: [], linesPerPage: 30 };
+    var master = {
+      majors: [], allMids: [], midsByMajor: {}, workLines: [],
+      partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
+      linesPerPage: 30
+    };
     var items = [];
 
     function $(id) { return document.getElementById(id); }
@@ -237,39 +238,76 @@
       $('status').className = isErr ? 'err' : '';
     }
     function emptyRow() {
-      return { major: '', mid: '', name: '', fee: '', part: '', qty: '', unitPrice: '', kind: '' };
+      return {
+        major: '', mid: '', fee: '',
+        partMajor: '', partMid: '',
+        qty: '', unitPrice: '', amount: '', discYen: 0, discPct: 0,
+        kind: ''
+      };
     }
-    function yen(n) {
-      return Math.round(n || 0).toLocaleString('ja-JP');
-    }
+    function yen(n) { return Math.round(n || 0).toLocaleString('ja-JP'); }
     function num(v) {
       var n = Number(String(v == null ? '' : v).replace(/,/g, ''));
       return isFinite(n) ? n : 0;
     }
-    function filled(v) {
-      return v !== '' && v != null;
+    function filled(v) { return v !== '' && v != null; }
+    function clampPct(v) {
+      var n = Math.round(num(v));
+      if (n < 0) return 0;
+      if (n > 100) return 100;
+      return n;
+    }
+    function listPrice(it) { return num(it.qty) * num(it.unitPrice); }
+
+    function applyPctToAmount(it) {
+      var list = listPrice(it);
+      it.discPct = clampPct(it.discPct);
+      if (!filled(it.qty) && !filled(it.unitPrice)) {
+        it.discYen = 0;
+        if (!filled(it.amount)) it.amount = '';
+        return;
+      }
+      it.discYen = Math.round(list * it.discPct / 100);
+      it.amount = Math.max(0, Math.round(list - it.discYen));
+    }
+
+    function applyAmountToDisc(it) {
+      var list = listPrice(it);
+      var amt = num(it.amount);
+      if (list <= 0) {
+        it.discYen = 0;
+        it.discPct = 0;
+        return;
+      }
+      if (amt < list) {
+        it.discYen = Math.round(list - amt);
+        it.discPct = clampPct(it.discYen / list * 100);
+        it.discYen = Math.round(list * it.discPct / 100);
+      } else {
+        it.amount = Math.round(list);
+        it.discYen = 0;
+        it.discPct = 0;
+      }
+    }
+
+    function applyPartFields(target, src) {
+      if (!src) return;
+      if (src.partMajor) target.partMajor = src.partMajor;
+      if (src.partMid) target.partMid = src.partMid;
+      if (src.major && !src.mid && src.partMajor === undefined) target.partMajor = src.major;
+      if (filled(src.qty)) target.qty = src.qty;
+      if (filled(src.unitPrice)) target.unitPrice = src.unitPrice;
+      applyPctToAmount(target);
     }
 
     function midsFor(major) {
       if (!major) return master.allMids || [];
       return (master.midsByMajor && master.midsByMajor[major]) || [];
     }
-
-    function contentsFor(major, mid) {
-      var lines = master.workLines || [];
-      var out = [];
-      var seen = {};
-      lines.forEach(function (r) {
-        if (!r.content) return;
-        if (major && r.major !== major) return;
-        if (mid && r.mid !== mid) return;
-        if (seen[r.content]) return;
-        seen[r.content] = true;
-        out.push(r.content);
-      });
-      return out;
+    function partMidsFor(major) {
+      if (!major) return master.allPartMids || [];
+      return (master.partMidsByMajor && master.partMidsByMajor[major]) || master.allPartMids || [];
     }
-
     function linesForMid(major, mid) {
       return (master.workLines || []).filter(function (r) {
         if (String(r.mid || '') !== String(mid || '')) return false;
@@ -277,8 +315,16 @@
         return true;
       });
     }
+    function linesForPartMid(major, mid) {
+      return (master.partLines || []).filter(function (r) {
+        if (String(r.mid || '') !== String(mid || '')) return false;
+        if (major && r.major !== major) return false;
+        return true;
+      });
+    }
 
     function fillSelect(sel, values, selected) {
+      if (!sel) return;
       var cur = selected == null ? sel.value : selected;
       sel.innerHTML = '';
       var z = document.createElement('option');
@@ -307,16 +353,22 @@
       if (!tr) return;
       var it = items[i];
       fillSelect(tr.querySelector('select[data-k="major"]'), master.majors, it.major);
+      fillSelect(tr.querySelector('select[data-k="partMajor"]'), master.partMajors, it.partMajor);
       var midInput = tr.querySelector('input[data-k="mid"]');
       if (midInput) {
         midInput.value = it.mid || '';
         midInput.dataset.options = JSON.stringify(midsFor(it.major));
       }
-      fillSelect(tr.querySelector('select[data-k="name"]'), contentsFor(it.major, it.mid), it.name);
-      fillSelect(tr.querySelector('select[data-k="part"]'), master.partMajors, it.part);
+      var partMidInput = tr.querySelector('input[data-k="partMid"]');
+      if (partMidInput) {
+        partMidInput.value = it.partMid || '';
+        partMidInput.dataset.options = JSON.stringify(partMidsFor(it.partMajor));
+      }
       tr.querySelector('[data-k="fee"]').value = it.fee == null ? '' : it.fee;
       tr.querySelector('[data-k="qty"]').value = it.qty == null ? '' : it.qty;
       tr.querySelector('[data-k="unitPrice"]').value = it.unitPrice == null ? '' : it.unitPrice;
+      tr.querySelector('[data-k="amount"]').value = it.amount == null || it.amount === '' ? '' : it.amount;
+      tr.querySelector('[data-k="discPct"]').value = it.discPct || 0;
     }
 
     function renderGrid() {
@@ -331,11 +383,13 @@
           '<td class="no">' + (i + 1) + '</td>' +
           '<td class="major"><select data-i="' + i + '" data-k="major"></select></td>' +
           '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
-          '<td class="content"><select data-i="' + i + '" data-k="name"></select></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="fee"></td>' +
-          '<td><select data-i="' + i + '" data-k="part"></select></td>' +
+          '<td class="part-major"><select data-i="' + i + '" data-k="partMajor"></select></td>' +
+          '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>';
+          '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
+          '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
+          '<td class="pct"><input data-i="' + i + '" data-k="discPct" type="number" min="0" max="100" step="1"></td>';
         tb.appendChild(tr);
         refreshRowSelects(i);
       }
@@ -343,100 +397,154 @@
     }
 
     function rowIsEmpty(r) {
-      return !r || (!r.major && !r.mid && !r.name && !filled(r.fee) && !r.part && !filled(r.qty) && !filled(r.unitPrice));
+      return !r || (!r.major && !r.mid && !filled(r.fee) && !r.partMajor && !r.partMid &&
+        !filled(r.qty) && !filled(r.unitPrice) && !filled(r.amount));
     }
-
     function padItems() {
       var n = master.linesPerPage || 30;
       while (items.length < n) items.push(emptyRow());
       items = items.slice(0, n);
     }
-
-    function clearExpandedBelow(rowIndex) {
+    function clearExpandedBelow(rowIndex, kind) {
       var j = rowIndex + 1;
       while (j < items.length) {
         var r = items[j];
-        if (r.kind === 'work' || rowIsEmpty(r)) {
+        if (r.kind === kind || rowIsEmpty(r)) {
           items.splice(j, 1);
           continue;
         }
         break;
       }
     }
-
-    function midFeeFrom(blanks) {
-      for (var i = 0; i < blanks.length; i++) {
-        if (filled(blanks[i].fee)) return blanks[i].fee;
+    function firstFilled(rows, key) {
+      for (var i = 0; i < rows.length; i++) {
+        if (filled(rows[i][key])) return rows[i][key];
       }
       return '';
+    }
+
+    function copyWorkPart(target, w) {
+      if (w.partMajor) target.partMajor = w.partMajor;
+      if (w.partMid) target.partMid = w.partMid;
+      if (filled(w.qty)) target.qty = w.qty;
+      if (filled(w.unitPrice)) target.unitPrice = w.unitPrice;
+      applyPctToAmount(target);
     }
 
     function onMidChosen(rowIndex) {
       var it = items[rowIndex];
       var mid = String(it.mid || '').trim();
       it.mid = mid;
-      it.kind = 'mid';
+      it.kind = it.kind === 'part' ? it.kind : 'mid';
       if (!mid) {
-        it.name = '';
         it.fee = '';
-        clearExpandedBelow(rowIndex);
+        clearExpandedBelow(rowIndex, 'work');
         padItems();
         renderGrid();
         return;
       }
       var group = linesForMid(it.major, mid);
-      if (!group.length && it.major) {
-        group = linesForMid('', mid);
-        if (group.length && !it.major) it.major = group[0].major;
-      }
+      if (!group.length && it.major) group = linesForMid('', mid);
       var works = group.filter(function (r) { return r.content; });
       var blanks = group.filter(function (r) { return !r.content; });
-
-      clearExpandedBelow(rowIndex);
-      it.name = '';
+      clearExpandedBelow(rowIndex, 'work');
 
       if (group.length <= 1) {
         var only = group[0];
-        it.fee = only ? only.fee : '';
+        it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
+        if (only) copyWorkPart(it, only);
         padItems();
         renderGrid();
         setStatus('中項目「' + mid + '」を入力しました');
         return;
       }
 
-      it.fee = midFeeFrom(blanks);
+      it.fee = firstFilled(blanks, 'fee');
+      var parentPart = blanks[0] || null;
+      if (parentPart) copyWorkPart(it, parentPart);
       works.forEach(function (w, k) {
-        items.splice(rowIndex + 1 + k, 0, {
-          major: it.major || w.major || '',
-          mid: '',
-          name: w.content,
-          fee: w.fee,
-          part: w.part || '',
-          qty: w.qty || '',
-          unitPrice: w.unitPrice || '',
-          kind: 'work'
-        });
+        var row = emptyRow();
+        row.major = it.major || w.major || '';
+        row.mid = w.content;
+        row.fee = w.fee;
+        row.kind = 'work';
+        copyWorkPart(row, w);
+        items.splice(rowIndex + 1 + k, 0, row);
       });
       padItems();
       renderGrid();
-      setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ展開しました');
+      setStatus('中項目「' + mid + '」の明細 ' + works.length + ' 件を下行の中項目へ出力しました');
     }
 
-    function hideComboLists(except) {
+    function onPartMidChosen(rowIndex) {
+      var it = items[rowIndex];
+      var mid = String(it.partMid || '').trim();
+      it.partMid = mid;
+      if (!mid) {
+        clearExpandedBelow(rowIndex, 'part');
+        padItems();
+        renderGrid();
+        return;
+      }
+      var group = linesForPartMid(it.partMajor, mid);
+      if (!group.length && it.partMajor) group = linesForPartMid('', mid);
+      var works = group.filter(function (r) { return r.content; });
+      var blanks = group.filter(function (r) { return !r.content; });
+      clearExpandedBelow(rowIndex, 'part');
+
+      if (group.length <= 1 || works.length === 0) {
+        var only = group[0];
+        if (only && !it.partMajor && only.major) it.partMajor = only.major;
+        if (only) {
+          if (filled(only.qty)) it.qty = only.qty;
+          if (filled(only.unitPrice)) it.unitPrice = only.unitPrice;
+          it.discPct = 0;
+          applyPctToAmount(it);
+        }
+        padItems();
+        renderGrid();
+        setStatus('部品中項目「' + mid + '」を入力しました');
+        return;
+      }
+
+      var parent = blanks[0];
+      if (parent) {
+        if (!it.partMajor && parent.major) it.partMajor = parent.major;
+        if (filled(parent.qty)) it.qty = parent.qty;
+        if (filled(parent.unitPrice)) it.unitPrice = parent.unitPrice;
+        it.discPct = 0;
+        applyPctToAmount(it);
+      } else {
+        it.qty = '';
+        it.unitPrice = '';
+        it.amount = '';
+        it.discPct = 0;
+        it.discYen = 0;
+      }
+      works.forEach(function (w, k) {
+        var row = emptyRow();
+        row.partMajor = it.partMajor || w.major || '';
+        row.partMid = w.content;
+        row.qty = w.qty;
+        row.unitPrice = w.unitPrice;
+        row.kind = 'part';
+        applyPctToAmount(row);
+        items.splice(rowIndex + 1 + k, 0, row);
+      });
+      padItems();
+      renderGrid();
+      setStatus('部品中項目「' + mid + '」の明細 ' + works.length + ' 件を下行へ出力しました');
+    }
+
+    function hideComboLists() {
       Array.prototype.forEach.call(document.querySelectorAll('.combo-list'), function (el) {
-        if (el !== except) el.hidden = true;
+        el.hidden = true;
       });
     }
-
     function comboOptions(input) {
-      try {
-        return JSON.parse(input.dataset.options || '[]');
-      } catch (e) {
-        return [];
-      }
+      try { return JSON.parse(input.dataset.options || '[]'); } catch (e) { return []; }
     }
-
     function showComboList(input) {
       var list = input.parentNode.querySelector('.combo-list');
       if (!list) return;
@@ -453,107 +561,156 @@
       });
       list.hidden = opts.length === 0;
     }
+    function commitCombo(input) {
+      var i = Number(input.dataset.i);
+      var k = input.dataset.k;
+      var v = input.value;
+      if (k === 'mid') {
+        if (items[i].mid === v) return;
+        items[i].mid = v;
+        onMidChosen(i);
+      } else if (k === 'partMid') {
+        if (items[i].partMid === v) return;
+        items[i].partMid = v;
+        onPartMidChosen(i);
+      }
+    }
 
     $('tbody').addEventListener('mousedown', function (e) {
       var opt = e.target.closest('.combo-list div');
       if (!opt) return;
       e.preventDefault();
       var input = opt.parentNode.parentNode.querySelector('input');
-      var i = Number(input.dataset.i);
       input.value = opt.dataset.value;
-      items[i].mid = opt.dataset.value;
       hideComboLists();
-      onMidChosen(i);
+      var i = Number(input.dataset.i);
+      if (input.dataset.k === 'mid') {
+        items[i].mid = opt.dataset.value;
+        onMidChosen(i);
+      } else {
+        items[i].partMid = opt.dataset.value;
+        onPartMidChosen(i);
+      }
     });
-
     $('tbody').addEventListener('focusin', function (e) {
-      if (e.target.dataset && e.target.dataset.k === 'mid') {
+      if (e.target.dataset && (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid')) {
         hideComboLists();
         showComboList(e.target);
       }
     });
-
     $('tbody').addEventListener('keydown', function (e) {
-      if (!e.target.dataset || e.target.dataset.k !== 'mid') return;
-      if (e.key === 'Enter') {
+      if (!e.target.dataset) return;
+      if ((e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid') && e.key === 'Enter') {
         e.preventDefault();
         hideComboLists();
-        items[Number(e.target.dataset.i)].mid = e.target.value;
-        onMidChosen(Number(e.target.dataset.i));
+        commitCombo(e.target);
       }
     });
-
     $('tbody').addEventListener('focusout', function (e) {
-      if (!e.target.dataset || e.target.dataset.k !== 'mid') return;
+      if (!e.target.dataset) return;
+      if (e.target.dataset.k !== 'mid' && e.target.dataset.k !== 'partMid') return;
       var input = e.target;
       setTimeout(function () {
         hideComboLists();
-        var i = Number(input.dataset.i);
-        if (!items[i]) return;
-        if (items[i].mid === input.value) return;
-        items[i].mid = input.value;
-        onMidChosen(i);
+        if (!items[Number(input.dataset.i)]) return;
+        commitCombo(input);
       }, 120);
     });
-
     $('tbody').addEventListener('change', function (e) {
       var t = e.target;
       if (!t.dataset || t.dataset.i == null) return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
-      if (k === 'mid') return;
+      if (k === 'mid' || k === 'partMid') return;
       items[i][k] = t.value;
       if (k === 'major') {
         items[i].mid = '';
-        items[i].name = '';
         refreshRowSelects(i);
+      } else if (k === 'partMajor') {
+        items[i].partMid = '';
+        refreshRowSelects(i);
+      } else if (k === 'discPct') {
+        items[i].discPct = clampPct(t.value);
+        applyPctToAmount(items[i]);
+        refreshRowSelects(i);
+        recalc();
       } else {
         recalc();
       }
     });
-
     $('tbody').addEventListener('input', function (e) {
       var t = e.target;
       if (!t.dataset || t.tagName !== 'INPUT') return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
-      if (k === 'mid') {
+      if (k === 'mid' || k === 'partMid') {
         showComboList(t);
         return;
       }
       items[i][k] = t.value;
+      if (k === 'qty' || k === 'unitPrice') {
+        applyPctToAmount(items[i]);
+        t.parentNode.parentNode.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
+        t.parentNode.parentNode.querySelector('[data-k="discPct"]').value = items[i].discPct || 0;
+      } else if (k === 'amount') {
+        applyAmountToDisc(items[i]);
+        t.parentNode.parentNode.querySelector('[data-k="discPct"]').value = items[i].discPct || 0;
+      } else if (k === 'discPct') {
+        items[i].discPct = clampPct(t.value);
+        applyPctToAmount(items[i]);
+        t.parentNode.parentNode.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
+      }
       recalc();
     });
 
-    ['techYen', 'techPct', 'partYen', 'partPct'].forEach(function (id) {
+    ['techPct', 'partPct'].forEach(function (id) {
       $(id).addEventListener('input', recalc);
+      $(id).addEventListener('change', function () {
+        $(id).value = clampPct($(id).value);
+        recalc();
+      });
     });
 
     function recalc() {
       var techSum = 0;
-      var partSum = 0;
+      var partList = 0;
+      var partLineDisc = 0;
+      var partAmt = 0;
       items.forEach(function (it) {
         techSum += num(it.fee);
-        partSum += num(it.qty) * num(it.unitPrice);
+        var list = listPrice(it);
+        partList += list;
+        partLineDisc += num(it.discYen);
+        partAmt += filled(it.amount) || list ? num(it.amount !== '' ? it.amount : list) : 0;
       });
-      var techDisc = num($('techYen').value) + techSum * num($('techPct').value) / 100;
-      var partDisc = num($('partYen').value) + partSum * num($('partPct').value) / 100;
+      var techPct = clampPct($('techPct').value);
+      $('techPct').value = techPct;
+      var techDisc = Math.round(techSum * techPct / 100);
       var techNet = Math.max(0, techSum - techDisc);
-      var partNet = Math.max(0, partSum - partDisc);
+
+      var partPct = clampPct($('partPct').value);
+      $('partPct').value = partPct;
+      var partExtra = Math.round(partList * partPct / 100);
+      var partDisc = partLineDisc + partExtra;
+      var partNet = Math.max(0, partList - partDisc);
+
       $('techSub').textContent = yen(techSum);
       $('techDisc').textContent = yen(techDisc);
       $('techTotal').textContent = yen(techNet);
-      $('partSub').textContent = yen(partSum);
+      $('partSub').textContent = yen(partList);
       $('partDisc').textContent = yen(partDisc);
       $('partTotal').textContent = yen(partNet);
       $('grand').textContent = yen(techNet + partNet);
-      if ($('footTech')) $('footTech').textContent = yen(techSum);
-      if ($('footPart')) $('footPart').textContent = yen(partSum);
+      $('footTech').textContent = yen(techSum);
+      $('footTechDisc').textContent = yen(techDisc);
+      $('footPartList').textContent = yen(partList);
+      $('footPartAmt').textContent = yen(partAmt);
+      $('footPartDisc').textContent = yen(partDisc);
       return {
         techSub: techSum,
         techDisc: techDisc,
         techTotal: techNet,
-        partSub: partSum,
+        partSub: partList,
         partDisc: partDisc,
         partTotal: partNet,
         grand: techNet + partNet
@@ -592,7 +749,7 @@
       .withSuccessHandler(function (data) {
         master = data || master;
         renderGrid();
-        setStatus('30行を編集できます。中項目は入力、作業内容・部品はリスト選択です。');
+        setStatus('30行を編集できます。中項目は入力、値引は1％刻みです。');
       })
       .withFailureHandler(function (err) {
         setStatus(err.message || String(err), true);
