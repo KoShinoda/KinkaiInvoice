@@ -866,50 +866,24 @@
 
     function writeBelow(rowIndex, kind, details) {
       var j = rowIndex + 1;
-      while (j < items.length) {
+      while (j < items.length && items[j] && items[j].kind === kind) {
         var r = items[j];
-        if (rowIsEmpty(r)) break;
-        if (kind === 'work' && r.kind === 'work') {
-          if (hasPart(r) && hasWork(r)) {
-            clearWorkSide(r);
-            r.kind = hasPart(r) ? 'part' : '';
-            j++;
-            continue;
-          }
-          items.splice(j, 1);
-          continue;
+        if (kind === 'work' && hasPart(r)) {
+          clearWorkSide(r);
+          r.kind = hasPart(r) ? 'part' : '';
+          break;
         }
-        if (kind === 'part' && r.kind === 'part') {
-          if (hasWork(r) && hasPart(r)) {
-            clearPartSide(r);
-            r.kind = hasWork(r) ? 'work' : '';
-            j++;
-            continue;
-          }
-          items.splice(j, 1);
-          continue;
+        if (kind === 'part' && hasWork(r)) {
+          clearPartSide(r);
+          r.kind = hasWork(r) ? 'work' : '';
+          break;
         }
-        break;
+        items.splice(j, 1);
       }
-      for (var k = 0; k < details.length; k++) {
-        var pos = rowIndex + 1 + k;
-        var cur = items[pos];
-        if (!cur || rowIsEmpty(cur)) {
-          items[pos] = details[k];
-        } else if (canMergeExpand(cur, kind)) {
-          if (kind === 'work') {
-            applyWorkOnto(cur, details[k]);
-            if (!hasPart(cur)) copyWorkPart(cur, details[k]);
-            cur.kind = 'work';
-          } else {
-            applyPartOnto(cur, details[k]);
-            cur.kind = cur.kind || 'part';
-          }
-        } else {
-          items.splice(pos, 0, details[k]);
-        }
+      for (var k = details.length - 1; k >= 0; k--) {
+        items.splice(rowIndex + 1, 0, details[k]);
       }
-      zipBelow(rowIndex);
+      padItems();
     }
     function firstFilled(rows, key) {
       for (var i = 0; i < rows.length; i++) {
