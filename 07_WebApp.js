@@ -151,14 +151,25 @@ function loadPartCatalog_(workRows) {
     }
   }
 
-  const partMajors = uniqueValues_(partLines.map(function (r) {
+  const seenPart = {};
+  const uniquePartLines = [];
+  partLines.forEach(function (r) {
+    const key = [r.major, r.mid, r.content, r.qty, r.unitPrice].join('\t');
+    if (seenPart[key]) {
+      return;
+    }
+    seenPart[key] = true;
+    uniquePartLines.push(r);
+  });
+
+  const partMajors = uniqueValues_(uniquePartLines.map(function (r) {
     return r.major;
   }));
-  const allPartMids = uniqueValues_(partLines.map(function (r) {
+  const allPartMids = uniqueValues_(uniquePartLines.map(function (r) {
     return r.mid;
   }));
   const partMidsByMajor = {};
-  partLines.forEach(function (r) {
+  uniquePartLines.forEach(function (r) {
     if (!r.major || !r.mid) {
       return;
     }
@@ -170,7 +181,7 @@ function loadPartCatalog_(workRows) {
     }
   });
   return {
-    partLines: partLines,
+    partLines: uniquePartLines,
     partMajors: partMajors,
     allPartMids: allPartMids,
     partMidsByMajor: partMidsByMajor

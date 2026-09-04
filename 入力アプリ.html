@@ -407,36 +407,33 @@
       return acc;
     }
     function typesForDept(dept) {
-      if (!dept) return allServiceTypes();
-      return (master.typesByDept && master.typesByDept[dept]) || [];
+      var types = !dept
+        ? allServiceTypes()
+        : ((master.typesByDept && master.typesByDept[dept]) || []).slice();
+      if (dept === '部品販売' && types.indexOf('部品販売') === -1) {
+        types.push('部品販売');
+      }
+      if ((dept === 'BP板金' || dept === '板金塗装') && types.indexOf('板金塗装') === -1) {
+        types.push('板金塗装');
+      }
+      return types;
     }
     function fillHeaderSelect(sel, values, selected) {
       fillSelect(sel, values, selected);
     }
-    function pickPreferredType(dept, types) {
-      var slots = (master.typeSlotsByDept && master.typeSlotsByDept[dept]) || [];
-      var list = types || [];
-      function has(name) {
-        return name && list.indexOf(name) !== -1 ? name : '';
-      }
-      if (dept === 'BP板金' || dept === '板金塗装') {
-        return slots[2] || has('板金塗装') || has('BP板金') || '';
-      }
-      if (dept === '部品販売') {
-        return slots[3] || has('部品販売') || '';
-      }
+    function pickPreferredType(dept) {
+      if (dept === '部品販売') return '部品販売';
+      if (dept === 'BP板金' || dept === '板金塗装') return '板金塗装';
       return '';
     }
     function applyDeptDefaults() {
       var dept = $('dept').value;
       var types = typesForDept(dept);
       var cur = $('serviceType').value;
-      var next = cur && types.indexOf(cur) !== -1 ? cur : '';
-      var preferred = pickPreferredType(dept, types);
-      if (preferred) {
-        next = preferred;
-      } else if (dept && types.length === 1) {
-        next = types[0];
+      var next = pickPreferredType(dept);
+      if (!next) {
+        next = cur && types.indexOf(cur) !== -1 ? cur : '';
+        if (dept && types.length === 1) next = types[0];
       }
       fillHeaderSelect($('serviceType'), types, next);
       if (next) $('serviceType').value = next;
@@ -487,11 +484,11 @@
     }
     function applyWorkOnto(target, src) {
       if (!src) return;
-      if (!target.major) target.major = src.major || '';
-      if (!target.mid) target.mid = src.mid || '';
-      if (!filled(target.fee)) target.fee = src.fee;
-      if (!target.workerCode) target.workerCode = src.workerCode || '';
-      if (!target.kind && src.kind) target.kind = src.kind;
+      if (src.major) target.major = src.major;
+      if (src.mid) target.mid = src.mid;
+      if (filled(src.fee)) target.fee = src.fee;
+      if (src.workerCode) target.workerCode = src.workerCode;
+      if (src.kind) target.kind = src.kind;
     }
     function applyPartOnto(target, src) {
       if (!src) return;
@@ -657,11 +654,7 @@
       while (items.length < n) items.push(emptyRow());
       items = items.slice(0, n);
     }
-    function packOppositeSides() {
-      var src = [];
-      for (var i = 0; i < items.length; i++) {
-        if (!rowIsEmpty(items[i])) src.push(items[i]);
-      }
+    function packRowList(src) {
       var pendingW = [];
       var pendingP = [];
       var out = [];
@@ -681,12 +674,19 @@
           out.push(r);
         } else if (w) {
           pendingW.push(r);
-        } else {
+        } else if (p) {
           pendingP.push(r);
         }
       });
       flush();
-      items = out.concat(pendingW).concat(pendingP);
+      return out.concat(pendingW).concat(pendingP);
+    }
+    function packOppositeSides() {
+      var src = [];
+      for (var i = 0; i < items.length; i++) {
+        if (!rowIsEmpty(items[i])) src.push(items[i]);
+      }
+      items = packRowList(src);
     }
 
     function compactItems() {
@@ -694,41 +694,69 @@
       padItems();
     }
 
+    function zipBelow(rowIndex) {
+      var start = rowIndex + 1;
+      var end = start;
+      while (end < items.length && !rowIsEmpty(items[end])) end++;
+      if (end - start < 2) return;
+      var packed = packRowList(items.slice(start, end));
+      items = items.slice(0, start).concat(packed).concat(items.slice(end));
+      padItems();
+    }
+
+    function canMergeExpand(r, kind) {
+      if (!r || rowIsEmpty(r)) return true;
+      if (kind === 'work') return !hasWork(r) && hasPart(r);
+      if (kind === 'part') return !hasPart(r) && hasWork(r);
+      return false;
+    }
+
     function writeBelow(rowIndex, kind, details) {
       var j = rowIndex + 1;
       while (j < items.length) {
         var r = items[j];
-        if (r.kind !== kind) break;
-        if (kind === 'work' && hasPart(r) && hasWork(r)) {
-          clearWorkSide(r);
-          r.kind = hasPart(r) ? 'part' : '';
-          j++;
+        if (rowIsEmpty(r)) break;
+        if (kind === 'work' && r.kind === 'work') {
+          if (hasPart(r) && hasWork(r)) {
+            clearWorkSide(r);
+            r.kind = hasPart(r) ? 'part' : '';
+            j++;
+            continue;
+          }
+          items.splice(j, 1);
           continue;
         }
-        if (kind === 'part' && hasWork(r) && hasPart(r)) {
-          clearPartSide(r);
-          r.kind = hasWork(r) ? 'work' : '';
-          j++;
+        if (kind === 'part' && r.kind === 'part') {
+          if (hasWork(r) && hasPart(r)) {
+            clearPartSide(r);
+            r.kind = hasWork(r) ? 'work' : '';
+            j++;
+            continue;
+          }
+          items.splice(j, 1);
           continue;
         }
-        items.splice(j, 1);
+        break;
       }
       for (var k = 0; k < details.length; k++) {
         var pos = rowIndex + 1 + k;
         var cur = items[pos];
-        if (cur && rowIsEmpty(cur)) {
+        if (!cur || rowIsEmpty(cur)) {
           items[pos] = details[k];
-        } else if (cur && kind === 'work' && !hasWork(cur)) {
-          applyWorkOnto(cur, details[k]);
-          cur.kind = cur.kind || 'work';
-        } else if (cur && kind === 'part' && !hasPart(cur)) {
-          applyPartOnto(cur, details[k]);
-          cur.kind = cur.kind || 'part';
+        } else if (canMergeExpand(cur, kind)) {
+          if (kind === 'work') {
+            applyWorkOnto(cur, details[k]);
+            if (!hasPart(cur)) copyWorkPart(cur, details[k]);
+            cur.kind = 'work';
+          } else {
+            applyPartOnto(cur, details[k]);
+            cur.kind = cur.kind || 'part';
+          }
         } else {
           items.splice(pos, 0, details[k]);
         }
       }
-      padItems();
+      zipBelow(rowIndex);
     }
     function firstFilled(rows, key) {
       for (var i = 0; i < rows.length; i++) {
@@ -746,6 +774,16 @@
       calcFromQtyPrice(target);
     }
 
+    var lastExpandKey = '';
+    var lastExpandAt = 0;
+    function alreadyExpanded(key) {
+      var now = Date.now();
+      if (lastExpandKey === key && now - lastExpandAt < 400) return true;
+      lastExpandKey = key;
+      lastExpandAt = now;
+      return false;
+    }
+
     function onMidChosen(rowIndex) {
       var it = items[rowIndex];
       var mid = String(it.mid || '').trim();
@@ -757,6 +795,7 @@
         renderGrid();
         return;
       }
+      if (alreadyExpanded('mid:' + rowIndex + ':' + mid)) return;
       var group = linesForMid(it.major, mid);
       if (!group.length) group = linesForMid('', mid);
       var works = group.filter(function (r) { return filled(r.content); });
@@ -806,6 +845,7 @@
         renderGrid();
         return;
       }
+      if (alreadyExpanded('part:' + rowIndex + ':' + mid)) return;
       var group = linesForPartMid(it.partMajor, mid);
       if (!group.length) group = linesForPartMid('', mid);
       var works = group.filter(function (r) { return filled(r.content); });

@@ -77,9 +77,11 @@ function parseServiceInfoSheet_(sheet) {
           types.push(slots[s]);
         }
       }
-      if (dept === '部品販売' && !slots[3] && !types.length) {
+      if (dept === '部品販売') {
         slots[3] = '部品販売';
-        types.push('部品販売');
+        if (types.indexOf('部品販売') === -1) {
+          types.push('部品販売');
+        }
       }
       if ((dept === 'BP板金' || dept === '板金塗装') && !slots[2] && types.indexOf('板金塗装') === -1) {
         slots[2] = '板金塗装';
@@ -105,6 +107,15 @@ function parseServiceInfoSheet_(sheet) {
         receptionists.push(rec);
       }
     }
+    [5, 6].forEach(function (c) {
+      if (c === recvCol || c >= values[i].length) {
+        return;
+      }
+      const rec = normalize_(values[i][c]);
+      if (rec && rec !== '受付担当' && receptionists.indexOf(rec) === -1) {
+        receptionists.push(rec);
+      }
+    });
   }
 
   return {
