@@ -73,9 +73,12 @@
       table-layout: fixed;
     }
     col.col-no { width: 28px; }
-    col.col-fee { width: 58px; }
+    col.col-fee { width: 96px; }
     col.col-staff { width: 70px; }
-    col.col-n { width: 46px; }
+    col.col-n { width: 52px; }
+    col.col-qty { width: 42px; }
+    col.col-amt { width: 96px; }
+    col.col-disc { width: 56px; }
     col.col-major { width: 15%; }
     col.col-mid { width: 25%; }
     col.col-part-major { width: 15%; }
@@ -239,9 +242,9 @@
             <col class="col-part-major">
             <col class="col-part-mid">
             <col class="col-n">
-            <col class="col-n">
-            <col class="col-n">
-            <col class="col-n">
+            <col class="col-qty">
+            <col class="col-amt">
+            <col class="col-disc">
           </colgroup>
           <thead>
             <tr>
@@ -310,6 +313,7 @@
       workerCodes: [],
       departments: [],
       typesByDept: {},
+      allServiceTypes: [],
       receptionists: [],
       lineCount: 120
     };
@@ -384,8 +388,21 @@
       });
     }
 
+    function allServiceTypes() {
+      if (master.allServiceTypes && master.allServiceTypes.length) {
+        return master.allServiceTypes.slice();
+      }
+      var acc = [];
+      var map = master.typesByDept || {};
+      Object.keys(map).forEach(function (d) {
+        (map[d] || []).forEach(function (t) {
+          if (t && acc.indexOf(t) === -1) acc.push(t);
+        });
+      });
+      return acc;
+    }
     function typesForDept(dept) {
-      if (!dept) return [];
+      if (!dept) return allServiceTypes();
       return (master.typesByDept && master.typesByDept[dept]) || [];
     }
     function fillHeaderSelect(sel, values, selected) {
@@ -396,16 +413,14 @@
       var types = typesForDept(dept);
       var cur = $('serviceType').value;
       var next = cur && types.indexOf(cur) !== -1 ? cur : '';
-      if (types.length === 1) {
+      if (dept && types.length === 1) {
         next = types[0];
       }
       if (dept === '部品販売' && types.indexOf('部品販売') !== -1 && types.length === 1) {
         next = '部品販売';
       }
-      if (dept === '板金塗装' && types.indexOf('BP板金') !== -1) {
+      if (dept === '板金塗装' && types.indexOf('BP板金') !== -1 && types.length === 1) {
         next = 'BP板金';
-      } else if (dept === '板金塗装' && types.length === 1) {
-        next = types[0];
       }
       fillHeaderSelect($('serviceType'), types, next);
       if (next) $('serviceType').value = next;
@@ -494,19 +509,31 @@
       if (!major) return master.allPartMids || [];
       return (master.partMidsByMajor && master.partMidsByMajor[major]) || master.allPartMids || [];
     }
-    function linesForMid(major, mid) {
-      return (master.workLines || []).filter(function (r) {
-        if (String(r.mid || '') !== String(mid || '')) return false;
-        if (major && r.major !== major) return false;
-        return true;
+    function sortMasterLines(arr) {
+      return (arr || []).slice().sort(function (a, b) {
+        function ord(v) {
+          if (v === '' || v == null) return Number.POSITIVE_INFINITY;
+          var n = Number(String(v).replace(/,/g, '').trim());
+          return isFinite(n) ? n : Number.POSITIVE_INFINITY;
+        }
+        var d = ord(a.order) - ord(b.order);
+        if (d) return d;
+        return (a.sourceIndex || 0) - (b.sourceIndex || 0);
       });
     }
-    function linesForPartMid(major, mid) {
-      return (master.partLines || []).filter(function (r) {
+    function linesForMid(major, mid) {
+      return sortMasterLines((master.workLines || []).filter(function (r) {
         if (String(r.mid || '') !== String(mid || '')) return false;
         if (major && r.major !== major) return false;
         return true;
-      });
+      }));
+    }
+    function linesForPartMid(major, mid) {
+      return sortMasterLines((master.partLines || []).filter(function (r) {
+        if (String(r.mid || '') !== String(mid || '')) return false;
+        if (major && r.major !== major) return false;
+        return true;
+      }));
     }
 
     function fillSelect(sel, values, selected) {
@@ -715,11 +742,12 @@
         return;
       }
       var group = linesForMid(it.major, mid);
-      if (!group.length && it.major) group = linesForMid('', mid);
+      if (!group.length) group = linesForMid('', mid);
       var works = group.filter(function (r) { return r.content; });
       var blanks = group.filter(function (r) { return !r.content; });
+      if (!it.major && group[0] && group[0].major) it.major = group[0].major;
 
-      if (group.length <= 1) {
+      if (works.length === 0) {
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
@@ -744,7 +772,7 @@
       });
       writeBelow(rowIndex, 'work', details);
       renderGrid();
-      setStatus('中項目「' + mid + '」の明細 ' + works.length + ' 件を下行へ詰めました');
+      setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
     }
 
     function onPartMidChosen(rowIndex) {
@@ -757,13 +785,13 @@
         return;
       }
       var group = linesForPartMid(it.partMajor, mid);
-      if (!group.length && it.partMajor) group = linesForPartMid('', mid);
+      if (!group.length) group = linesForPartMid('', mid);
       var works = group.filter(function (r) { return r.content; });
       var blanks = group.filter(function (r) { return !r.content; });
+      if (!it.partMajor && group[0] && group[0].major) it.partMajor = group[0].major;
 
-      if (group.length <= 1 || works.length === 0) {
+      if (works.length === 0) {
         var only = group[0];
-        if (only && !it.partMajor && only.major) it.partMajor = only.major;
         if (only) {
           if (filled(only.qty)) it.qty = only.qty;
           if (filled(only.unitPrice)) it.unitPrice = only.unitPrice;
@@ -795,7 +823,7 @@
       });
       writeBelow(rowIndex, 'part', details);
       renderGrid();
-      setStatus('部品中項目「' + mid + '」の明細 ' + works.length + ' 件を下行へ詰めました');
+      setStatus('部品中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
     }
 
     function hideComboLists() {
@@ -861,11 +889,9 @@
       var v = input.value;
       hideComboLists();
       if (k === 'mid') {
-        if (items[i].mid === v) return;
         items[i].mid = v;
         onMidChosen(i);
       } else if (k === 'partMid') {
-        if (items[i].partMid === v) return;
         items[i].partMid = v;
         onPartMidChosen(i);
       }
@@ -875,17 +901,19 @@
       applyPendingFocus();
     }
     var COL_KEYS = ['major', 'mid', 'fee', 'workerCode', 'partMajor', 'partMid', 'unitPrice', 'qty', 'amount', 'discYen'];
-    function prepareComboCommit(el) {
+    function prepareComboCommit(el, force) {
       var k = el.dataset.k;
       var i = Number(el.dataset.i);
       if (k !== 'mid' && k !== 'partMid') return;
       var list = comboListEl(el);
-      if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
+      var fromList = !!(list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]);
+      if (fromList) {
         el.value = list.children[comboActiveIndex].dataset.value;
       }
+      var changed = items[i][k] !== el.value;
       hideComboLists();
-      if (items[i][k] !== el.value) {
-        items[i][k] = el.value;
+      items[i][k] = el.value;
+      if (force || changed || fromList) {
         if (k === 'mid') onMidChosen(i);
         else onPartMidChosen(i);
       }
@@ -896,7 +924,7 @@
       var next = i + dir;
       if (next < 0 || next >= lineCount()) return;
       pendingFocus = { i: next, k: k };
-      prepareComboCommit(el);
+      prepareComboCommit(el, true);
       applyPendingFocus();
     }
     function moveRight(el, dir) {

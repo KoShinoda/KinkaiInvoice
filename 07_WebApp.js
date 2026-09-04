@@ -34,6 +34,8 @@ function getInvoiceMaster() {
       mid: row.mid,
       content: normalize_(row.content),
       fee: row.fee,
+      order: row.order,
+      sourceIndex: row.sourceIndex,
       partMajor: normalize_(row.partMajor),
       partMid: normalize_(row.partMid),
       qty: row.qty,
@@ -54,6 +56,7 @@ function getInvoiceMaster() {
     workerCodes: loadWorkerCodes_(),
     departments: service.departments,
     typesByDept: service.typesByDept,
+    allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
     lineCount: CONFIG.input.appRows || 120,
     linesPerPage: CONFIG.print.linesPerPage
@@ -98,6 +101,8 @@ function loadPartCatalog_(workRows) {
       major: major,
       mid: mid,
       content: normalize_(row.content),
+      order: row.order,
+      sourceIndex: row.sourceIndex,
       qty: row.qty,
       unitPrice: row.unitPrice
     });

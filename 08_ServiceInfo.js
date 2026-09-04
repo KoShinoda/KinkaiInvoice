@@ -2,7 +2,7 @@
  * 整備情報マスタ（整備部門・整備種別・受付担当）。
  * レイアウト：
  *   A 整備部門 / B〜E 整備種別1〜4
- *   G 受付担当
+ *   F 受付担当
  */
 
 function loadServiceInfo_() {
@@ -20,15 +20,15 @@ function isServiceInfoLayout_(sheet) {
     return false;
   }
   return normalize_(sheet.getRange(1, 1).getValue()) === '整備部門' &&
-    normalize_(sheet.getRange(1, 7).getValue()) === '受付担当';
+    normalize_(sheet.getRange(1, 6).getValue()) === '受付担当';
 }
 
 /**
  * @param {GoogleAppsScript.Spreadsheet.Sheet=} sheet
- * @return {{departments: string[], typesByDept: Object<string, string[]>, receptionists: string[], rows: object[]}}
+ * @return {{departments: string[], typesByDept: Object<string, string[]>, allServiceTypes: string[], receptionists: string[], rows: object[]}}
  */
 function parseServiceInfoSheet_(sheet) {
-  const empty = { departments: [], typesByDept: {}, receptionists: [], rows: [] };
+  const empty = { departments: [], typesByDept: {}, allServiceTypes: [], receptionists: [], rows: [] };
   if (!sheet) {
     return empty;
   }
@@ -40,7 +40,7 @@ function parseServiceInfoSheet_(sheet) {
   let deptCol = 0;
   let typeStart = 1;
   let typeEnd = 4;
-  let recvCol = 6;
+  let recvCol = 5;
   let dataStart = 1;
   const header = values[0].map(function (v) {
     return normalize_(v);
@@ -51,8 +51,6 @@ function parseServiceInfoSheet_(sheet) {
   if (deptIdx >= 0) {
     deptCol = deptIdx;
     dataStart = 1;
-    typeStart = deptCol + 1;
-    typeEnd = Math.min(deptCol + 4, header.length - 1);
   }
   if (recvIdx >= 0) {
     recvCol = recvIdx;
@@ -106,6 +104,9 @@ function parseServiceInfoSheet_(sheet) {
   return {
     departments: departments,
     typesByDept: typesByDept,
+    allServiceTypes: uniqueValues_(Object.keys(typesByDept).reduce(function (acc, dept) {
+      return acc.concat(typesByDept[dept]);
+    }, [])),
     receptionists: receptionists,
     rows: rows
   };
@@ -127,9 +128,8 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   const height = Math.max(rows.length, receptionists.length, 8) + 2;
   sh.clear();
 
-  sh.getRange(1, 1, 1, 5).setValues([['整備部門', '整備種別1', '整備種別2', '整備種別3', '整備種別4']]);
-  sh.getRange(1, 7).setValue('受付担当');
-  sh.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#e8f0ec');
+  sh.getRange(1, 1, 1, 6).setValues([['整備部門', '整備種別1', '整備種別2', '整備種別3', '整備種別4', '受付担当']]);
+  sh.getRange(1, 1, 1, 6).setFontWeight('bold').setBackground('#e8f0ec');
 
   const body = [];
   for (let i = 0; i < rows.length; i++) {
@@ -149,7 +149,7 @@ function rebuildServiceInfoSheet_(ss, parsed) {
     const recVals = receptionists.map(function (name) {
       return [name];
     });
-    sh.getRange(2, 7, recVals.length, 1).setValues(recVals);
+    sh.getRange(2, 6, recVals.length, 1).setValues(recVals);
   }
 
   sh.setFrozenRows(1);
@@ -158,14 +158,13 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   sh.setColumnWidth(3, 120);
   sh.setColumnWidth(4, 120);
   sh.setColumnWidth(5, 120);
-  sh.setColumnWidth(6, 24);
-  sh.setColumnWidth(7, 120);
+  sh.setColumnWidth(6, 120);
   sh.getRange(1, 1).setNote(
     'A列＝整備部門。B〜E列＝その部門の整備種別（空欄可）。1つだけの部門は入力アプリで種別を自動セットします。\n' +
     '部品販売は種別「部品販売」、板金塗装は種別「BP板金」を推奨。\n' +
-    'G列＝受付担当（行ごとに1名）。'
+    'F列＝受付担当（行ごとに1名）。'
   );
-  sh.getRange(1, 7).setNote('受付担当を縦に並べます。');
+  sh.getRange(1, 6).setNote('受付担当を縦に並べます。');
   return sh;
 }
 

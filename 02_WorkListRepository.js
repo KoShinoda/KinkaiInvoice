@@ -162,13 +162,31 @@ function resolveColumns_(headerRow, aliasesByKey) {
 function parseWorkList_(values, cols) {
   const headerIndex = CONFIG.workList.headerRow - 1;
   const rows = [];
+  let carryMajor = '';
+  let carryMid = '';
 
   for (let i = headerIndex + 1; i < values.length; i++) {
     const raw = values[i];
-    const major = normalize_(cell_(raw, cols.major));
-    const mid = normalize_(cell_(raw, cols.mid));
+    const rawMajor = normalize_(cell_(raw, cols.major));
+    const rawMid = normalize_(cell_(raw, cols.mid));
+    const content = cell_(raw, cols.content);
+    const partMajor = cell_(raw, cols.partMajor);
+    const partMid = cell_(raw, cols.partMid);
 
-    if (!major && !mid) {
+    if (rawMajor) {
+      carryMajor = rawMajor;
+      if (!rawMid) {
+        carryMid = '';
+      }
+    }
+    if (rawMid) {
+      carryMid = rawMid;
+    }
+
+    const major = rawMajor || carryMajor;
+    const mid = rawMid || carryMid;
+
+    if (!major && !mid && !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid)) {
       continue;
     }
 
@@ -176,7 +194,7 @@ function parseWorkList_(values, cols) {
       sourceIndex: i + 1,
       major: major,
       mid: mid,
-      content: cell_(raw, cols.content),
+      content: content,
       fee: cell_(raw, cols.fee),
       order: cell_(raw, cols.order),
       partMajor: cell_(raw, cols.partMajor),
