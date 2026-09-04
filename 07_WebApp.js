@@ -59,7 +59,6 @@ function getInvoiceMaster() {
     typeSlotsByDept: service.typeSlotsByDept || {},
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
-    templateNames: loadInvoiceTemplateNames_(),
     lineCount: CONFIG.input.appRows || 120,
     linesPerPage: CONFIG.print.linesPerPage
   };

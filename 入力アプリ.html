@@ -207,7 +207,14 @@
       justify-content: space-between;
       align-items: center;
     }
-    #status { color: var(--muted); font-size: 13px; }
+    .template-bar {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .template-bar > div { min-width: 280px; max-width: 420px; }
+    .template-bar label { margin-bottom: 3px; }
     #status.err { color: var(--danger); }
   </style>
 </head>
@@ -220,7 +227,6 @@
     <section class="card">
       <h2>ヘッダー</h2>
       <div class="grid header-grid">
-        <div><label>明細テンプレート</label><select id="invoiceTemplate"></select></div>
         <div><label>ユーザー</label><input id="userName"></div>
         <div><label>K-No</label><input id="kNo"></div>
         <div><label>登録番号</label><input id="plate"></div>
@@ -252,6 +258,12 @@
     </section>
     <section class="card">
       <h2>明細（120行・表内スクロール）　大項目はリスト選択　／　中項目は入力可</h2>
+      <div class="template-bar">
+        <div>
+          <label>明細テンプレート</label>
+          <select id="invoiceTemplate"></select>
+        </div>
+      </div>
       <div class="table-wrap">
         <table>
           <colgroup>
@@ -467,7 +479,9 @@
     function initHeaderMasters() {
       fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
       fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
-      fillHeaderSelect($('invoiceTemplate'), master.templateNames || [], $('invoiceTemplate').value);
+      if (master.templateNames && master.templateNames.length) {
+        fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
+      }
       applyDeptDefaults();
     }
     function gridHasContent() {
@@ -1370,6 +1384,15 @@
         setStatus(err.message || String(err), true);
       })
       .getInvoiceMaster();
+
+    google.script.run
+      .withSuccessHandler(function (names) {
+        master.templateNames = names || [];
+        if ($('invoiceTemplate')) {
+          fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
+        }
+      })
+      .getInvoiceTemplateNames();
   </script>
 </body>
 </html>

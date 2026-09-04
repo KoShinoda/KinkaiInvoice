@@ -12,9 +12,28 @@ function ensureInvoiceTemplateSheet() {
   );
 }
 
+function getInvoiceTemplateNames() {
+  return listInvoiceTemplateNamesFast_();
+}
+
 function loadInvoiceTemplateNames_() {
-  const parsed = parseInvoiceTemplateSheet_();
-  return parsed.names;
+  return listInvoiceTemplateNamesFast_();
+}
+
+function listInvoiceTemplateNamesFast_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.invoiceTemplate.sheetName);
+  if (!sh) {
+    return [];
+  }
+  const last = sh.getLastRow();
+  if (last < 2) {
+    return [];
+  }
+  const vals = sh.getRange(2, 1, last - 1, 1).getValues();
+  return uniqueValues_(vals.map(function (row) {
+    return row[0];
+  }));
 }
 
 /**
@@ -33,13 +52,14 @@ function ensureInvoiceTemplateSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetName = CONFIG.invoiceTemplate.sheetName;
   let sh = ss.getSheetByName(sheetName);
-  if (sh && isInvoiceTemplateLayout_(sh)) {
-    return sh;
-  }
   if (!sh) {
     sh = ss.insertSheet(sheetName);
+    writeInvoiceTemplateSample_(sh);
+    return sh;
   }
-  writeInvoiceTemplateSample_(sh);
+  if (sh.getLastRow() < 2 && !isInvoiceTemplateLayout_(sh)) {
+    writeInvoiceTemplateSample_(sh);
+  }
   return sh;
 }
 
@@ -56,9 +76,9 @@ function isInvoiceTemplateLayout_(sheet) {
 function parseInvoiceTemplateSheet_() {
   const empty = { names: [], linesByName: {} };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(CONFIG.invoiceTemplate.sheetName);
-  if (!sh || !isInvoiceTemplateLayout_(sh)) {
-    sh = ensureInvoiceTemplateSheet_();
+  const sh = ss.getSheetByName(CONFIG.invoiceTemplate.sheetName);
+  if (!sh) {
+    return empty;
   }
   const values = sh.getDataRange().getValues();
   if (values.length < 2) {
