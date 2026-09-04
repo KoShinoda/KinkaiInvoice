@@ -79,6 +79,7 @@
     col.col-qty { width: 42px; }
     col.col-amt { width: 96px; }
     col.col-disc { width: 56px; }
+    col.col-del { width: 28px; }
     col.col-major { width: 15%; }
     col.col-mid { width: 25%; }
     col.col-part-major { width: 15%; }
@@ -117,6 +118,25 @@
     }
     td { padding: 3px 3px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
     td.no { color: var(--muted); text-align: center; font-size: 11px; padding: 3px 0; }
+    td.del { text-align: center; padding: 2px 0; }
+    button.row-del {
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid #f0c4c0;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--danger);
+      font-size: 13px;
+      line-height: 20px;
+      cursor: pointer;
+    }
+    button.row-del:hover { background: #fde8e8; }
+    button.row-del:disabled {
+      opacity: .3;
+      cursor: default;
+      background: #fff;
+    }
     td.num input,
     td.fee input { padding: 4px 2px; text-align: right; }
     .grid.header-grid {
@@ -239,12 +259,14 @@
             <col class="col-mid">
             <col class="col-fee">
             <col class="col-staff">
+            <col class="col-del">
             <col class="col-part-major">
             <col class="col-part-mid">
             <col class="col-n">
             <col class="col-qty">
             <col class="col-amt">
             <col class="col-disc">
+            <col class="col-del">
           </colgroup>
           <thead>
             <tr>
@@ -253,12 +275,14 @@
               <th>中項目</th>
               <th>技術料</th>
               <th>作業者コード</th>
+              <th title="技術側を削除">削</th>
               <th>部品大項目</th>
               <th>部品中項目</th>
               <th>単価</th>
               <th>数量</th>
               <th>合計</th>
               <th>値引額</th>
+              <th title="部品側を削除">削</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -513,6 +537,58 @@
       r.amount = '';
       r.discYen = 0;
     }
+    function copyWorkFields(to, from) {
+      to.major = from.major;
+      to.mid = from.mid;
+      to.fee = from.fee;
+      to.workerCode = from.workerCode;
+    }
+    function copyPartFields(to, from) {
+      to.partMajor = from.partMajor;
+      to.partMid = from.partMid;
+      to.qty = from.qty;
+      to.unitPrice = from.unitPrice;
+      to.amount = from.amount;
+      to.discYen = from.discYen;
+    }
+    function refreshKind(r) {
+      if (!r) return;
+      if (hasWork(r) && hasPart(r)) {
+        if (r.kind === 'work' || r.kind === 'part') r.kind = '';
+        return;
+      }
+      if (hasWork(r)) {
+        if (r.kind !== 'mid') r.kind = 'work';
+        return;
+      }
+      if (hasPart(r)) {
+        r.kind = 'part';
+        return;
+      }
+      r.kind = '';
+    }
+    function shiftSideUp(start, side) {
+      for (var j = start; j < items.length - 1; j++) {
+        if (side === 'work') {
+          copyWorkFields(items[j], items[j + 1]);
+          items[j].kind = items[j + 1].kind;
+        } else {
+          copyPartFields(items[j], items[j + 1]);
+        }
+      }
+      if (side === 'work') clearWorkSide(items[items.length - 1]);
+      else clearPartSide(items[items.length - 1]);
+      for (var k = start; k < items.length; k++) refreshKind(items[k]);
+    }
+    function deleteSide(rowIndex, side) {
+      var it = items[rowIndex];
+      if (!it) return;
+      if (side === 'work' && !hasWork(it)) return;
+      if (side === 'part' && !hasPart(it)) return;
+      shiftSideUp(rowIndex, side);
+      renderGrid();
+      setStatus(side === 'work' ? '技術側を削除して詰めました' : '部品側を削除して詰めました');
+    }
 
     function midsFor(major) {
       if (!major) return master.allMids || [];
@@ -597,6 +673,10 @@
       tr.querySelector('[data-k="amount"]').value = it.amount == null || it.amount === '' ? '' : it.amount;
       tr.querySelector('[data-k="discYen"]').value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
       paintDiscWarn(tr, it);
+      var wDel = tr.querySelector('button.row-del[data-side="work"]');
+      var pDel = tr.querySelector('button.row-del[data-side="part"]');
+      if (wDel) wDel.disabled = !hasWork(it);
+      if (pDel) pDel.disabled = !hasPart(it);
     }
 
     function lineCount() {
@@ -617,12 +697,14 @@
           '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
           '<td class="staff"><select data-i="' + i + '" data-k="workerCode"></select></td>' +
+          '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
           '<td class="part-major"><select data-i="' + i + '" data-k="partMajor"></select></td>' +
           '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
           '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>';
+          '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>' +
+          '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>';
         tb.appendChild(tr);
         refreshRowSelects(i);
       }
@@ -1009,6 +1091,12 @@
       applyPendingFocus();
     }
 
+    $('tbody').addEventListener('click', function (e) {
+      var btn = e.target.closest('button.row-del');
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      deleteSide(Number(btn.dataset.i), btn.dataset.side);
+    });
     $('tbody').addEventListener('mousedown', function (e) {
       var opt = e.target.closest('.combo-list div');
       if (!opt) return;

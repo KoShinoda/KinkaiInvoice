@@ -11,7 +11,7 @@ function doGet() {
 
 function openInputApp() {
   const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
-    .setWidth(1560)
+    .setWidth(1640)
     .setHeight(860);
   SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
 }
