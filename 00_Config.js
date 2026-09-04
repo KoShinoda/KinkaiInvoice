@@ -11,6 +11,8 @@
  * 04_SelectionService.js  … 大項目変更時のクリア／中項目選択時の明細展開。
  * 05_Triggers.js          … onOpen / onEdit / メニュー。
  * 07_WebApp.js            … 入力 Web アプリ（doGet / メニュー）と印刷用シート出力。
+ * 08_ServiceInfo.js       … 整備情報マスタ。
+ * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
  *
  * 【中項目プルダウン】
  * 大項目を選ぶたびに GAS で候補を付け替えない。
@@ -124,6 +126,27 @@ const CONFIG = {
 
   serviceInfo: {
     sheetName: '整備情報'
+  },
+
+  /**
+   * 入力アプリの明細テンプレート。
+   * 同じ「テンプレート名」の行が、選んだときの明細になる。
+   */
+  invoiceTemplate: {
+    sheetName: '明細テンプレート',
+    headerRow: 1,
+    headers: {
+      name: ['テンプレート名', 'テンプレ名', 'テンプレート'],
+      major: ['作業_大項目', '大項目', '作業内容_大項目'],
+      mid: ['作業_中項目', '中項目', '作業内容'],
+      fee: ['技術料'],
+      workerCode: ['作業者コード', '作業者', '担当コード'],
+      partMajor: ['部品_大項目'],
+      partMid: ['部品_中項目', '部品名'],
+      unitPrice: ['単価'],
+      qty: ['数量'],
+      discYen: ['値引額', '値引']
+    }
   },
 
   /**

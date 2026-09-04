@@ -20,7 +20,8 @@
     "05_Triggers.js",
     "06_CandidateSheet.js",
     "07_WebApp.js",
-    "08_ServiceInfo.js"
+    "08_ServiceInfo.js",
+    "09_InvoiceTemplate.js"
   ],
   "skipSubdirectories": false
 }

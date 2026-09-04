@@ -14,6 +14,7 @@ function onOpen() {
     .addSeparator()
     .addItem('初期設定（候補マスタとプルダウン）', 'setupInputDropdowns')
     .addItem('整備情報シートを整理', 'tidyServiceInfoSheet')
+    .addItem('明細テンプレート（サンプル）を用意', 'ensureInvoiceTemplateSheet')
     .addItem('選択内容を再出力', 'refreshOutputFromSelection')
     .addSeparator()
     .addItem('作業リストの列マップをログ出力', 'logWorkListColumnMap')

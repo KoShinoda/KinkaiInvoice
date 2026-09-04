@@ -220,6 +220,7 @@
     <section class="card">
       <h2>ヘッダー</h2>
       <div class="grid header-grid">
+        <div><label>明細テンプレート</label><select id="invoiceTemplate"></select></div>
         <div><label>ユーザー</label><input id="userName"></div>
         <div><label>K-No</label><input id="kNo"></div>
         <div><label>登録番号</label><input id="plate"></div>
@@ -340,6 +341,7 @@
       typeSlotsByDept: {},
       allServiceTypes: [],
       receptionists: [],
+      templateNames: [],
       lineCount: 120
     };
     var items = [];
@@ -465,7 +467,61 @@
     function initHeaderMasters() {
       fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
       fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
+      fillHeaderSelect($('invoiceTemplate'), master.templateNames || [], $('invoiceTemplate').value);
       applyDeptDefaults();
+    }
+    function gridHasContent() {
+      for (var i = 0; i < items.length; i++) {
+        if (!rowIsEmpty(items[i])) return true;
+      }
+      return false;
+    }
+    function applyTemplateLines(lines, name) {
+      var next = [];
+      (lines || []).forEach(function (src) {
+        var row = emptyRow();
+        row.major = src.major || '';
+        row.mid = src.mid || '';
+        row.fee = src.fee == null ? '' : src.fee;
+        row.workerCode = src.workerCode || '';
+        row.partMajor = src.partMajor || '';
+        row.partMid = src.partMid || '';
+        row.qty = src.qty == null ? '' : src.qty;
+        row.unitPrice = src.unitPrice == null ? '' : src.unitPrice;
+        if (filled(row.qty) || filled(row.unitPrice)) {
+          calcFromQtyPrice(row);
+          if (filled(src.discYen)) {
+            row.discYen = src.discYen;
+            row.amount = Math.round(listPrice(row) - num(src.discYen));
+          }
+        } else if (filled(src.discYen)) {
+          row.discYen = src.discYen;
+        }
+        if (hasWork(row) && hasPart(row)) row.kind = '';
+        else if (hasWork(row)) row.kind = 'work';
+        else if (hasPart(row)) row.kind = 'part';
+        if (!rowIsEmpty(row)) next.push(row);
+      });
+      items = next;
+      padItems();
+      renderGrid();
+      setStatus('テンプレート「' + name + '」から明細 ' + next.length + ' 行を作成しました');
+    }
+    function onTemplatePicked() {
+      var name = $('invoiceTemplate').value;
+      if (!name) return;
+      if (gridHasContent() && !window.confirm('現在の明細をテンプレート「' + name + '」で置き換えますか？')) {
+        return;
+      }
+      setStatus('テンプレート「' + name + '」を読み込んでいます…');
+      google.script.run
+        .withSuccessHandler(function (lines) {
+          applyTemplateLines(lines || [], name);
+        })
+        .withFailureHandler(function (err) {
+          setStatus(err.message || String(err), true);
+        })
+        .getInvoiceTemplateLines(name);
     }
     function clampPct(v) {
       var n = Math.round(num(v));
@@ -1307,6 +1363,7 @@
         });
         bindDateField('billDate', 'billDateCal');
         $('dept').addEventListener('change', applyDeptDefaults);
+        $('invoiceTemplate').addEventListener('change', onTemplatePicked);
         setStatus('ヘッダーは整備情報マスタ、日付はカレンダーまたは yyyymmdd で入力できます。');
       })
       .withFailureHandler(function (err) {
