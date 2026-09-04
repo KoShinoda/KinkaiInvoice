@@ -736,28 +736,91 @@
       }));
     }
 
-    function fillSelect(sel, values, selected) {
-      if (!sel) return;
-      var cur = selected == null ? sel.value : selected;
-      sel.innerHTML = '';
-      var z = document.createElement('option');
-      z.value = '';
-      z.textContent = '';
-      sel.appendChild(z);
+    var optHtml = { major: '', partMajor: '', worker: '' };
+    var midsJsonByMajor = {};
+    var partMidsJsonByMajor = {};
+    var gridReady = false;
+
+    function htmlEscape(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+    function optionHtml(values) {
+      var h = '<option value=""></option>';
       (values || []).forEach(function (v) {
+        var e = htmlEscape(v);
+        h += '<option value="' + e + '">' + e + '</option>';
+      });
+      return h;
+    }
+    function refreshOptionCache() {
+      optHtml.major = optionHtml(master.majors);
+      optHtml.partMajor = optionHtml(master.partMajors);
+      optHtml.worker = optionHtml(master.workerCodes);
+      midsJsonByMajor = {};
+      partMidsJsonByMajor = {};
+      gridReady = false;
+    }
+    function midsJson(major) {
+      var k = major || '';
+      if (!midsJsonByMajor.hasOwnProperty(k)) midsJsonByMajor[k] = JSON.stringify(midsFor(k));
+      return midsJsonByMajor[k];
+    }
+    function partMidsJson(major) {
+      var k = major || '';
+      if (!partMidsJsonByMajor.hasOwnProperty(k)) partMidsJsonByMajor[k] = JSON.stringify(partMidsFor(k));
+      return partMidsJsonByMajor[k];
+    }
+    function setSelectValue(sel, values, selected) {
+      if (!sel) return;
+      var v = selected || '';
+      if (sel.getAttribute('data-filled') !== '1') {
+        sel.innerHTML = optionHtml(values);
+        sel.setAttribute('data-filled', '1');
+      }
+      sel.value = v;
+      if (v && sel.value !== String(v)) {
         var o = document.createElement('option');
         o.value = v;
         o.textContent = v;
         sel.appendChild(o);
-      });
+        sel.value = v;
+      }
+    }
+    function bindRowCells(tr) {
+      tr._cells = {
+        major: tr.querySelector('select[data-k="major"]'),
+        mid: tr.querySelector('input[data-k="mid"]'),
+        fee: tr.querySelector('[data-k="fee"]'),
+        workerCode: tr.querySelector('select[data-k="workerCode"]'),
+        partMajor: tr.querySelector('select[data-k="partMajor"]'),
+        partMid: tr.querySelector('input[data-k="partMid"]'),
+        unitPrice: tr.querySelector('[data-k="unitPrice"]'),
+        qty: tr.querySelector('[data-k="qty"]'),
+        amount: tr.querySelector('[data-k="amount"]'),
+        discYen: tr.querySelector('[data-k="discYen"]'),
+        wDel: tr.querySelector('button.row-del[data-side="work"]'),
+        pDel: tr.querySelector('button.row-del[data-side="part"]')
+      };
+    }
+
+    function fillSelect(sel, values, selected) {
+      if (!sel) return;
+      var cur = selected == null ? sel.value : selected;
+      sel.innerHTML = optionHtml(values);
+      sel.removeAttribute('data-filled');
       if (cur) {
-        if (!values || values.indexOf(cur) === -1) {
+        sel.value = cur;
+        if (sel.value !== String(cur)) {
           var extra = document.createElement('option');
           extra.value = cur;
           extra.textContent = cur;
           sel.appendChild(extra);
+          sel.value = cur;
         }
-        sel.value = cur;
       }
     }
 
@@ -765,33 +828,67 @@
       var tr = $('tbody').rows[i];
       if (!tr) return;
       var it = items[i];
-      fillSelect(tr.querySelector('select[data-k="major"]'), master.majors, it.major);
-      fillSelect(tr.querySelector('select[data-k="partMajor"]'), master.partMajors, it.partMajor);
-      fillSelect(tr.querySelector('select[data-k="workerCode"]'), master.workerCodes, it.workerCode);
-      var midInput = tr.querySelector('input[data-k="mid"]');
-      if (midInput) {
-        midInput.value = it.mid || '';
-        midInput.dataset.options = JSON.stringify(midsFor(it.major));
+      var c = tr._cells;
+      if (!c) {
+        bindRowCells(tr);
+        c = tr._cells;
       }
-      var partMidInput = tr.querySelector('input[data-k="partMid"]');
-      if (partMidInput) {
-        partMidInput.value = it.partMid || '';
-        partMidInput.dataset.options = JSON.stringify(partMidsFor(it.partMajor));
+      setSelectValue(c.major, master.majors, it.major);
+      setSelectValue(c.partMajor, master.partMajors, it.partMajor);
+      setSelectValue(c.workerCode, master.workerCodes, it.workerCode);
+      if (c.mid) {
+        c.mid.value = it.mid || '';
+        c.mid.dataset.options = midsJson(it.major);
       }
-      tr.querySelector('[data-k="fee"]').value = it.fee == null ? '' : it.fee;
-      tr.querySelector('[data-k="qty"]').value = it.qty == null ? '' : it.qty;
-      tr.querySelector('[data-k="unitPrice"]').value = it.unitPrice == null ? '' : it.unitPrice;
-      tr.querySelector('[data-k="amount"]').value = it.amount == null || it.amount === '' ? '' : it.amount;
-      tr.querySelector('[data-k="discYen"]').value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
+      if (c.partMid) {
+        c.partMid.value = it.partMid || '';
+        c.partMid.dataset.options = partMidsJson(it.partMajor);
+      }
+      c.fee.value = it.fee == null ? '' : it.fee;
+      c.qty.value = it.qty == null ? '' : it.qty;
+      c.unitPrice.value = it.unitPrice == null ? '' : it.unitPrice;
+      c.amount.value = it.amount == null || it.amount === '' ? '' : it.amount;
+      c.discYen.value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
       paintDiscWarn(tr, it);
-      var wDel = tr.querySelector('button.row-del[data-side="work"]');
-      var pDel = tr.querySelector('button.row-del[data-side="part"]');
-      if (wDel) wDel.disabled = !hasWork(it);
-      if (pDel) pDel.disabled = !hasPart(it);
+      if (c.wDel) c.wDel.disabled = !hasWork(it);
+      if (c.pDel) c.pDel.disabled = !hasPart(it);
     }
 
     function lineCount() {
       return master.lineCount || 120;
+    }
+
+    function rowHtml(i) {
+      return '<tr>' +
+        '<td class="no">' + (i + 1) + '</td>' +
+        '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
+        '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
+        '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
+        '<td class="staff"><select data-i="' + i + '" data-k="workerCode" data-filled="1">' + optHtml.worker + '</select></td>' +
+        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
+        '<td class="part-major"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
+        '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
+        '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
+        '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
+        '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
+        '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>' +
+        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>' +
+        '</tr>';
+    }
+
+    function buildGrid() {
+      var n = lineCount();
+      var tb = $('tbody');
+      var dummy = document.createElement('tbody');
+      var html = '';
+      for (var i = 0; i < n; i++) html += rowHtml(i);
+      dummy.innerHTML = html;
+      tb.innerHTML = '';
+      var frag = document.createDocumentFragment();
+      while (dummy.firstChild) frag.appendChild(dummy.firstChild);
+      tb.appendChild(frag);
+      for (var j = 0; j < n; j++) bindRowCells(tb.rows[j]);
+      gridReady = true;
     }
 
     function renderGrid() {
@@ -799,26 +896,11 @@
       while (items.length < n) items.push(emptyRow());
       items = items.slice(0, n);
       var tb = $('tbody');
-      tb.innerHTML = '';
-      for (var i = 0; i < n; i++) {
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td class="no">' + (i + 1) + '</td>' +
-          '<td class="major"><select data-i="' + i + '" data-k="major"></select></td>' +
-          '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
-          '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
-          '<td class="staff"><select data-i="' + i + '" data-k="workerCode"></select></td>' +
-          '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
-          '<td class="part-major"><select data-i="' + i + '" data-k="partMajor"></select></td>' +
-          '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
-          '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>' +
-          '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>';
-        tb.appendChild(tr);
-        refreshRowSelects(i);
+      if (!gridReady || tb.rows.length !== n) {
+        if (!optHtml.major) refreshOptionCache();
+        buildGrid();
       }
+      for (var i = 0; i < n; i++) refreshRowSelects(i);
       recalc();
       applyPendingFocus();
     }
@@ -830,7 +912,7 @@
       pendingFocus = null;
       var tr = $('tbody').rows[i];
       if (!tr) return;
-      var el = tr.querySelector('[data-k="' + k + '"]');
+      var el = (tr._cells && tr._cells[k]) || tr.querySelector('[data-k="' + k + '"]');
       if (!el) return;
       el.focus();
       if (el.select) {
@@ -1383,6 +1465,7 @@
     google.script.run
       .withSuccessHandler(function (data) {
         master = data || master;
+        refreshOptionCache();
         renderGrid();
         initHeaderMasters();
         bindDateField('inDate', 'inDateCal');
