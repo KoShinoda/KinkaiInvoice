@@ -359,6 +359,7 @@
     var items = [];
     var pendingFocus = null;
     var comboActiveIndex = -1;
+    var comboIgnoreBlur = false;
 
     function $(id) { return document.getElementById(id); }
     function setStatus(msg, isErr) {
@@ -927,12 +928,9 @@
     }
 
     var lastExpandKey = '';
-    var lastExpandAt = 0;
     function alreadyExpanded(key) {
-      var now = Date.now();
-      if (lastExpandKey === key && now - lastExpandAt < 400) return true;
+      if (lastExpandKey === key) return true;
       lastExpandKey = key;
-      lastExpandAt = now;
       return false;
     }
 
@@ -942,6 +940,7 @@
       it.mid = mid;
       it.kind = it.kind === 'part' ? it.kind : 'mid';
       if (!mid) {
+        lastExpandKey = '';
         it.fee = '';
         compactItems();
         renderGrid();
@@ -993,6 +992,7 @@
       var mid = String(it.partMid || '').trim();
       it.partMid = mid;
       if (!mid) {
+        lastExpandKey = '';
         compactItems();
         renderGrid();
         return;
@@ -1096,6 +1096,11 @@
     function commitCombo(input) {
       var i = Number(input.dataset.i);
       var k = input.dataset.k;
+      if (comboIgnoreBlur) {
+        comboIgnoreBlur = false;
+        hideComboLists();
+        return;
+      }
       var list = comboListEl(input);
       if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
         input.value = list.children[comboActiveIndex].dataset.value;
@@ -1103,9 +1108,11 @@
       var v = input.value;
       hideComboLists();
       if (k === 'mid') {
+        if (items[i] && items[i].mid === v) return;
         items[i].mid = v;
         onMidChosen(i);
       } else if (k === 'partMid') {
+        if (items[i] && items[i].partMid === v) return;
         items[i].partMid = v;
         onPartMidChosen(i);
       }
@@ -1128,6 +1135,7 @@
       hideComboLists();
       items[i][k] = el.value;
       if (force || changed || fromList) {
+        comboIgnoreBlur = true;
         if (k === 'mid') onMidChosen(i);
         else onPartMidChosen(i);
       }
@@ -1174,6 +1182,7 @@
       var input = opt.parentNode.parentNode.querySelector('input');
       input.value = opt.dataset.value;
       hideComboLists();
+      comboIgnoreBlur = true;
       var i = Number(input.dataset.i);
       if (input.dataset.k === 'mid') {
         items[i].mid = opt.dataset.value;
