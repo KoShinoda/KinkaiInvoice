@@ -72,7 +72,7 @@
       border-collapse: collapse;
       table-layout: fixed;
     }
-    col.col-no { width: 28px; }
+    col.col-no { width: 36px; }
     col.col-fee { width: 96px; }
     col.col-staff { width: 70px; }
     col.col-n { width: 52px; }
@@ -175,7 +175,43 @@
       color: var(--text);
     }
     td { padding: 3px 3px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
-    td.no { color: var(--muted); text-align: center; font-size: 11px; padding: 3px 0; }
+    td.no {
+      color: var(--muted);
+      text-align: center;
+      font-size: 11px;
+      padding: 8px 0;
+      position: relative;
+    }
+    th.no-h { text-align: center; position: sticky; }
+    .row-ins {
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      z-index: 3;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      margin: 0 0 0 -8px;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      background: #fff;
+      color: var(--accent);
+      font-size: 12px;
+      line-height: 14px;
+      cursor: pointer;
+      opacity: 0;
+    }
+    th.no-h .row-ins {
+      position: static;
+      display: block;
+      margin: 2px auto 0;
+      opacity: 1;
+    }
+    tr:hover .row-ins,
+    .row-ins:hover,
+    .row-ins:focus {
+      opacity: 1;
+    }
     td.del { text-align: center; padding: 2px 0; }
     button.row-del {
       width: 22px;
@@ -319,7 +355,7 @@
           </colgroup>
           <thead>
             <tr>
-              <th>#</th>
+              <th class="no-h">#<button type="button" class="row-ins" data-at="0" tabindex="-1" title="先頭に空行を挿入">+</button></th>
               <th>大項目</th>
               <th>中項目</th>
               <th>技術料</th>
@@ -691,6 +727,16 @@
       else clearPartSide(items[items.length - 1]);
       for (var k = start; k < items.length; k++) refreshKind(items[k]);
     }
+    function insertBlankRow(at) {
+      var n = lineCount();
+      if (at < 0) at = 0;
+      if (at > n) at = n;
+      items.splice(at, 0, emptyRow());
+      padItems();
+      pendingFocus = { i: at, k: 'mid' };
+      renderGrid();
+      setStatus('空行を挿入しました（明細は ' + n + ' 行まで。末尾は押し出されます）');
+    }
     function deleteSide(rowIndex, side) {
       var it = items[rowIndex];
       if (!it) return;
@@ -860,7 +906,9 @@
 
     function rowHtml(i) {
       return '<tr>' +
-        '<td class="no">' + (i + 1) + '</td>' +
+        '<td class="no"><span class="no-n">' + (i + 1) + '</span>' +
+          (i < lineCount() - 1 ? '<button type="button" class="row-ins" data-at="' + (i + 1) + '" tabindex="-1" title="この行の下に空行を挿入">+</button>' : '') +
+        '</td>' +
         '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
         '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
@@ -1265,6 +1313,12 @@
       applyPendingFocus();
     }
 
+    document.querySelector('.table-wrap').addEventListener('click', function (e) {
+      var ins = e.target.closest('button.row-ins');
+      if (!ins) return;
+      e.preventDefault();
+      insertBlankRow(Number(ins.dataset.at));
+    });
     $('tbody').addEventListener('click', function (e) {
       var btn = e.target.closest('button.row-del');
       if (!btn || btn.disabled) return;
