@@ -286,14 +286,14 @@
         <div>
           <h3>技術料</h3>
           <div class="sum-line"><span>小計</span><span id="techSub">0</span></div>
-          <div class="disc"><label>値引（％）</label><input id="techPct" type="number" min="0" max="100" step="1" value="0"></div>
+          <div class="disc"><label>値引（％）</label><input id="techPct" type="number" min="0" max="100" step="1" value="3"></div>
           <div class="sum-line"><span>値引額</span><span id="techDiscShow">0</span></div>
           <div class="sum-line strong"><span>差引</span><span id="techTotal">0</span></div>
         </div>
         <div>
           <h3>部品</h3>
           <div class="sum-line"><span>小計（数量×単価）</span><span id="partSub">0</span></div>
-          <div class="disc"><label>値引（％）</label><input id="partPct" type="number" min="0" max="100" step="1" value="0"></div>
+          <div class="disc"><label>値引（％）</label><input id="partPct" type="number" min="0" max="100" step="1" value="10"></div>
           <div class="sum-line"><span>値引額</span><span id="partDiscShow">0</span></div>
           <div class="sum-line strong"><span>差引</span><span id="partTotal">0</span></div>
         </div>
@@ -313,6 +313,7 @@
       workerCodes: [],
       departments: [],
       typesByDept: {},
+      typeSlotsByDept: {},
       allServiceTypes: [],
       receptionists: [],
       lineCount: 120
@@ -335,6 +336,10 @@
       };
     }
     function yen(n) { return Math.round(n || 0).toLocaleString('ja-JP'); }
+    function filled(v) {
+      if (v === 0 || v === '0') return true;
+      return String(v == null ? '' : v).replace(/\u3000/g, ' ').trim() !== '';
+    }
     function num(v) {
       var n = Number(String(v == null ? '' : v).replace(/,/g, ''));
       return isFinite(n) ? n : 0;
@@ -408,19 +413,30 @@
     function fillHeaderSelect(sel, values, selected) {
       fillSelect(sel, values, selected);
     }
+    function pickPreferredType(dept, types) {
+      var slots = (master.typeSlotsByDept && master.typeSlotsByDept[dept]) || [];
+      var list = types || [];
+      function has(name) {
+        return name && list.indexOf(name) !== -1 ? name : '';
+      }
+      if (dept === 'BP板金' || dept === '板金塗装') {
+        return slots[2] || has('板金塗装') || has('BP板金') || '';
+      }
+      if (dept === '部品販売') {
+        return slots[3] || has('部品販売') || '';
+      }
+      return '';
+    }
     function applyDeptDefaults() {
       var dept = $('dept').value;
       var types = typesForDept(dept);
       var cur = $('serviceType').value;
       var next = cur && types.indexOf(cur) !== -1 ? cur : '';
-      if (dept && types.length === 1) {
+      var preferred = pickPreferredType(dept, types);
+      if (preferred) {
+        next = preferred;
+      } else if (dept && types.length === 1) {
         next = types[0];
-      }
-      if (dept === '部品販売' && types.indexOf('部品販売') !== -1 && types.length === 1) {
-        next = '部品販売';
-      }
-      if (dept === '板金塗装' && types.indexOf('BP板金') !== -1 && types.length === 1) {
-        next = 'BP板金';
       }
       fillHeaderSelect($('serviceType'), types, next);
       if (next) $('serviceType').value = next;
@@ -712,7 +728,7 @@
           items.splice(pos, 0, details[k]);
         }
       }
-      compactItems();
+      padItems();
     }
     function firstFilled(rows, key) {
       for (var i = 0; i < rows.length; i++) {
@@ -743,8 +759,8 @@
       }
       var group = linesForMid(it.major, mid);
       if (!group.length) group = linesForMid('', mid);
-      var works = group.filter(function (r) { return r.content; });
-      var blanks = group.filter(function (r) { return !r.content; });
+      var works = group.filter(function (r) { return filled(r.content); });
+      var blanks = group.filter(function (r) { return !filled(r.content); });
       if (!it.major && group[0] && group[0].major) it.major = group[0].major;
 
       if (works.length === 0) {
@@ -759,7 +775,6 @@
       }
 
       it.fee = firstFilled(blanks, 'fee');
-      if (blanks[0]) copyWorkPart(it, blanks[0]);
       var details = works.map(function (w) {
         var row = emptyRow();
         row.major = it.major || w.major || '';
@@ -769,6 +784,13 @@
         row.kind = 'work';
         copyWorkPart(row, w);
         return row;
+      });
+      blanks.forEach(function (b) {
+        if (!b.partMajor && !b.partMid) return;
+        var row = emptyRow();
+        row.kind = 'work';
+        copyWorkPart(row, b);
+        details.push(row);
       });
       writeBelow(rowIndex, 'work', details);
       renderGrid();
@@ -786,8 +808,8 @@
       }
       var group = linesForPartMid(it.partMajor, mid);
       if (!group.length) group = linesForPartMid('', mid);
-      var works = group.filter(function (r) { return r.content; });
-      var blanks = group.filter(function (r) { return !r.content; });
+      var works = group.filter(function (r) { return filled(r.content); });
+      var blanks = group.filter(function (r) { return !filled(r.content); });
       if (!it.partMajor && group[0] && group[0].major) it.partMajor = group[0].major;
 
       if (works.length === 0) {

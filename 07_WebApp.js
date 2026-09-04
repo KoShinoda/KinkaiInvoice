@@ -56,6 +56,7 @@ function getInvoiceMaster() {
     workerCodes: loadWorkerCodes_(),
     departments: service.departments,
     typesByDept: service.typesByDept,
+    typeSlotsByDept: service.typeSlotsByDept || {},
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
     lineCount: CONFIG.input.appRows || 120,
