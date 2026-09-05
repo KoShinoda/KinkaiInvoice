@@ -319,7 +319,7 @@ function pickPartDisplay_(row) {
 }
 
 /**
- * 車検_入力へ保存し、原紙を 30 行ずつコピーして印刷シートを作る。
+ * 車検_入力へ保存し、A4 印刷シートを 1 枚作る。
  *
  * @param {object} payload
  * @return {{pageCount: number, lineCount: number, sheetNames: string[]}}
@@ -344,12 +344,12 @@ function publishInvoices(payload) {
 
   writeInputSheetFromApp_(inputSheet, payload);
   writeSummaryToInput_(inputSheet, payload.summary);
-  const names = writePrintSheets_(ss, payload);
+  const printed = writePrintSheets_(ss, payload);
 
   return {
-    pageCount: names.length,
+    pageCount: printed.pageCount,
     lineCount: filled.length,
-    sheetNames: names
+    sheetNames: printed.sheetNames
   };
 }
 
@@ -407,203 +407,6 @@ function writeSummaryToInput_(sheet, summary) {
   setIfMapped_(sheet, map.grand, summary.grand);
 }
 
-/**
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
- * @param {object} payload
- * @return {string[]}
- */
-function writePrintSheets_(ss, payload, namePrefix) {
-  const templateName = CONFIG.print.templateSheetName;
-  const template = ss.getSheetByName(templateName);
-  if (!template) {
-    throw new Error('印刷テンプレートがありません: ' + templateName);
-  }
-
-  const prefix = namePrefix || CONFIG.print.sheetNamePrefix;
-  const per = CONFIG.print.linesPerPage;
-  const items = payload.items.filter(function (it) {
-    return rowHasContent_(it);
-  });
-  const pageCount = Math.max(1, Math.ceil(items.length / per));
-  const created = [];
-
-  deleteOldPrintSheets_(ss, prefix);
-
-  for (let p = 0; p < pageCount; p++) {
-    const name = prefix + (p + 1);
-    const copy = template.copyTo(ss);
-    copy.setName(name);
-    const slice = items.slice(p * per, p * per + per);
-    const isFirst = p === 0;
-    const isLast = p === pageCount - 1;
-    fillPrintSheet_(copy, payload.header || {}, slice, {
-      page: p + 1,
-      pageCount: pageCount,
-      serialOffset: p * per,
-      showHeader: isFirst,
-      showFooter: isLast,
-      summary: payload.summary || {}
-    });
-    created.push(name);
-  }
-
-  if (created.length) {
-    ss.setActiveSheet(ss.getSheetByName(created[0]));
-  }
-  return created;
-}
-
-/**
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
- */
-function deleteOldPrintSheets_(ss, namePrefix) {
-  const prefix = namePrefix || CONFIG.print.sheetNamePrefix;
-  const toDelete = [];
-  const sheets = ss.getSheets();
-  for (let i = 0; i < sheets.length; i++) {
-    if (sheets[i].getName().indexOf(prefix) === 0) {
-      toDelete.push(sheets[i]);
-    }
-  }
-  for (let i = 0; i < toDelete.length; i++) {
-    ss.deleteSheet(toDelete[i]);
-  }
-}
-
-/**
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
- * @param {object} header
- * @param {object[]} lines
- */
-function fillPrintSheet_(sheet, header, lines, opts) {
-  opts = opts || {};
-  const showHeader = opts.showHeader !== false;
-  const showFooter = opts.showFooter !== false;
-  const page = opts.page || 1;
-  const pageCount = opts.pageCount || 1;
-  const serialOffset = opts.serialOffset || 0;
-
-  applyPrintPageChrome_(sheet, page, pageCount, showHeader, showFooter);
-
-  if (showHeader) {
-    const map = CONFIG.print.header;
-    setIfMapped_(sheet, map.kNo, header.kNo);
-    setIfMapped_(sheet, map.plate, header.plate);
-    setIfMapped_(sheet, map.receptionist, header.receptionist || header.staff);
-    setIfMapped_(sheet, map.staff, header.receptionist || header.staff);
-    setIfMapped_(sheet, map.inDate, header.inDate);
-    setIfMapped_(sheet, map.outDate, header.outDate || header.doneDate);
-    setIfMapped_(sheet, map.doneDate, header.outDate || header.doneDate);
-    setIfMapped_(sheet, map.billDate, header.billDate);
-  }
-
-  const cols = CONFIG.print.cols;
-  const first = CONFIG.print.firstLineRow;
-  const per = CONFIG.print.linesPerPage;
-  const serials = [];
-  const works = [];
-  const fees = [];
-  const staffs = [];
-  const parts = [];
-  const qtys = [];
-  const prices = [];
-  const amounts = [];
-
-  for (let i = 0; i < per; i++) {
-    const it = lines[i];
-    if (!it) {
-      serials.push(['']);
-      works.push(['']);
-      fees.push(['']);
-      staffs.push(['']);
-      parts.push(['']);
-      qtys.push(['']);
-      prices.push(['']);
-      amounts.push(['']);
-      continue;
-    }
-    const qty = toNumberOrBlank_(it.qty);
-    const price = toNumberOrBlank_(it.unitPrice);
-    const amount = lineAmount_(it, qty, price);
-    serials.push([serialOffset + i + 1]);
-    works.push([it.mid || it.name || '']);
-    fees.push([it.fee === undefined || it.fee === null ? '' : it.fee]);
-    staffs.push([it.workerCode || header.receptionist || header.staff || '']);
-    parts.push([it.partMid || it.part || '']);
-    qtys.push([qty]);
-    prices.push([price]);
-    amounts.push([amount]);
-  }
-
-  sheet.getRange(first, cols.serial, per, 1).setValues(serials);
-  sheet.getRange(first, cols.work, per, 1).setValues(works);
-  sheet.getRange(first, cols.fee, per, 1).setValues(fees);
-  sheet.getRange(first, cols.staff, per, 1).setValues(staffs);
-  sheet.getRange(first, cols.part, per, 1).setValues(parts);
-  sheet.getRange(first, cols.qty, per, 1).setValues(qtys);
-  sheet.getRange(first, cols.unitPrice, per, 1).setValues(prices);
-  sheet.getRange(first, cols.amount, per, 1).setValues(amounts);
-
-  if (showFooter) {
-    fillPrintFooter_(sheet, opts.summary || {});
-  }
-}
-
-function applyPrintPageChrome_(sheet, page, pageCount, showHeader, showFooter) {
-  const p = CONFIG.print;
-  const keep = [];
-  if (p.pageNo) {
-    keep.push(p.pageNo);
-  }
-  if (!showHeader && p.headerRowStart && p.headerRowEnd) {
-    clearPrintRowsKeep_(sheet, p.headerRowStart, p.headerRowEnd, keep);
-  }
-  if (!showFooter && p.footerRowStart && p.footerRowEnd) {
-    clearPrintRowsKeep_(sheet, p.footerRowStart, p.footerRowEnd, []);
-  }
-  if (p.pageNo) {
-    sheet.getRange(p.pageNo).setValue('No.' + page + '／' + pageCount);
-  }
-}
-
-function clearPrintRowsKeep_(sheet, startRow, endRow, keepA1) {
-  const lastCol = Math.max(sheet.getMaxColumns(), sheet.getLastColumn(), 1);
-  const keep = {};
-  (keepA1 || []).forEach(function (a1) {
-    if (!a1) {
-      return;
-    }
-    const r = sheet.getRange(a1);
-    keep[r.getRow() + ':' + r.getColumn()] = true;
-  });
-  const height = endRow - startRow + 1;
-  if (height < 1) {
-    return;
-  }
-  const range = sheet.getRange(startRow, 1, height, lastCol);
-  const values = range.getValues();
-  for (let r = 0; r < values.length; r++) {
-    for (let c = 0; c < values[r].length; c++) {
-      if (keep[startRow + r + ':' + (c + 1)]) {
-        continue;
-      }
-      values[r][c] = '';
-    }
-  }
-  range.setValues(values);
-}
-
-function fillPrintFooter_(sheet, summary) {
-  const map = CONFIG.print.footer || {};
-  setIfMapped_(sheet, map.techSub, summary.techSub);
-  setIfMapped_(sheet, map.techDisc, summary.techDisc);
-  setIfMapped_(sheet, map.techTotal, summary.techTotal);
-  setIfMapped_(sheet, map.partSub, summary.partSub);
-  setIfMapped_(sheet, map.partDisc, summary.partDisc);
-  setIfMapped_(sheet, map.partTotal, summary.partTotal);
-  setIfMapped_(sheet, map.grand, summary.grand);
-}
-
 function setIfMapped_(sheet, a1, value) {
   if (!a1 || value === undefined || value === null || value === '') {
     return;
@@ -631,71 +434,4 @@ function toNumberOrBlank_(value) {
   }
   const n = Number(String(value).replace(/,/g, '').trim());
   return isFinite(n) ? n : '';
-}
-
-/**
- * メニュー「印刷原本（暫定3枚）を作成」。
- * 既存の「車検　原紙」をコピーし、1枚目＝ヘッダー、中間＝明細のみ、最終＝フッター。
- * 明細は暫定データ（完成後に消してよい）。
- */
-function createPrintOriginalSample() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const items = [];
-  let techSub = 0;
-  let partSub = 0;
-  const mids = [
-    '＊＊　１２カ月定期点検　＊＊',
-    'シャシ洗浄、グリスアップ',
-    'シャシグレー塗装',
-    'シャシマスキング',
-    '保安確認検査料',
-    '代行料'
-  ];
-  const parts = ['部品1', '部品2', '部品3', 'カートリッジグリス', 'ｼｬｼｸﾞﾚｰ', 'ｽﾓｰﾙ･ﾊﾟｰﾂ'];
-  for (let i = 0; i < 72; i++) {
-    const fee = i % 7 === 0 ? 0 : 800 + (i % 12) * 200;
-    const qty = 1;
-    const unitPrice = 400 + (i % 9) * 50;
-    const amount = qty * unitPrice;
-    techSub += fee;
-    partSub += amount;
-    items.push({
-      mid: mids[i % mids.length] + (i >= 6 ? '（暫定' + (i + 1) + '）' : ''),
-      fee: fee || '',
-      workerCode: String((i % 9) + 1),
-      partMid: parts[i % parts.length],
-      qty: qty,
-      unitPrice: unitPrice,
-      amount: amount
-    });
-  }
-  const techDisc = Math.round(techSub * 0.03);
-  const partDisc = Math.round(partSub * 0.1);
-  const payload = {
-    header: {
-      kNo: 'K-9999',
-      plate: '仮-5331',
-      receptionist: 'サンプル',
-      inDate: '2026/09/01',
-      outDate: '2026/09/05',
-      billDate: '2026/09/05'
-    },
-    items: items,
-    summary: {
-      techSub: techSub,
-      techDisc: techDisc,
-      techTotal: techSub - techDisc,
-      partSub: partSub,
-      partDisc: partDisc,
-      partTotal: partSub - partDisc,
-      grand: techSub - techDisc + partSub - partDisc
-    }
-  };
-  const prefix = CONFIG.print.samplePrefix || '印刷原本_';
-  const names = writePrintSheets_(ss, payload, prefix);
-  ss.toast(
-    names.join('、') + ' を作成しました。1枚目＝ヘッダー、2枚目＝明細のみ、3枚目＝フッター。暫定データです。',
-    '請求書入力',
-    8
-  );
 }
