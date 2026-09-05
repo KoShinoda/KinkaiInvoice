@@ -112,7 +112,7 @@ function makePrintSamplePayload_() {
     header: {
       userName: '近海請求書',
       kNo: 'K-9999',
-      plate: '仮-5331',
+      plate: '苫小牧888あ5555',
       receptionist: 'サンプル',
       inDate: '2026/09/01',
       outDate: '2026/09/05',
@@ -432,8 +432,8 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
 
   const titleRow = start + L.title;
   const title = String(header.userName || CONFIG.print.title || '近海請求書').trim() || '近海請求書';
-  sheet.getRange(titleRow, 1).setValue(showHeader ? title : '');
-  sheet.getRange(titleRow, 1, 1, 8)
+  sheet.getRange(titleRow, 2).setValue(showHeader ? title : '');
+  sheet.getRange(titleRow, 2, 1, 7)
     .setFontSize(20)
     .setFontWeight('bold')
     .setHorizontalAlignment('left');
@@ -613,12 +613,11 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
 }
 
 function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
-  sheet.getRange(start + L.title, 1, 1, 8).merge();
+  sheet.getRange(start + L.title, 2, 1, 7).merge();
   if (showHeader) {
     [L.metaL1, L.metaV1, L.metaL2, L.metaV2].forEach(function (off) {
-      sheet.getRange(start + off, 1, 1, 2).merge();
-      sheet.getRange(start + off, 3, 1, 2).merge();
-      sheet.getRange(start + off, 5, 1, 2).merge();
+      sheet.getRange(start + off, 3, 1, 3).merge();
+      sheet.getRange(start + off, 6, 1, 3).merge();
     });
   }
   if (showFooter) {
@@ -643,24 +642,24 @@ function fillPrintHeader_(sheet, start, L, header) {
   const l2 = start + L.metaL2;
   const v2 = start + L.metaV2;
 
-  sheet.getRange(l1, 1).setValue('K-No').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l1, 2).setValue('K-No').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l1, 3).setValue('登録番号').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(l1, 5).setValue('受付').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(v1, 1).setValue(header.kNo || '').setFontSize(12);
+  sheet.getRange(l1, 6).setValue('受付').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v1, 2).setValue(header.kNo || '').setFontSize(12);
   sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(12);
-  sheet.getRange(v1, 5).setValue(header.receptionist || header.staff || '').setFontSize(12);
+  sheet.getRange(v1, 6).setValue(header.receptionist || header.staff || '').setFontSize(12);
 
-  sheet.getRange(l2, 1).setValue('入庫日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l2, 2).setValue('入庫日').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l2, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(l2, 5).setValue('請求日').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(v2, 1).setValue(header.inDate || '').setFontSize(12);
+  sheet.getRange(l2, 6).setValue('請求日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v2, 2).setValue(header.inDate || '').setFontSize(12);
   sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(12);
-  sheet.getRange(v2, 5).setValue(header.billDate || '').setFontSize(12);
+  sheet.getRange(v2, 6).setValue(header.billDate || '').setFontSize(12);
 
-  sheet.getRange(l1, 1, 4, 6)
+  sheet.getRange(l1, 2, 4, 7)
     .setHorizontalAlignment('left')
-    .setBorder(true, true, true, true, false, false, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(v1, 1, 1, 6)
+    .setBorder(true, true, true, true, true, false, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(v1, 2, 1, 7)
     .setBorder(null, null, true, null, false, false, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
 }
 
