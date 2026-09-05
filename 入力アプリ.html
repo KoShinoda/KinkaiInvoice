@@ -263,7 +263,8 @@
     .worker-picker {
       position: fixed;
       z-index: 80;
-      width: 320px;
+      width: min(560px, calc(100vw - 24px));
+      max-height: min(420px, calc(100vh - 24px));
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -272,10 +273,20 @@
     }
     .worker-picker[hidden] { display: none !important; }
     .worker-picker:not([hidden]) { display: flex; }
+    .worker-picker-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px 6px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 600;
+    }
     .worker-picker-bar {
       display: flex;
       gap: 6px;
-      padding: 8px 8px 0;
+      padding: 8px 10px;
       align-items: center;
     }
     .worker-picker-bar input {
@@ -297,85 +308,53 @@
     }
     button.worker-picker-x:hover { background: #fde8e8; color: var(--danger); }
     .worker-picker-meta {
-      padding: 4px 10px 6px;
+      padding: 0 10px 6px;
       font-size: 11px;
       color: var(--muted);
     }
-    .worker-picker-window {
-      display: flex;
-      align-items: stretch;
-      gap: 4px;
-      padding: 0 8px;
-    }
-    button.worker-nav {
-      width: 28px;
-      flex: 0 0 28px;
-      padding: 0;
-      margin: 0;
-      background: #fff;
-      color: var(--accent);
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      font-size: 11px;
-      line-height: 1;
-    }
-    button.worker-nav:hover { background: #e8f0ec; }
-    button.worker-nav:disabled { opacity: .35; cursor: default; background: #fff; }
-    .worker-picker-window table {
+    .worker-picker-table-wrap {
+      overflow: auto;
       flex: 1;
-      min-width: 0;
-      width: auto;
+      min-height: 0;
+      border-top: 1px solid var(--line);
+    }
+    .worker-picker table {
+      width: 100%;
       border-collapse: collapse;
-      table-layout: fixed;
+      table-layout: auto;
     }
     .worker-picker th {
-      position: static;
+      position: sticky;
+      top: 0;
+      z-index: 1;
       background: #eef3f0;
       font-size: 11px;
       color: var(--muted);
       text-align: left;
-      padding: 5px 8px;
+      padding: 6px 8px;
       border-bottom: 1px solid var(--line);
     }
     .worker-picker td {
-      padding: 7px 8px;
+      padding: 6px 8px;
       font-size: 13px;
       border-bottom: 1px solid #eef1f4;
       cursor: pointer;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      height: 32px;
-      box-sizing: border-box;
+      vertical-align: middle;
     }
     .worker-picker tbody tr:hover td { background: #e8f0ec; }
-    .worker-picker tbody tr.active td { background: #dce8e2; font-weight: 600; }
-    .worker-picker tr.worker-empty td {
-      cursor: default;
-      background: #fafbfb;
-      color: transparent;
+    .worker-picker tbody tr.active td { background: #dce8e2; }
+    .worker-picker td.worker-img { width: 56px; padding: 4px; }
+    .worker-picker td.worker-img img {
+      display: block;
+      max-width: 48px;
+      max-height: 48px;
+      object-fit: contain;
     }
     .worker-picker mark {
       background: #fff3bf;
       color: inherit;
       padding: 0;
-    }
-    .worker-picker-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 8px;
-    }
-    button.worker-btn-sub {
-      background: #fff;
-      color: var(--text);
-      border: 1px solid var(--line);
-      padding: 7px 12px;
-      font-size: 13px;
-    }
-    button.worker-btn-ok {
-      padding: 7px 16px;
-      font-size: 13px;
     }
     .grid.header-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -565,24 +544,19 @@
     </div>
   </footer>
   <div id="workerPicker" class="worker-picker" hidden>
-    <div class="worker-picker-bar">
-      <input id="workerPickerFilter" placeholder="コード・名前で絞り込み" autocomplete="off">
+    <div class="worker-picker-head">
+      <span>作業者リスト</span>
       <button type="button" id="workerPickerClose" class="worker-picker-x" title="閉じる">×</button>
     </div>
+    <div class="worker-picker-bar">
+      <input id="workerPickerFilter" placeholder="コード・名前で絞り込み" autocomplete="off">
+    </div>
     <div id="workerPickerMeta" class="worker-picker-meta"></div>
-    <div class="worker-picker-window">
-      <button type="button" id="workerPickerUp" class="worker-nav" title="前へ">▲</button>
+    <div class="worker-picker-table-wrap">
       <table>
-        <thead>
-          <tr><th>コード</th><th>名前</th></tr>
-        </thead>
+        <thead id="workerPickerHead"></thead>
         <tbody id="workerPickerBody"></tbody>
       </table>
-      <button type="button" id="workerPickerDown" class="worker-nav" title="次へ">▼</button>
-    </div>
-    <div class="worker-picker-actions">
-      <button type="button" id="workerPickerCancel" class="worker-btn-sub">閉じる</button>
-      <button type="button" id="workerPickerOk" class="worker-btn-ok">決定</button>
     </div>
   </div>
 
@@ -592,6 +566,7 @@
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
       workerCodes: [],
       workers: [],
+      workerHeaders: ['コード', '名前'],
       departments: [],
       typesByDept: {},
       typeSlotsByDept: {},
@@ -1501,106 +1476,90 @@
       insertSide(Number(ins.dataset.at), ins.dataset.side);
     });
     var workerPickerRow = -1;
-    var workerPickerActive = 0;
-    var workerMatched = [];
-    var workerPickerQ = '';
     function workerListRows() {
       if (master.workers && master.workers.length) return master.workers;
       return (master.workerCodes || []).map(function (s) {
         var t = String(s || '').trim();
         var sp = t.indexOf(' ');
-        if (sp < 0) return { code: t, name: '' };
-        return { code: t.slice(0, sp), name: t.slice(sp + 1) };
+        if (sp < 0) return { code: t, name: '', cells: [t, ''], images: ['', ''] };
+        return { code: t.slice(0, sp), name: t.slice(sp + 1), cells: [t.slice(0, sp), t.slice(sp + 1)], images: ['', ''] };
       });
     }
-    function fillWorkerPicker() {}
+    function workerHeaders() {
+      var h = master.workerHeaders && master.workerHeaders.length ? master.workerHeaders.slice() : ['コード', '名前'];
+      var rows = workerListRows();
+      var n = h.length;
+      rows.forEach(function (w) {
+        var m = Math.max((w.cells && w.cells.length) || 0, (w.images && w.images.length) || 0);
+        if (m > n) n = m;
+      });
+      while (h.length < n) h.push('');
+      return h;
+    }
     function workerQuery(s) {
       return String(s || '').toLowerCase().replace(/\s+/g, '');
     }
-    function workerRank(w, q) {
-      if (!q) return 2;
-      var c = workerQuery(w.code);
-      var n = workerQuery(w.name);
-      if (c === q) return 0;
-      if (c.indexOf(q) === 0) return 1;
-      if (n.indexOf(q) === 0) return 2;
-      if (c.indexOf(q) !== -1) return 3;
-      if (n.indexOf(q) !== -1) return 4;
-      return -1;
-    }
-    function markHit(text, q) {
-      var s = String(text || '');
-      if (!q) return htmlEscape(s);
-      var lower = s.toLowerCase();
-      var i = lower.indexOf(q);
-      if (i < 0) return htmlEscape(s);
-      return htmlEscape(s.slice(0, i)) + '<mark>' + htmlEscape(s.slice(i, i + q.length)) + '</mark>' + htmlEscape(s.slice(i + q.length));
+    function workerSearchText(w) {
+      var parts = [w.code, w.name];
+      (w.cells || []).forEach(function (c) { parts.push(c); });
+      return workerQuery(parts.join(' '));
     }
     function workerMatchesCurrent(w, cur) {
       if (!cur) return false;
       var label = w.name ? w.code + ' ' + w.name : w.code;
       return cur === w.code || cur === label;
     }
-    function rebuildWorkerMatched(qRaw) {
-      workerPickerQ = qRaw || '';
-      var q = workerQuery(workerPickerQ);
-      var all = workerListRows();
-      workerMatched = [];
-      for (var i = 0; i < all.length; i++) {
-        var rank = workerRank(all[i], q);
-        if (rank < 0) continue;
-        workerMatched.push({ w: all[i], rank: rank, i: i });
-      }
-      workerMatched.sort(function (a, b) {
-        if (a.rank !== b.rank) return a.rank - b.rank;
-        return a.i - b.i;
-      });
-      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
-      workerPickerActive = 0;
-      for (var r = 0; r < workerMatched.length; r++) {
-        if (workerMatchesCurrent(workerMatched[r].w, cur)) {
-          workerPickerActive = r;
-          break;
-        }
-      }
-      if (workerPickerActive >= workerMatched.length) workerPickerActive = Math.max(0, workerMatched.length - 1);
-    }
-    function paintWorkerWindow() {
+    function fillWorkerPicker() {
+      var headers = workerHeaders();
+      var head = $('workerPickerHead');
+      head.innerHTML = '<tr>' + headers.map(function (h) {
+        return '<th>' + htmlEscape(h || '') + '</th>';
+      }).join('') + '</tr>';
       var tb = $('workerPickerBody');
-      var qDisp = String(workerPickerQ || '').toLowerCase();
       var html = '';
-      var slot;
-      for (slot = -1; slot <= 1; slot++) {
-        var idx = workerPickerActive + slot;
-        if (idx < 0 || idx >= workerMatched.length) {
-          html += '<tr class="worker-empty"><td>&nbsp;</td><td></td></tr>';
-        } else {
-          var w = workerMatched[idx].w;
-          html += '<tr' + (slot === 0 ? ' class="active"' : '') + ' data-idx="' + idx + '" data-code="' +
-            htmlEscape(w.code) + '" data-name="' + htmlEscape(w.name) + '"><td>' +
-            markHit(w.code, qDisp) + '</td><td>' + markHit(w.name, qDisp) + '</td></tr>';
-        }
+      workerListRows().forEach(function (w, idx) {
+        var cells = (w.cells && w.cells.length ? w.cells : [w.code, w.name]).slice();
+        var images = w.images || [];
+        while (cells.length < headers.length) cells.push('');
+        var tds = headers.map(function (_, c) {
+          if (images[c]) {
+            return '<td class="worker-img"><img src="' + htmlEscape(images[c]) + '" alt=""></td>';
+          }
+          return '<td>' + htmlEscape(cells[c] || '') + '</td>';
+        }).join('');
+        html += '<tr data-code="' + htmlEscape(w.code || '') + '" data-idx="' + idx + '">' + tds + '</tr>';
+      });
+      tb.innerHTML = html || '<tr><td colspan="' + headers.length + '">作業者リストが空です</td></tr>';
+    }
+    function filterWorkerPicker(qRaw) {
+      var q = workerQuery(qRaw);
+      var rows = workerListRows();
+      var trs = $('workerPickerBody').querySelectorAll('tr[data-code]');
+      var shown = 0;
+      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
+      for (var i = 0; i < trs.length; i++) {
+        var w = rows[Number(trs[i].dataset.idx)] || { code: trs[i].dataset.code, name: '', cells: [] };
+        var ok = !q || workerSearchText(w).indexOf(q) !== -1;
+        trs[i].hidden = !ok;
+        var on = ok && workerMatchesCurrent(w, cur);
+        trs[i].classList.toggle('active', on);
+        if (ok) shown++;
       }
-      tb.innerHTML = html;
-      var allN = workerListRows().length;
+      var allN = rows.length;
       var meta = $('workerPickerMeta');
       if (!allN) meta.textContent = '作業者リストが空です。手入力もできます。';
-      else if (!workerMatched.length) meta.textContent = '一致なし　0 / ' + allN + ' 件';
-      else meta.textContent = (workerPickerActive + 1) + ' / ' + workerMatched.length + ' 件（全 ' + allN + '）';
-      $('workerPickerUp').disabled = workerPickerActive <= 0;
-      $('workerPickerDown').disabled = workerPickerActive >= workerMatched.length - 1 || !workerMatched.length;
-      $('workerPickerOk').disabled = !workerMatched.length;
+      else if (q) meta.textContent = shown + ' / ' + allN + ' 件';
+      else meta.textContent = allN + ' 件　／　行をクリックして選択';
     }
     function hideWorkerPicker() {
       $('workerPicker').hidden = true;
       workerPickerRow = -1;
-      workerMatched = [];
     }
     function positionWorkerPicker(anchor) {
       var panel = $('workerPicker');
       var wrap = (anchor && anchor.closest && anchor.closest('.staff-wrap')) || anchor;
       var rect = wrap.getBoundingClientRect();
-      panel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 328)) + 'px';
+      panel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 580)) + 'px';
       var top = rect.bottom + 4;
       panel.hidden = false;
       var h = panel.offsetHeight;
@@ -1615,67 +1574,34 @@
       var input = $('tbody').rows[row] && $('tbody').rows[row]._cells && $('tbody').rows[row]._cells.workerCode;
       var q = input ? input.value : '';
       $('workerPickerFilter').value = q;
-      rebuildWorkerMatched(q);
-      paintWorkerWindow();
+      fillWorkerPicker();
+      filterWorkerPicker(q);
       positionWorkerPicker(anchor);
     }
-    function moveWorkerHighlight(dir) {
-      if ($('workerPicker').hidden || !workerMatched.length) return;
-      var next = workerPickerActive + dir;
-      if (next < 0 || next >= workerMatched.length) return;
-      workerPickerActive = next;
-      paintWorkerWindow();
-    }
-    function confirmWorkerPick() {
-      if (workerPickerRow < 0 || !items[workerPickerRow] || !workerMatched.length) return;
-      var w = workerMatched[workerPickerActive] && workerMatched[workerPickerActive].w;
-      if (!w) return;
-      items[workerPickerRow].workerCode = w.code || '';
+    function applyWorkerCode(code) {
+      if (workerPickerRow < 0 || !items[workerPickerRow]) return;
+      items[workerPickerRow].workerCode = code || '';
       var row = $('tbody').rows[workerPickerRow];
       var input = row && row._cells && row._cells.workerCode;
-      if (input) input.value = w.code || '';
+      if (input) input.value = code || '';
       hideWorkerPicker();
       recalc();
     }
     $('workerPickerBody').addEventListener('mousedown', function (e) {
-      var tr = e.target.closest('tr[data-idx]');
+      var tr = e.target.closest('tr[data-code]');
       if (!tr) return;
       e.preventDefault();
-      workerPickerActive = Number(tr.dataset.idx);
-      paintWorkerWindow();
-    });
-    $('workerPickerBody').addEventListener('dblclick', function (e) {
-      if (e.target.closest('tr[data-idx]')) confirmWorkerPick();
-    });
-    $('workerPickerUp').addEventListener('click', function () { moveWorkerHighlight(-1); });
-    $('workerPickerDown').addEventListener('click', function () { moveWorkerHighlight(1); });
-    $('workerPickerOk').addEventListener('click', function (e) {
-      e.preventDefault();
-      confirmWorkerPick();
+      applyWorkerCode(tr.dataset.code || '');
     });
     $('workerPickerClose').addEventListener('click', function (e) {
       e.preventDefault();
       hideWorkerPicker();
     });
-    $('workerPickerCancel').addEventListener('click', function (e) {
-      e.preventDefault();
-      hideWorkerPicker();
-    });
     $('workerPickerFilter').addEventListener('input', function () {
-      rebuildWorkerMatched($('workerPickerFilter').value);
-      paintWorkerWindow();
+      filterWorkerPicker($('workerPickerFilter').value);
     });
     $('workerPickerFilter').addEventListener('keydown', function (e) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        moveWorkerHighlight(1);
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        moveWorkerHighlight(-1);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        confirmWorkerPick();
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         e.preventDefault();
         hideWorkerPicker();
       }

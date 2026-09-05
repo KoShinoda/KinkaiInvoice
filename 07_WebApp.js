@@ -44,7 +44,7 @@ function getInvoiceMaster() {
   });
   const parts = loadPartCatalog_(ctx.workRows);
   const service = loadServiceInfo_();
-  const workers = loadWorkers_();
+  const workerSheet = loadWorkerSheet_();
   return {
     majors: majors,
     allMids: allMids,
@@ -54,8 +54,9 @@ function getInvoiceMaster() {
     allPartMids: parts.allPartMids,
     partMidsByMajor: parts.partMidsByMajor,
     partLines: parts.partLines,
-    workers: workers,
-    workerCodes: workers.map(function (w) {
+    workers: workerSheet.rows,
+    workerHeaders: workerSheet.headers,
+    workerCodes: workerSheet.rows.map(function (w) {
       return w.name ? w.code + ' ' + w.name : w.code;
     }),
     departments: service.departments,
@@ -68,20 +69,42 @@ function getInvoiceMaster() {
   };
 }
 
-function loadWorkers_() {
+function imageUrlFromCell_(value, formula) {
+  const f = String(formula || '');
+  let m = f.match(/IMAGE\s*\(\s*"([^"]+)"/i);
+  if (!m) m = f.match(/IMAGE\s*\(\s*'([^']+)'/i);
+  if (m) return m[1];
+  const v = String(value == null ? '' : value).trim();
+  if (/^https?:\/\//i.test(v)) return v;
+  return '';
+}
+
+function loadWorkerSheet_() {
+  const empty = { headers: ['コード', '名前'], rows: [] };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.workers.sheetName);
   if (!sh) {
-    return [];
+    return empty;
   }
-  const vals = sh.getDataRange().getValues();
+  const range = sh.getDataRange();
+  const vals = range.getValues();
+  const formulas = range.getFormulas();
+  if (!vals.length) {
+    return empty;
+  }
   let start = 0;
-  if (vals.length) {
-    const h = normalize_(vals[0][0]);
-    if (h.indexOf('コード') !== -1 || h.indexOf('作業者') !== -1 || h.indexOf('担当') !== -1) {
-      start = 1;
-    }
+  const h0 = normalize_(vals[0][0]);
+  if (h0.indexOf('コード') !== -1 || h0.indexOf('作業者') !== -1 || h0.indexOf('担当') !== -1) {
+    start = 1;
   }
+  const colCount = vals[0].length;
+  const headers = [];
+  for (let c = 0; c < colCount; c++) {
+    headers.push(start === 1 ? normalize_(vals[0][c]) : '');
+  }
+  if (!headers[0]) headers[0] = 'コード';
+  if (headers.length > 1 && !headers[1]) headers[1] = '名前';
+
   const rows = [];
   const seen = {};
   for (let i = start; i < vals.length; i++) {
@@ -95,9 +118,22 @@ function loadWorkers_() {
       continue;
     }
     seen[key] = true;
-    rows.push({ code: code, name: name });
+    const cells = [];
+    const images = [];
+    for (let c = 0; c < colCount; c++) {
+      const raw = vals[i][c];
+      const formula = formulas[i] ? formulas[i][c] : '';
+      const img = imageUrlFromCell_(raw, formula);
+      images.push(img);
+      cells.push(img ? '' : normalize_(raw));
+    }
+    rows.push({ code: code, name: name, cells: cells, images: images });
   }
-  return rows;
+  return { headers: headers, rows: rows };
+}
+
+function loadWorkers_() {
+  return loadWorkerSheet_().rows;
 }
 
 function loadWorkerCodes_() {
