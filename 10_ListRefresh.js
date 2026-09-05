@@ -178,8 +178,8 @@ function refreshMasterListSheet_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
   const dataCol = lastDataHeaderCol_(headers);
-  fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol);
-  sortListDataRows_(sheet, headerRow, dataCol, orderCol);
+  fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol, headers);
+  sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers);
   invalidateContext_();
   if (sheet.getName() === CONFIG.workList.sheetName) {
     rebuildMidCandidateSheet_();
@@ -187,7 +187,7 @@ function refreshMasterListSheet_(sheet) {
   log_('%s refreshMasterListSheet_: %s を順番で並べ替えました', CONFIG.logPrefix, sheet.getName());
 }
 
-function fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol) {
+function fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol, headers) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= headerRow) {
     return;
@@ -196,27 +196,118 @@ function fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol) {
   const orders = sheet.getRange(headerRow + 1, orderCol, height, 1).getValues();
   const data = sheet.getRange(headerRow + 1, 1, height, dataCol).getValues();
   const formulas = sheet.getRange(headerRow + 1, 1, height, dataCol).getFormulas();
-  let anyOrder = false;
-  for (let i = 0; i < orders.length; i++) {
-    if (!listRowIsEmpty_(data[i], formulas[i]) && isFinite(toOrderNumber_(orders[i][0]))
-        && toOrderNumber_(orders[i][0]) !== Number.POSITIVE_INFINITY) {
-      anyOrder = true;
-      break;
+  const name = sheet.getName();
+  let out;
+  if (name === CONFIG.workList.sheetName) {
+    out = fillWorkListGroupOrders_(data, formulas, orders, resolveColumns_(headers, CONFIG.workList.headers));
+  } else if (name === CONFIG.parts.sheetName) {
+    out = fillWorkListGroupOrders_(data, formulas, orders, resolveColumns_(headers, CONFIG.parts.headers));
+  } else {
+    let anyOrder = false;
+    for (let i = 0; i < orders.length; i++) {
+      if (!listRowIsEmpty_(data[i], formulas[i]) && toOrderNumber_(orders[i][0]) !== Number.POSITIVE_INFINITY) {
+        anyOrder = true;
+        break;
+      }
     }
-  }
-  if (anyOrder) {
-    return;
-  }
-  const step = CONFIG.listRefresh.orderStep || 10;
-  let n = 0;
-  const out = orders.map(function (row, i) {
-    if (listRowIsEmpty_(data[i], formulas[i])) {
-      return [''];
+    if (anyOrder) {
+      return;
     }
-    n += 1;
-    return [n * step];
-  });
+    const step = CONFIG.listRefresh.orderStep || 10;
+    let n = 0;
+    out = orders.map(function (row, i) {
+      if (listRowIsEmpty_(data[i], formulas[i])) {
+        return [''];
+      }
+      n += 1;
+      return [n * step];
+    });
+  }
   sheet.getRange(headerRow + 1, orderCol, height, 1).setValues(out);
+}
+
+/**
+ * 中項目が 2 行以上で順番が全部空のときだけ埋める。
+ * 先頭（作業内容が空、または先頭行）に 1、残りに 2, 3…。
+ */
+function fillWorkListGroupOrders_(data, formulas, orders, cols) {
+  const out = orders.map(function (row) {
+    return [row[0]];
+  });
+  const groups = {};
+  const keys = [];
+  let carryMajor = '';
+  let carryMid = '';
+  for (let i = 0; i < data.length; i++) {
+    if (listRowIsEmpty_(data[i], formulas[i])) {
+      continue;
+    }
+    const raw = data[i];
+    const rawMajor = normalize_(cell_(raw, cols.major));
+    const rawMid = normalize_(cell_(raw, cols.mid));
+    if (rawMajor) {
+      carryMajor = rawMajor;
+      if (!rawMid) {
+        carryMid = '';
+      }
+    }
+    if (rawMid) {
+      carryMid = rawMid;
+    }
+    const rec = {
+      i: i,
+      major: rawMajor || carryMajor,
+      mid: rawMid || carryMid,
+      content: cols.content ? cell_(raw, cols.content) : '',
+      order: orders[i][0],
+      sourceIndex: i
+    };
+    const key = rec.major + '\t' + rec.mid;
+    if (!groups[key]) {
+      groups[key] = [];
+      keys.push(key);
+    }
+    groups[key].push(rec);
+  }
+  keys.forEach(function (key) {
+    const g = groups[key];
+    if (g.length < 2) {
+      return;
+    }
+    let any = false;
+    for (let k = 0; k < g.length; k++) {
+      if (toOrderNumber_(g[k].order) !== Number.POSITIVE_INFINITY) {
+        any = true;
+        break;
+      }
+    }
+    if (any) {
+      return;
+    }
+    g.sort(function (a, b) {
+      return a.sourceIndex - b.sourceIndex;
+    });
+    let anchorIdx = -1;
+    for (let k = 0; k < g.length; k++) {
+      if (isMidAnchorRow_(g[k])) {
+        anchorIdx = k;
+        break;
+      }
+    }
+    if (anchorIdx < 0) {
+      anchorIdx = 0;
+    }
+    out[g[anchorIdx].i] = [1];
+    let n = 2;
+    for (let k = 0; k < g.length; k++) {
+      if (k === anchorIdx) {
+        continue;
+      }
+      out[g[k].i] = [n];
+      n += 1;
+    }
+  });
+  return out;
 }
 
 function listRowIsEmpty_(values, formulas) {
@@ -236,7 +327,7 @@ function listRowIsEmpty_(values, formulas) {
   return true;
 }
 
-function sortListDataRows_(sheet, headerRow, dataCol, orderCol) {
+function sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= headerRow || dataCol < 1) {
     return;
@@ -246,40 +337,65 @@ function sortListDataRows_(sheet, headerRow, dataCol, orderCol) {
   const values = range.getValues();
   const formulas = range.getFormulas();
   const formats = range.getNumberFormats();
+  const name = sheet.getName();
+  const grouped = name === CONFIG.workList.sheetName || name === CONFIG.parts.sheetName;
+  const cols = grouped
+    ? resolveColumns_(headers, name === CONFIG.workList.sheetName ? CONFIG.workList.headers : CONFIG.parts.headers)
+    : {};
   const rows = [];
+  let carryMajor = '';
+  let carryMid = '';
   for (let i = 0; i < height; i++) {
     const orderVal = orderCol <= dataCol ? values[i][orderCol - 1] : '';
-    rows.push({
+    const rec = {
       order: orderVal,
       sourceIndex: i,
       values: values[i],
       formulas: formulas[i],
-      formats: formats[i]
-    });
+      formats: formats[i],
+      major: '',
+      mid: '',
+      content: ''
+    };
+    if (grouped && !listRowIsEmpty_(values[i], formulas[i])) {
+      const rawMajor = normalize_(cell_(values[i], cols.major));
+      const rawMid = normalize_(cell_(values[i], cols.mid));
+      if (rawMajor) {
+        carryMajor = rawMajor;
+        if (!rawMid) {
+          carryMid = '';
+        }
+      }
+      if (rawMid) {
+        carryMid = rawMid;
+      }
+      rec.major = rawMajor || carryMajor;
+      rec.mid = rawMid || carryMid;
+      rec.content = cols.content ? cell_(values[i], cols.content) : '';
+    }
+    rows.push(rec);
   }
-  rows.sort(function (a, b) {
-    const emptyA = listRowIsEmpty_(a.values, a.formulas);
-    const emptyB = listRowIsEmpty_(b.values, b.formulas);
-    if (emptyA !== emptyB) {
-      return emptyA ? 1 : -1;
+  const emptyRows = [];
+  const filledRows = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (listRowIsEmpty_(rows[i].values, rows[i].formulas)) {
+      emptyRows.push(rows[i]);
+    } else {
+      filledRows.push(rows[i]);
     }
-    const oa = toOrderNumber_(a.order);
-    const ob = toOrderNumber_(b.order);
-    if (oa !== ob) {
-      return oa - ob;
-    }
-    return a.sourceIndex - b.sourceIndex;
-  });
+  }
+  const sorted = grouped ? sortWorkListRecords_(filledRows) : sortByOrder_(filledRows);
+  const finalRows = sorted.concat(emptyRows);
   const outValues = [];
   const outFormats = [];
-  for (let r = 0; r < rows.length; r++) {
+  for (let r = 0; r < finalRows.length; r++) {
     const valueRow = [];
     for (let c = 0; c < dataCol; c++) {
-      const f = rows[r].formulas[c];
-      valueRow.push(f ? f : rows[r].values[c]);
+      const f = finalRows[r].formulas[c];
+      valueRow.push(f ? f : finalRows[r].values[c]);
     }
     outValues.push(valueRow);
-    outFormats.push(rows[r].formats);
+    outFormats.push(finalRows[r].formats);
   }
   range.setValues(outValues);
   range.setNumberFormats(outFormats);

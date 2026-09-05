@@ -76,6 +76,7 @@ function cell_(raw, col1) {
 
 /**
  * 順番昇順。空・非数値は最後、同順はシート上の行番号で安定させる。
+ * 作業者リストなど、大項目／中項目で固めない一覧用。
  *
  * @param {object[]} records
  * @return {object[]}
@@ -88,6 +89,102 @@ function sortByOrder_(records) {
       return oa - ob;
     }
     return a.sourceIndex - b.sourceIndex;
+  });
+}
+
+/**
+ * 中項目ブロックの先頭行か。作業内容が空、または順番が 1（誤入力のフォールバック）。
+ *
+ * @param {object} row
+ * @return {boolean}
+ */
+function isMidAnchorRow_(row) {
+  if (!row) {
+    return false;
+  }
+  if (toOrderNumber_(row.order) === 1) {
+    return true;
+  }
+  return !hasWorkContent_(row);
+}
+
+/**
+ * 同じ中項目内：先頭行（空の作業内容 or 順番 1）を先に、残りは順番昇順。
+ *
+ * @param {object} a
+ * @param {object} b
+ * @return {number}
+ */
+function compareMidGroupRows_(a, b) {
+  const aA = isMidAnchorRow_(a) ? 0 : 1;
+  const bA = isMidAnchorRow_(b) ? 0 : 1;
+  if (aA !== bA) {
+    return aA - bA;
+  }
+  const oa = toOrderNumber_(a.order);
+  const ob = toOrderNumber_(b.order);
+  if (oa !== ob) {
+    return oa - ob;
+  }
+  return (a.sourceIndex || 0) - (b.sourceIndex || 0);
+}
+
+function groupFirstSeen_(records, keyFn) {
+  const map = {};
+  records.forEach(function (row) {
+    const key = keyFn(row);
+    const idx = row.sourceIndex || 0;
+    if (map[key] === undefined || idx < map[key]) {
+      map[key] = idx;
+    }
+  });
+  return map;
+}
+
+/**
+ * 大項目で固め、その中で中項目で固め、中項目内だけ順番する。
+ * 中項目同士は先頭行の順番の昇順（空は後）。
+ *
+ * @param {object[]} records
+ * @return {object[]}
+ */
+function sortWorkListRecords_(records) {
+  const majorOrder = groupFirstSeen_(records, function (r) {
+    return normalize_(r.major);
+  });
+  const midKey = {};
+  const grouped = {};
+  records.forEach(function (row) {
+    const key = normalize_(row.major) + '\t' + normalize_(row.mid);
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(row);
+  });
+  Object.keys(grouped).forEach(function (key) {
+    const g = grouped[key].slice().sort(compareMidGroupRows_);
+    const anchor = g[0];
+    midKey[key] = {
+      order: toOrderNumber_(anchor.order),
+      sourceIndex: anchor.sourceIndex || 0
+    };
+  });
+  return records.slice().sort(function (a, b) {
+    const dMaj = (majorOrder[normalize_(a.major)] || 0) - (majorOrder[normalize_(b.major)] || 0);
+    if (dMaj) {
+      return dMaj;
+    }
+    const ka = normalize_(a.major) + '\t' + normalize_(a.mid);
+    const kb = normalize_(b.major) + '\t' + normalize_(b.mid);
+    const oa = midKey[ka] || { order: Number.POSITIVE_INFINITY, sourceIndex: 0 };
+    const ob = midKey[kb] || { order: Number.POSITIVE_INFINITY, sourceIndex: 0 };
+    if (oa.order !== ob.order) {
+      return oa.order - ob.order;
+    }
+    if (oa.sourceIndex !== ob.sourceIndex) {
+      return oa.sourceIndex - ob.sourceIndex;
+    }
+    return compareMidGroupRows_(a, b);
   });
 }
 

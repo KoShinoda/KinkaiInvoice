@@ -240,7 +240,7 @@ function loadPartCatalog_(workRows) {
 
   const seenPart = {};
   const uniquePartLines = [];
-  sortByOrder_(partLines).forEach(function (r) {
+  sortWorkListRecords_(partLines).forEach(function (r) {
     const key = [r.major, r.mid, r.content, r.qty, r.unitPrice].join('\t');
     if (seenPart[key]) {
       return;

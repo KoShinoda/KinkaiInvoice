@@ -963,6 +963,13 @@
           var n = Number(String(v).replace(/,/g, '').trim());
           return isFinite(n) ? n : Number.POSITIVE_INFINITY;
         }
+        function isAnchor(r) {
+          if (ord(r.order) === 1) return true;
+          return !String(r.content == null ? '' : r.content).replace(/\u3000/g, ' ').trim();
+        }
+        var aA = isAnchor(a) ? 0 : 1;
+        var bA = isAnchor(b) ? 0 : 1;
+        if (aA !== bA) return aA - bA;
         var d = ord(a.order) - ord(b.order);
         if (d) return d;
         return (a.sourceIndex || 0) - (b.sourceIndex || 0);
