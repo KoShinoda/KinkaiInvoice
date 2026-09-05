@@ -38,7 +38,7 @@ function loadContext_() {
   }
 
   const inputCols = resolveInputCols_(inputSheet);
-  const workRows = parseWorkList_(workValues, workCols);
+  const workRows = sortByOrder_(parseWorkList_(workValues, workCols));
   const index = buildWorkIndex_(workRows);
 
   log_(
@@ -116,6 +116,10 @@ function buildWorkIndex_(rows) {
     }
     recordsByMajorMid[key].push(row);
   }
+
+  Object.keys(recordsByMajorMid).forEach(function (key) {
+    recordsByMajorMid[key] = sortByOrder_(recordsByMajorMid[key]);
+  });
 
   return {
     midsByMajor: midsByMajor,

@@ -105,6 +105,30 @@ function loadWorkerSheet_() {
   if (!headers[0]) headers[0] = 'コード';
   if (headers.length > 1 && !headers[1]) headers[1] = '名前';
 
+  const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.workers.headers) : {};
+  const keepIdx = [];
+  let skipNext = false;
+  const refreshLabel = CONFIG.listRefresh.buttonLabel;
+  for (let c = 0; c < colCount; c++) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (normalize_(headers[c]) === refreshLabel) {
+      skipNext = true;
+      continue;
+    }
+    if (isListMetaHeader_(headers[c])) {
+      continue;
+    }
+    keepIdx.push(c);
+  }
+  const showHeaders = keepIdx.map(function (c) {
+    return headers[c];
+  });
+  if (!showHeaders[0]) showHeaders[0] = 'コード';
+  if (showHeaders.length > 1 && !showHeaders[1]) showHeaders[1] = '名前';
+
   const rows = [];
   const seen = {};
   for (let i = start; i < vals.length; i++) {
@@ -120,16 +144,24 @@ function loadWorkerSheet_() {
     seen[key] = true;
     const cells = [];
     const images = [];
-    for (let c = 0; c < colCount; c++) {
+    for (let k = 0; k < keepIdx.length; k++) {
+      const c = keepIdx[k];
       const raw = vals[i][c];
       const formula = formulas[i] ? formulas[i][c] : '';
       const img = imageUrlFromCell_(raw, formula);
       images.push(img);
       cells.push(img ? '' : normalize_(raw));
     }
-    rows.push({ code: code, name: name, cells: cells, images: images });
+    rows.push({
+      code: code,
+      name: name,
+      cells: cells,
+      images: images,
+      order: cols.order ? cell_(vals[i], cols.order) : '',
+      sourceIndex: i + 1
+    });
   }
-  return { headers: headers, rows: rows };
+  return { headers: showHeaders, rows: sortByOrder_(rows) };
 }
 
 function loadWorkers_() {
@@ -167,28 +199,29 @@ function loadPartCatalog_(workRows) {
     const vals = sh.getDataRange().getValues();
     let start = 0;
     if (vals.length) {
-      const h = normalize_(vals[0][0]) + normalize_(vals[0][1]);
+      const h = normalize_(vals[0][0]) + (vals[0].length > 1 ? normalize_(vals[0][1]) : '');
       if (h.indexOf('大項目') !== -1 || h.indexOf('部品') !== -1 || h.indexOf('中項目') !== -1) {
         start = 1;
       }
     }
+    const cols = start === 1 && vals.length ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
     for (let i = start; i < vals.length; i++) {
       const c0 = normalize_(vals[i][0]);
       const c1 = vals[i].length > 1 ? normalize_(vals[i][1]) : '';
-      if (!c0 && !c1) {
+      let major = cols.major ? normalize_(cell_(vals[i], cols.major)) : c0;
+      let mid = cols.mid ? normalize_(cell_(vals[i], cols.mid)) : c1;
+      if (!major && !mid) {
         continue;
       }
-      let major = c0;
-      let mid = c1;
       let content = '';
       let qty = vals[i].length > 2 ? vals[i][2] : '';
       let unitPrice = vals[i].length > 3 ? vals[i][3] : '';
-      if (!c1) {
-        major = c0;
-        mid = c0;
+      if (!mid) {
+        major = major || c0;
+        mid = major;
         qty = vals[i].length > 1 && isProbablyNumber_(vals[i][1]) ? vals[i][1] : '';
         unitPrice = vals[i].length > 2 ? vals[i][2] : '';
-      } else if (vals[i].length > 2 && !isProbablyNumber_(vals[i][2])) {
+      } else if (!cols.major && vals[i].length > 2 && !isProbablyNumber_(vals[i][2])) {
         content = normalize_(vals[i][2]);
         qty = vals[i].length > 3 ? vals[i][3] : '';
         unitPrice = vals[i].length > 4 ? vals[i][4] : '';
@@ -198,14 +231,16 @@ function loadPartCatalog_(workRows) {
         mid: mid,
         content: content,
         qty: qty,
-        unitPrice: unitPrice
+        unitPrice: unitPrice,
+        order: cols.order ? cell_(vals[i], cols.order) : '',
+        sourceIndex: i + 1
       });
     }
   }
 
   const seenPart = {};
   const uniquePartLines = [];
-  partLines.forEach(function (r) {
+  sortByOrder_(partLines).forEach(function (r) {
     const key = [r.major, r.mid, r.content, r.qty, r.unitPrice].join('\t');
     if (seenPart[key]) {
       return;
