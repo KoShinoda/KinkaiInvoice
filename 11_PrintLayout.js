@@ -6,18 +6,17 @@
 
 /** 列幅（px）。A4 印刷幅に収まる合計。
  * No / 作業者 / 数量 … 999 まで
- * 技術料 / 単価 / 金額 … 9,999,999 まで
+ * 技術料 / 単価 / 金額 … 999,999 まで
  * 残りは作業内容を優先し、次に部品。
  */
-var PRINT_COL_WIDTHS_ = [32, 236, 86, 36, 118, 32, 86, 86];
+var PRINT_COL_WIDTHS_ = [32, 270, 70, 36, 132, 32, 70, 70];
 var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部品', '数量', '単価', '金額'];
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
-/** A4 縦（余白込み）に近いピクセル。明細スロットに余りを振る。 */
+/** A4 縦（余白込み）に近いピクセル。明細行に余りを振る。 */
 var PRINT_PAGE_PX_ = 1100;
-var PRINT_FONT_MAX_ = 15;
-var PRINT_FONT_MIN_ = 9;
-var PRINT_SLOT_MAX_ = 4;
+var PRINT_FONT_MAX_ = 12;
+var PRINT_FONT_MIN_ = 7;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -63,7 +62,7 @@ function makePrintSamplePayload_() {
   const items = [];
   let techSub = 0;
   let partSub = 0;
-  const n = Math.max(60, Math.min(90, mids.length + 20));
+  const n = 60;
   for (let i = 0; i < n; i++) {
     const fee = i % 7 === 0 ? 0 : 800 + (i % 12) * 200;
     const qty = 1 + (i % 3 === 0 ? 1 : 0);
@@ -258,8 +257,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
     return rowHasContent_(it);
   });
   const per = CONFIG.print.linesPerPage;
-  const pages = paginatePrintItems_(items, per);
-  const pageCount = Math.max(1, pages.length);
+  const pageCount = Math.max(1, Math.ceil(items.length / per) || 1);
   const sheet = replacePrintSheet_(ss, sheetName);
 
   sheet.setHiddenGridlines(true);
@@ -268,19 +266,17 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
     sheet.setColumnWidth(c + 1, PRINT_COL_WIDTHS_[c]);
   }
 
-  let serial = 0;
   for (let p = 0; p < pageCount; p++) {
     const start = 1 + p * CONFIG.print.pageRows;
-    const slice = pages[p] || [];
+    const slice = items.slice(p * per, p * per + per);
     fillPrintPage_(sheet, start, payload.header || {}, slice, {
       page: p + 1,
       pageCount: pageCount,
-      serialOffset: serial,
+      serialOffset: p * per,
       showHeader: p === 0,
       showFooter: p === pageCount - 1,
       summary: payload.summary || {}
     });
-    serial += slice.length;
   }
 
   trimPrintSheet_(sheet, pageCount * CONFIG.print.pageRows);
@@ -355,10 +351,10 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
 
   sheet.getRange(start, 1, CONFIG.print.pageRows, cols)
     .setFontFamily('Yu Gothic')
-    .setFontSize(15)
+    .setFontSize(12)
     .setFontColor(PRINT_BLACK_)
     .setVerticalAlignment('middle')
-    .setWrap(true);
+    .setWrap(false);
 
   applyPrintPageHeights_(sheet, start);
   mergePrintPage_(sheet, start, opts.showHeader, opts.showFooter);
@@ -367,12 +363,12 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   const title = String(header.userName || CONFIG.print.title || '近海請求書').trim() || '近海請求書';
   sheet.getRange(titleRow, 1).setValue(opts.showHeader ? title : '');
   sheet.getRange(titleRow, 1, 1, 4)
-    .setFontSize(24)
+    .setFontSize(20)
     .setFontWeight('bold')
     .setHorizontalAlignment('left');
   sheet.getRange(titleRow, 5).setValue('No.' + opts.page + '／' + opts.pageCount);
   sheet.getRange(titleRow, 5, 1, 4)
-    .setFontSize(16)
+    .setFontSize(12)
     .setFontWeight('bold')
     .setHorizontalAlignment('right');
 
@@ -404,25 +400,21 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
   const cols = CONFIG.print.colCount;
   const empty = ['', '', '', '', '', '', '', ''];
   const body = [];
-  const tallOffsets = [];
   const fonts = [];
   for (let i = 0; i < per; i++) {
-    body.push(empty.slice());
-  }
-
-  let slot = 0;
-  for (let i = 0; i < lines.length; i++) {
     const it = lines[i];
-    const span = printSlotCount_(it);
-    if (slot + span > per) {
-      break;
+    if (!it) {
+      body.push(empty.slice());
+      continue;
     }
     const work = it.mid || it.name || '';
     const part = it.partMid || it.part || '';
     const qty = toNumberOrBlank_(it.qty);
     const price = toNumberOrBlank_(it.unitPrice);
     const amount = lineAmount_(it, qty, price);
-    body[slot] = [
+    const workBreak = hasPrintNewline_(work);
+    const partBreak = hasPrintNewline_(part);
+    body.push([
       serialOffset + i + 1,
       work,
       it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
@@ -431,119 +423,51 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
       qty,
       price,
       amount
-    ];
+    ]);
     fonts.push({
-      slot: slot,
-      span: span,
-      workPt: fitPrintFont_(work, PRINT_COL_WIDTHS_[1], span),
-      partPt: fitPrintFont_(part, PRINT_COL_WIDTHS_[4], span)
+      row: i,
+      workPt: fitPrintFont_(work, PRINT_COL_WIDTHS_[1], workBreak ? newlineCount_(work) : 1),
+      partPt: fitPrintFont_(part, PRINT_COL_WIDTHS_[4], partBreak ? newlineCount_(part) : 1),
+      workWrap: workBreak,
+      partWrap: partBreak,
+      lines: Math.max(workBreak ? newlineCount_(work) : 1, partBreak ? newlineCount_(part) : 1)
     });
-    if (span > 1) {
-      tallOffsets.push({ slot: slot, span: span });
-    }
-    slot += span;
   }
 
   const bodyRange = sheet.getRange(first, 1, per, cols);
   bodyRange.setValues(body);
   bodyRange.setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
   sheet.getRange(first, 1, per, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 2, per, 1).setWrap(false);
   sheet.getRange(first, 3, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
   sheet.getRange(first, 4, per, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 5, per, 1).setWrap(false);
   sheet.getRange(first, 6, per, 1).setHorizontalAlignment('center').setWrap(false);
   sheet.getRange(first, 7, per, 2).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
-  sheet.getRange(first, 2, per, 1).setWrap(true);
-  sheet.getRange(first, 5, per, 1).setWrap(true);
 
-  for (let t = 0; t < tallOffsets.length; t++) {
-    const off = tallOffsets[t].slot;
-    const span = tallOffsets[t].span;
-    for (let c = 1; c <= cols; c++) {
-      sheet.getRange(first + off, c, span, 1).merge();
-    }
-  }
-
+  const baseH = sheet.getRowHeight(first);
   for (let f = 0; f < fonts.length; f++) {
     const info = fonts[f];
-    const workCell = sheet.getRange(first + info.slot, 2);
-    const partCell = sheet.getRange(first + info.slot, 5);
-    workCell.setFontSize(info.workPt).setWrap(info.span > 1 || String(body[info.slot][1]).indexOf('\n') !== -1);
-    partCell.setFontSize(info.partPt).setWrap(info.span > 1 || String(body[info.slot][4]).indexOf('\n') !== -1);
-    if (info.span === 1) {
-      if (info.workPt >= PRINT_FONT_MAX_ && displayUnits_(body[info.slot][1]) <= printColCapacity_(PRINT_COL_WIDTHS_[1], info.workPt)) {
-        workCell.setWrap(false);
-      }
-      if (info.partPt >= PRINT_FONT_MAX_ && displayUnits_(body[info.slot][4]) <= printColCapacity_(PRINT_COL_WIDTHS_[4], info.partPt)) {
-        partCell.setWrap(false);
-      }
+    const workCell = sheet.getRange(first + info.row, 2);
+    const partCell = sheet.getRange(first + info.row, 5);
+    workCell.setFontSize(info.workPt).setWrap(info.workWrap);
+    partCell.setFontSize(info.partPt).setWrap(info.partWrap);
+    if (info.lines > 1) {
+      sheet.setRowHeight(first + info.row, Math.round(baseH * Math.min(info.lines, 3) * 0.92));
     }
   }
 }
 
-function paginatePrintItems_(items, slotsPerPage) {
-  const pages = [];
-  let page = [];
-  let used = 0;
-  for (let i = 0; i < items.length; i++) {
-    const n = printSlotCount_(items[i]);
-    if (used + n > slotsPerPage && page.length) {
-      pages.push(page);
-      page = [];
-      used = 0;
-    }
-    page.push(items[i]);
-    used += n;
-  }
-  if (page.length) {
-    pages.push(page);
-  }
-  if (!pages.length) {
-    pages.push([]);
-  }
-  return pages;
+function hasPrintNewline_(text) {
+  return /[\r\n]/.test(String(text || ''));
 }
 
-function printSlotCount_(it) {
-  if (!it) {
-    return 1;
-  }
-  const work = it.mid || it.name || '';
-  const part = it.partMid || it.part || '';
-  const n = Math.max(
-    slotsForPrintText_(work, PRINT_COL_WIDTHS_[1]),
-    slotsForPrintText_(part, PRINT_COL_WIDTHS_[4])
-  );
-  if (n < 1) {
-    return 1;
-  }
-  return n > PRINT_SLOT_MAX_ ? PRINT_SLOT_MAX_ : n;
-}
-
-function slotsForPrintText_(text, colWidth) {
+function newlineCount_(text) {
   const s = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   if (!s) {
     return 1;
   }
-  const paras = s.split('\n');
-  let wrapMin = 0;
-  let wrapMax = 0;
-  for (let i = 0; i < paras.length; i++) {
-    const u = displayUnits_(paras[i]);
-    if (!u) {
-      wrapMin += 1;
-      wrapMax += 1;
-      continue;
-    }
-    wrapMax += Math.max(1, Math.ceil(u / (printColCapacity_(colWidth, PRINT_FONT_MAX_) * 0.82)));
-    wrapMin += Math.max(1, Math.ceil(u / (printColCapacity_(colWidth, PRINT_FONT_MIN_) * 0.82)));
-  }
-  if (wrapMin <= 1 && wrapMax <= 1) {
-    return 1;
-  }
-  if (wrapMin <= 2) {
-    return 2;
-  }
-  return wrapMin > PRINT_SLOT_MAX_ ? PRINT_SLOT_MAX_ : wrapMin;
+  return s.split('\n').length;
 }
 
 function printColCapacity_(colWidth, fontPt) {
@@ -653,16 +577,16 @@ function fillPrintHeader_(sheet, start, header) {
   sheet.getRange(l1, 1).setValue('K-No').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l1, 3).setValue('登録番号').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l1, 5).setValue('受付').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(v1, 1).setValue(header.kNo || '').setFontSize(16);
-  sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(16);
-  sheet.getRange(v1, 5).setValue(header.receptionist || header.staff || '').setFontSize(16);
+  sheet.getRange(v1, 1).setValue(header.kNo || '').setFontSize(12);
+  sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(12);
+  sheet.getRange(v1, 5).setValue(header.receptionist || header.staff || '').setFontSize(12);
 
   sheet.getRange(l2, 1).setValue('入庫日').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l2, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l2, 5).setValue('請求日').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(v2, 1).setValue(header.inDate || '').setFontSize(16);
-  sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(16);
-  sheet.getRange(v2, 5).setValue(header.billDate || '').setFontSize(16);
+  sheet.getRange(v2, 1).setValue(header.inDate || '').setFontSize(12);
+  sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(12);
+  sheet.getRange(v2, 5).setValue(header.billDate || '').setFontSize(12);
 
   sheet.getRange(l1, 1, 4, 6)
     .setHorizontalAlignment('left')
