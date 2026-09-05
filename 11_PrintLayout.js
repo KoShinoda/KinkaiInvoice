@@ -523,8 +523,8 @@ function fillPrintBodyFonts_(sheet, first, lines) {
     const partBreak = hasPrintNewline_(part);
     const workCell = sheet.getRange(first + i, 2);
     const partCell = sheet.getRange(first + i, 5);
-    workCell.setFontSize(fitPrintFont_(work, PRINT_COL_WIDTHS_[1], workBreak ? newlineCount_(work) : 1));
-    partCell.setFontSize(fitPrintFont_(part, PRINT_COL_WIDTHS_[4], partBreak ? newlineCount_(part) : 1));
+    workCell.setFontSize(fitPrintFont_(work, PRINT_COL_WIDTHS_[1]));
+    partCell.setFontSize(fitPrintFont_(part, PRINT_COL_WIDTHS_[4]));
     workCell.setWrap(workBreak);
     partCell.setWrap(partBreak);
   }
@@ -567,7 +567,7 @@ function displayUnits_(text) {
   return u;
 }
 
-function fitPrintFont_(text, colWidth, lines) {
+function fitPrintFont_(text, colWidth) {
   const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   if (!raw) {
     return PRINT_FONT_MAX_;
@@ -577,13 +577,12 @@ function fitPrintFont_(text, colWidth, lines) {
   for (let i = 0; i < parts.length; i++) {
     units = Math.max(units, displayUnits_(parts[i]));
   }
-  const lineCount = lines > 1 ? lines : 1;
   if (units < 0.5) {
     return PRINT_FONT_MAX_;
   }
-  units += 0.35;
+  units += 0.5;
   for (let pt = PRINT_FONT_MAX_; pt >= PRINT_FONT_MIN_; pt--) {
-    if (units <= printColCapacity_(colWidth, pt) * lineCount) {
+    if (units <= printColCapacity_(colWidth, pt)) {
       return pt;
     }
   }
