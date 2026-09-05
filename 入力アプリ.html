@@ -72,14 +72,14 @@
       border-collapse: collapse;
       table-layout: fixed;
     }
-    col.col-no { width: 36px; }
+    col.col-no { width: 28px; }
     col.col-fee { width: 96px; }
     col.col-staff { width: 70px; }
     col.col-n { width: 52px; }
     col.col-qty { width: 42px; }
     col.col-amt { width: 96px; }
     col.col-disc { width: 56px; }
-    col.col-del { width: 56px; }
+    col.col-del { width: 28px; }
     col.col-major { width: 15%; }
     col.col-mid { width: 25%; }
     col.col-part-major { width: 15%; }
@@ -181,23 +181,42 @@
       font-size: 11px;
       padding: 3px 0;
     }
-    td.del { text-align: center; padding: 2px 0; white-space: nowrap; }
-    td.del button { margin: 0 1px; }
+    td.del {
+      text-align: center;
+      padding: 2px 0;
+      position: relative;
+      overflow: visible;
+    }
     button.side-ins {
-      width: 22px;
-      height: 22px;
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      z-index: 3;
+      width: 16px;
+      height: 16px;
       padding: 0;
+      margin: 0 0 0 -8px;
       border: 1px solid var(--accent);
-      border-radius: 6px;
+      border-radius: 50%;
       background: #fff;
       color: var(--accent);
-      font-size: 14px;
-      line-height: 20px;
+      font-size: 12px;
+      line-height: 14px;
       cursor: pointer;
+      opacity: 0;
     }
-    button.side-ins:hover { background: #e8f0ec; }
     th.del-h { text-align: center; }
-    th.del-h .side-ins { display: block; margin: 2px auto 0; }
+    th.del-h .side-ins {
+      position: static;
+      display: block;
+      margin: 2px auto 0;
+      opacity: 1;
+    }
+    tr:hover .side-ins,
+    button.side-ins:hover,
+    button.side-ins:focus {
+      opacity: 1;
+    }
     button.row-del {
       width: 22px;
       height: 22px;
