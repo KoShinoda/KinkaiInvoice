@@ -412,6 +412,40 @@
     }
     .combo { position: relative; }
     .combo input { width: 100%; }
+    .combo textarea {
+      width: 100%;
+      resize: none;
+      overflow: hidden;
+      min-height: 28px;
+      line-height: 1.35;
+      padding: 6px 8px;
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      box-sizing: border-box;
+    }
+    td.mid { vertical-align: top; }
+    .mid-wrap {
+      display: flex;
+      gap: 2px;
+      align-items: flex-start;
+      position: relative;
+    }
+    .mid-wrap textarea { flex: 1; min-width: 0; }
+    button.mid-nl {
+      width: 22px;
+      flex: 0 0 22px;
+      margin-top: 3px;
+      padding: 0;
+      background: #fff;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 20px;
+      cursor: pointer;
+    }
+    button.mid-nl:hover { background: #e8f0ec; color: var(--accent); }
     .combo-list {
       position: absolute;
       left: 0; right: 0; top: 100%;
@@ -1028,7 +1062,7 @@
     function bindRowCells(tr) {
       tr._cells = {
         major: tr.querySelector('select[data-k="major"]'),
-        mid: tr.querySelector('input[data-k="mid"]'),
+        mid: tr.querySelector('[data-k="mid"]'),
         fee: tr.querySelector('[data-k="fee"]'),
         workerCode: tr.querySelector('input[data-k="workerCode"]'),
         partMajor: tr.querySelector('select[data-k="partMajor"]'),
@@ -1074,6 +1108,7 @@
       if (c.mid) {
         c.mid.value = it.mid || '';
         c.mid.dataset.options = midsJson(it.major);
+        fitMidHeight(c.mid);
       }
       if (c.partMid) {
         c.partMid.value = it.partMid || '';
@@ -1098,7 +1133,11 @@
           (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
-        '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
+        '<td class="mid"><div class="combo mid-wrap">' +
+          '<textarea data-i="' + i + '" data-k="mid" rows="1" autocomplete="off"></textarea>' +
+          '<button type="button" class="mid-nl" data-i="' + i + '" tabindex="-1" title="改行（Ctrl+Enter / Alt+Enter）">↵</button>' +
+          '<div class="combo-list" hidden></div>' +
+        '</div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
         '<td class="staff"><div class="combo staff-wrap">' +
           '<input data-i="' + i + '" data-k="workerCode" autocomplete="off">' +
@@ -1388,6 +1427,33 @@
       });
       comboActiveIndex = -1;
     }
+    function fitMidHeight(el) {
+      if (!el || el.dataset.k !== 'mid') return;
+      el.style.height = 'auto';
+      var minH = 28;
+      var maxH = 160;
+      var h = el.scrollHeight;
+      if (h < minH) h = minH;
+      if (h > maxH) h = maxH;
+      el.style.height = h + 'px';
+      el.style.overflow = el.scrollHeight > maxH ? 'auto' : 'hidden';
+    }
+    function insertMidNewline(el) {
+      if (!el || el.dataset.k !== 'mid') return;
+      var i = Number(el.dataset.i);
+      var start = el.selectionStart;
+      var end = el.selectionEnd;
+      if (start == null) start = el.value.length;
+      if (end == null) end = start;
+      var v = String(el.value || '');
+      el.value = v.slice(0, start) + '\n' + v.slice(end);
+      el.selectionStart = el.selectionEnd = start + 1;
+      if (items[i]) items[i].mid = el.value;
+      fitMidHeight(el);
+    }
+    function comboOptionLabel(v) {
+      return String(v == null ? '' : v).replace(/\r\n|\n|\r/g, ' / ');
+    }
     function comboOptions(input) {
       try { return JSON.parse(input.dataset.options || '[]'); } catch (e) { return []; }
     }
@@ -1423,7 +1489,7 @@
         });
         opts.forEach(function (v) {
           var d = document.createElement('div');
-          d.textContent = v;
+          d.textContent = comboOptionLabel(v);
           d.dataset.value = v;
           list.appendChild(d);
         });
@@ -1743,6 +1809,17 @@
       if (e.key === 'Escape') hideWorkerPicker();
     });
     $('tbody').addEventListener('click', function (e) {
+      var nl = e.target.closest('button.mid-nl');
+      if (nl) {
+        e.preventDefault();
+        var row = $('tbody').rows[Number(nl.dataset.i)];
+        var midEl = row && row._cells && row._cells.mid;
+        if (midEl) {
+          midEl.focus();
+          insertMidNewline(midEl);
+        }
+        return;
+      }
       var pick = e.target.closest('button.staff-pick');
       if (pick) {
         e.preventDefault();
@@ -1762,16 +1839,22 @@
       deleteSide(Number(btn.dataset.i), btn.dataset.side);
     });
     $('tbody').addEventListener('mousedown', function (e) {
+      if (e.target.closest('button.mid-nl')) {
+        e.preventDefault();
+        return;
+      }
       var opt = e.target.closest('.combo-list div');
       if (!opt) return;
       e.preventDefault();
-      var input = opt.parentNode.parentNode.querySelector('input');
+      var input = opt.parentNode.parentNode.querySelector('[data-k="mid"], [data-k="partMid"], [data-k="workerCode"]');
+      if (!input) return;
       input.value = opt.dataset.value;
       hideComboLists();
       comboIgnoreBlur = true;
       var i = Number(input.dataset.i);
       if (input.dataset.k === 'mid') {
         items[i].mid = opt.dataset.value;
+        fitMidHeight(input);
         onMidChosen(i);
       } else if (input.dataset.k === 'partMid') {
         items[i].partMid = opt.dataset.value;
@@ -1796,6 +1879,12 @@
       if (e.key === 'Tab') {
         e.preventDefault();
         moveRight(e.target, e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (e.key === 'Enter' && (e.ctrlKey || e.altKey) && k === 'mid') {
+        if (e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        insertMidNewline(e.target);
         return;
       }
       if (e.key === 'Enter') {
@@ -1850,11 +1939,12 @@
     });
     $('tbody').addEventListener('input', function (e) {
       var t = e.target;
-      if (!t.dataset || t.tagName !== 'INPUT') return;
+      if (!t.dataset || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') {
         showComboList(t);
+        if (k === 'mid') fitMidHeight(t);
         return;
       }
       items[i][k] = t.value;
