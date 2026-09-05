@@ -21,6 +21,10 @@ function openInputApp() {
  * 画面初期データ（大項目・中項目・展開に使うマスタ）。
  */
 function getInvoiceMaster() {
+  const workSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.workList.sheetName);
+  if (workSheet) {
+    ensureWorkListWorkerCodeColumn_(workSheet);
+  }
   invalidateContext_();
   const ctx = loadContext_();
   const majors = uniqueValues_(ctx.workRows.map(function (row) {
@@ -35,6 +39,7 @@ function getInvoiceMaster() {
       mid: row.mid,
       content: normalize_(row.content),
       fee: row.fee,
+      workerCode: row.workerCode,
       order: row.order,
       sourceIndex: row.sourceIndex,
       partMajor: normalize_(row.partMajor),

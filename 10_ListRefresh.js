@@ -106,6 +106,7 @@ function ensureListMasterSheets_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const work = ss.getSheetByName(CONFIG.workList.sheetName);
   if (work) {
+    ensureWorkListWorkerCodeColumn_(work);
     ensureWorkListPartColumns_(work);
     layoutWorkListColumns_(work);
     ensureOrderColumnOnSheet_(work);
@@ -164,6 +165,25 @@ function ensureOrderColumnOnSheet_(sheet) {
   return orderCol;
 }
 
+/**
+ * 技術料の右（既定 E 列）に「作業コード」を挿入する。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function ensureWorkListWorkerCodeColumn_(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  if (cols.workerCode) {
+    return;
+  }
+  const layoutCol = CONFIG.workList.layout && CONFIG.workList.layout.workerCode;
+  const at = cols.fee ? cols.fee + 1 : (layoutCol || 5);
+  sheet.insertColumnBefore(at);
+  sheet.getRange(1, at).setValue('作業コード').setFontWeight('bold');
+  sheet.setColumnWidth(at, 72);
+}
+
 function ensureWorkListPartColumns_(sheet) {
   const wanted = [
     { name: '部品_中項目', aliases: CONFIG.workList.headers.partMid },
@@ -192,7 +212,7 @@ function ensureWorkListPartColumns_(sheet) {
 }
 
 /**
- * 部品_中項目/単価/数量を E/F/G へ。順番をデータ列の末尾へ。
+ * 作業コードを E、部品_中項目/単価/数量を F/G/H へ。順番をデータ列の末尾へ。
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
@@ -202,7 +222,7 @@ function layoutWorkListColumns_(sheet) {
   const lastRow = Math.max(sheet.getLastRow(), 1);
   const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
   const cols = resolveColumns_(headers, CONFIG.workList.headers);
-  const layout = CONFIG.workList.layout || { partMid: 5, unitPrice: 6, qty: 7 };
+  const layout = CONFIG.workList.layout || { workerCode: 5, partMid: 6, unitPrice: 7, qty: 8 };
   const used = {};
   const orderIdx = [];
 
@@ -218,6 +238,7 @@ function layoutWorkListColumns_(sheet) {
   pushCol(cols.mid);
   pushCol(cols.content);
   pushCol(cols.fee);
+  pushCol(cols.workerCode);
 
   const frontKeys = ['partMid', 'unitPrice', 'qty'];
   frontKeys.forEach(function (key) {
@@ -252,7 +273,8 @@ function layoutWorkListColumns_(sheet) {
       break;
     }
   }
-  const partOk = cols.partMid === layout.partMid && cols.unitPrice === layout.unitPrice && cols.qty === layout.qty;
+  const partOk = (!layout.workerCode || cols.workerCode === layout.workerCode) &&
+    cols.partMid === layout.partMid && cols.unitPrice === layout.unitPrice && cols.qty === layout.qty;
   const orderOk = !cols.order || cols.order === orderIdx.length;
   if (already && partOk && orderOk) {
     return;
@@ -318,6 +340,7 @@ function removeWorkerOrderColumn_(sheet) {
 function refreshMasterListSheet_(sheet) {
   const headerRow = 1;
   if (sheet.getName() === CONFIG.workList.sheetName) {
+    ensureWorkListWorkerCodeColumn_(sheet);
     ensureWorkListPartColumns_(sheet);
     layoutWorkListColumns_(sheet);
   }

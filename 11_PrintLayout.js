@@ -491,6 +491,20 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   return L.pageRows;
 }
 
+/**
+ * 印刷の作業者列は狭いのでコード優先。リスト未登録の手入力はそのまま出す。
+ */
+function printWorkerValue_(it) {
+  if (!it) {
+    return '';
+  }
+  const code = String(it.workerCode == null ? '' : it.workerCode).trim();
+  if (code) {
+    return code;
+  }
+  return String(it.workerName || '').trim();
+}
+
 function fillPrintBody_(sheet, first, lines, serialOffset) {
   const per = CONFIG.print.linesPerPage;
   const cols = CONFIG.print.colCount;
@@ -509,7 +523,7 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
       serialOffset + i + 1,
       it.mid || it.name || '',
       it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
-      it.workerCode || '',
+      printWorkerValue_(it),
       it.partMid || it.part || '',
       qty,
       price,

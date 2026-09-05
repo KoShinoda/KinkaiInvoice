@@ -204,6 +204,7 @@ function parseWorkList_(values, cols) {
       mid: mid,
       content: content,
       fee: cell_(raw, cols.fee),
+      workerCode: cell_(raw, cols.workerCode),
       order: cell_(raw, cols.order),
       partMajor: cell_(raw, cols.partMajor),
       partMid: cell_(raw, cols.partMid),

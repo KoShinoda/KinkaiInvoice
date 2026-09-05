@@ -39,12 +39,34 @@
       padding: 14px;
       margin-bottom: 12px;
     }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 10px;
+    }
+    .card-head h2 {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
     .card h2 {
       margin: 0 0 10px;
       font-size: 12px;
       color: var(--muted);
       font-weight: 600;
     }
+    button.ghost {
+      background: #fff;
+      color: var(--danger);
+      border: 1px solid #f0c4c0;
+      padding: 5px 12px;
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+    button.ghost:hover { background: #fde8e8; }
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -471,7 +493,10 @@
   </header>
   <main>
     <section class="card">
-      <h2>ヘッダー</h2>
+      <div class="card-head">
+        <h2>ヘッダー</h2>
+        <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
+      </div>
       <div class="grid header-grid">
         <div><label>ユーザー</label><input id="userName"></div>
         <div><label>K-No</label><input id="kNo"></div>
@@ -503,7 +528,10 @@
       </div>
     </section>
     <section class="card">
-      <h2>明細（120行・表内スクロール）　大項目はリスト選択　／　中項目は入力可</h2>
+      <div class="card-head">
+        <h2>明細（120行・表内スクロール）　大項目はリスト選択　／　中項目は入力可</h2>
+        <button type="button" class="ghost" id="btnClearItems">明細全消去</button>
+      </div>
       <div class="template-bar">
         <div>
           <label>明細テンプレート</label>
@@ -749,6 +777,23 @@
         fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
       }
       applyDeptDefaults();
+    }
+    function clearHeaderFields() {
+      $('userName').value = '';
+      $('kNo').value = '';
+      $('plate').value = '';
+      $('dept').value = '';
+      applyDeptDefaults();
+      $('serviceType').value = '';
+      $('receptionist').value = '';
+      applyDateField('inDate', 'inDateCal', '');
+      applyDateField('outDate', 'outDateCal', '');
+      applyDateField('billDate', 'billDateCal', '');
+    }
+    function clearItemRows() {
+      items = [];
+      padItems();
+      renderGrid();
     }
     function gridHasContent() {
       for (var i = 0; i < items.length; i++) {
@@ -1329,6 +1374,12 @@
       }
       return '';
     }
+    function applyMasterWorkerIfEmpty(it, group) {
+      if (!it || filled(it.workerCode) || filled(it.workerName)) return;
+      var code = firstFilled(group, 'workerCode');
+      if (!filled(code)) return;
+      assignWorker(it, findWorker(code), code);
+    }
 
     function copyWorkPart(target, w) {
       if (!w) return;
@@ -1397,6 +1448,7 @@
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
+        applyMasterWorkerIfEmpty(it, group);
         compactItems();
         renderGrid();
         setStatus('中項目「' + mid + '」を入力しました');
@@ -1404,13 +1456,17 @@
       }
 
       it.fee = firstFilled(blanks, 'fee');
+      applyMasterWorkerIfEmpty(it, blanks.length ? blanks.concat(works) : group);
       var details = works.map(function (w) {
         var row = emptyRow();
         row.major = it.major || w.major || '';
         row.mid = w.content;
         row.fee = w.fee;
-        row.workerCode = it.workerCode || '';
-        row.workerName = it.workerName || '';
+        if (filled(w.workerCode)) assignWorker(row, findWorker(w.workerCode), w.workerCode);
+        else {
+          row.workerCode = it.workerCode || '';
+          row.workerName = it.workerName || '';
+        }
         row.kind = 'work';
         return row;
       });
@@ -1598,8 +1654,7 @@
         items[i].partMid = v;
         onPartMidChosen(i);
       } else if (k === 'workerCode') {
-        assignWorker(items[i], findWorker(v), v);
-        syncWorkerInput(i);
+        commitWorkerAt(i, v);
         recalc();
       }
     }
@@ -1617,15 +1672,16 @@
       if (fromList) {
         el.value = list.children[comboActiveIndex].dataset.value;
       }
-      var changed = items[i][k] !== el.value;
+      var changed = k === 'workerCode'
+        ? workerInputValue(items[i]) !== el.value
+        : items[i][k] !== el.value;
       hideComboLists(comboKeepInput());
-      items[i][k] = el.value;
       if (k === 'workerCode') {
-        assignWorker(items[i], findWorker(el.value), el.value);
-        syncWorkerInput(i);
+        commitWorkerAt(i, el.value, { fillDown: fromList || changed });
         if (force || changed || fromList) recalc();
         return;
       }
+      items[i][k] = el.value;
       if (force || changed || fromList) {
         comboIgnoreBlur = true;
         if (k === 'mid') onMidChosen(i);
@@ -1667,6 +1723,36 @@
       e.preventDefault();
       insertSide(Number(ins.dataset.at), ins.dataset.side);
     });
+    function lastFilledMidIndex() {
+      var last = -1;
+      for (var i = 0; i < items.length; i++) {
+        if (String(items[i].mid || '').replace(/\u3000/g, ' ').trim()) last = i;
+      }
+      return last;
+    }
+    function fillWorkerCodesFrom(start) {
+      if (start < 0 || !items[start]) return;
+      var last = lastFilledMidIndex();
+      if (last < start) last = start;
+      var src = items[start];
+      var i;
+      for (i = start; i <= last; i++) {
+        items[i].workerCode = src.workerCode;
+        items[i].workerName = src.workerName;
+        syncWorkerInput(i);
+      }
+    }
+    function commitWorkerAt(rowIndex, raw, opts) {
+      var it = items[rowIndex];
+      var before = String(it.workerCode || '') + '\t' + String(it.workerName || '');
+      assignWorker(it, findWorker(raw), raw);
+      var after = String(it.workerCode || '') + '\t' + String(it.workerName || '');
+      var fill = opts && opts.fillDown;
+      if (fill == null) fill = before !== after;
+      if (fill) fillWorkerCodesFrom(rowIndex);
+      else syncWorkerInput(rowIndex);
+    }
+
     var workerPickerRow = -1;
     function workerListRows() {
       if (master.workers && master.workers.length) return master.workers;
@@ -1836,8 +1922,7 @@
     }
     function applyWorkerCode(code) {
       if (workerPickerRow < 0 || !items[workerPickerRow]) return;
-      assignWorker(items[workerPickerRow], findWorker(code), code);
-      syncWorkerInput(workerPickerRow);
+      commitWorkerAt(workerPickerRow, code, { fillDown: true });
       hideWorkerPicker();
       recalc();
     }
@@ -1906,8 +1991,7 @@
         items[i].partMid = opt.dataset.value;
         onPartMidChosen(i);
       } else if (input.dataset.k === 'workerCode') {
-        assignWorker(items[i], findWorker(opt.dataset.value), opt.dataset.value);
-        syncWorkerInput(i);
+        commitWorkerAt(i, opt.dataset.value, { fillDown: true });
         recalc();
       }
     });
@@ -2063,6 +2147,18 @@
         grand: techNet + partNet
       };
     }
+
+    $('btnClearHeader').addEventListener('click', function () {
+      if (!window.confirm('ヘッダー（ユーザー・車両・日付など）をすべて消しますか？')) return;
+      clearHeaderFields();
+      setStatus('ヘッダーを消去しました');
+    });
+    $('btnClearItems').addEventListener('click', function () {
+      if (!window.confirm('明細をすべて消しますか？（値引％は残します）')) return;
+      clearItemRows();
+      $('invoiceTemplate').value = '';
+      setStatus('明細を消去しました');
+    });
 
     $('btnPrint').addEventListener('click', function () {
       var summary = recalc();
