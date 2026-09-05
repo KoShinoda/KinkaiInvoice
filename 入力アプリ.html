@@ -75,7 +75,7 @@
     col.col-no { width: 36px; }
     col.col-ins { width: 36px; }
     col.col-fee { width: calc(96px - 1ch); }
-    col.col-staff { width: 108px; }
+    col.col-staff { width: calc(3ch + 40px); }
     col.col-n { width: calc(52px + 2ch); }
     col.col-qty { width: 42px; }
     col.col-amt { width: calc(96px - 1ch); }
@@ -239,13 +239,25 @@
     }
     td.num input,
     td.fee input { padding: 4px 2px; text-align: right; }
-    td.staff input { padding: 4px 4px; }
+    td.staff input {
+      padding: 4px 2px;
+      text-align: right;
+      width: 3ch;
+      max-width: 3ch;
+      flex: 0 0 3ch;
+      font-variant-numeric: tabular-nums;
+    }
     .staff-wrap {
       display: flex;
       gap: 2px;
       align-items: stretch;
+      position: relative;
     }
-    .staff-wrap input { flex: 1; min-width: 0; }
+    .staff-wrap .combo-list {
+      min-width: 180px;
+      right: auto;
+      left: 0;
+    }
     button.staff-pick {
       width: 22px;
       flex: 0 0 22px;
@@ -336,6 +348,22 @@
       text-align: left;
       padding: 3px 6px;
       border-bottom: 1px solid var(--line);
+    }
+    .worker-picker th.worker-code,
+    .worker-picker td.worker-code {
+      text-align: right;
+      width: 3ch;
+      max-width: 3ch;
+      padding-left: 2px;
+      padding-right: 4px;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      box-sizing: content-box;
+    }
+    .worker-picker th.worker-code {
+      white-space: normal;
+      line-height: 1.15;
+      max-width: 4.5em;
     }
     .worker-picker td {
       padding: 2px 6px;
@@ -1065,9 +1093,10 @@
         '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
         '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
-        '<td class="staff"><div class="staff-wrap">' +
-          '<input data-i="' + i + '" data-k="workerCode" autocomplete="off" placeholder="コード">' +
+        '<td class="staff"><div class="combo staff-wrap">' +
+          '<input data-i="' + i + '" data-k="workerCode" maxlength="3" inputmode="numeric" autocomplete="off">' +
           '<button type="button" class="staff-pick" data-i="' + i + '" tabindex="-1" title="作業者リストを開く">▾</button>' +
+          '<div class="combo-list" hidden></div>' +
         '</div></td>' +
         '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
         '<td class="ins">' +
@@ -1368,16 +1397,29 @@
       var list = comboListEl(input);
       if (!list) return;
       var q = String(input.value || '').toLowerCase();
-      var opts = comboOptions(input).filter(function (v) {
-        return !q || String(v).toLowerCase().indexOf(q) !== -1;
-      });
       list.innerHTML = '';
-      opts.forEach(function (v) {
-        var d = document.createElement('div');
-        d.textContent = v;
-        d.dataset.value = v;
-        list.appendChild(d);
-      });
+      var opts = [];
+      if (input.dataset.k === 'workerCode') {
+        var qn = workerQuery(q);
+        workerListRows().forEach(function (w) {
+          if (qn && workerSearchText(w).indexOf(qn) === -1) return;
+          var d = document.createElement('div');
+          d.dataset.value = w.code || '';
+          d.textContent = w.name ? (w.code || '') + '　' + w.name : (w.code || '');
+          list.appendChild(d);
+          opts.push(w);
+        });
+      } else {
+        opts = comboOptions(input).filter(function (v) {
+          return !q || String(v).toLowerCase().indexOf(q) !== -1;
+        });
+        opts.forEach(function (v) {
+          var d = document.createElement('div');
+          d.textContent = v;
+          d.dataset.value = v;
+          list.appendChild(d);
+        });
+      }
       list.hidden = opts.length === 0;
       if (!keepActive) comboActiveIndex = -1;
       if (comboActiveIndex >= opts.length) comboActiveIndex = opts.length - 1;
@@ -1420,6 +1462,9 @@
         if (items[i] && items[i].partMid === v) return;
         items[i].partMid = v;
         onPartMidChosen(i);
+      } else if (k === 'workerCode') {
+        items[i].workerCode = v;
+        recalc();
       }
     }
     function focusGridCell(row, key) {
@@ -1430,7 +1475,7 @@
     function prepareComboCommit(el, force) {
       var k = el.dataset.k;
       var i = Number(el.dataset.i);
-      if (k !== 'mid' && k !== 'partMid') return;
+      if (k !== 'mid' && k !== 'partMid' && k !== 'workerCode') return;
       var list = comboListEl(el);
       var fromList = !!(list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]);
       if (fromList) {
@@ -1439,6 +1484,10 @@
       var changed = items[i][k] !== el.value;
       hideComboLists();
       items[i][k] = el.value;
+      if (k === 'workerCode') {
+        if (force || changed || fromList) recalc();
+        return;
+      }
       if (force || changed || fromList) {
         comboIgnoreBlur = true;
         if (k === 'mid') onMidChosen(i);
@@ -1515,17 +1564,18 @@
       return cur === w.code || cur === label;
     }
     function workerChunkSize() {
-      return master.linesPerPage || 30;
+      return 20;
     }
     function workerRowHtml(w, idx, headers, active) {
       var cells = (w.cells && w.cells.length ? w.cells : [w.code, w.name]).slice();
       var images = w.images || [];
       while (cells.length < headers.length) cells.push('');
       var tds = headers.map(function (_, c) {
+        var cls = c === 0 ? ' class="worker-code"' : '';
         if (images[c]) {
           return '<td class="worker-img"><img src="' + htmlEscape(images[c]) + '" alt=""></td>';
         }
-        return '<td>' + htmlEscape(cells[c] || '') + '</td>';
+        return '<td' + cls + '>' + htmlEscape(cells[c] || '') + '</td>';
       }).join('');
       return '<tr data-code="' + htmlEscape(w.code || '') + '" data-idx="' + idx + '"' +
         (active ? ' class="active"' : '') + '>' + tds + '</tr>';
@@ -1541,8 +1591,8 @@
       var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
       var chunk = workerChunkSize();
       var boards = $('workerPickerBoards');
-      var head = '<tr>' + headers.map(function (h) {
-        return '<th>' + htmlEscape(h || '') + '</th>';
+      var head = '<tr>' + headers.map(function (h, c) {
+        return '<th' + (c === 0 ? ' class="worker-code"' : '') + '>' + htmlEscape(h || '') + '</th>';
       }).join('') + '</tr>';
       var html = '';
       if (!list.length) {
@@ -1636,6 +1686,7 @@
         if (!$('workerPicker').hidden && workerPickerRow === row) {
           hideWorkerPicker();
         } else {
+          hideComboLists();
           showWorkerPicker(pick);
           setTimeout(function () { $('workerPickerFilter').focus(); }, 0);
         }
@@ -1658,15 +1709,19 @@
       if (input.dataset.k === 'mid') {
         items[i].mid = opt.dataset.value;
         onMidChosen(i);
-      } else {
+      } else if (input.dataset.k === 'partMid') {
         items[i].partMid = opt.dataset.value;
         onPartMidChosen(i);
+      } else if (input.dataset.k === 'workerCode') {
+        items[i].workerCode = opt.dataset.value;
+        recalc();
       }
     });
     $('tbody').addEventListener('focusin', function (e) {
       if (!e.target.dataset) return;
-      if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid') {
+      if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid' || e.target.dataset.k === 'workerCode') {
         hideComboLists();
+        hideWorkerPicker();
         showComboList(e.target);
       }
     });
@@ -1684,11 +1739,7 @@
         moveDown(e.target, e.shiftKey ? -1 : 1);
         return;
       }
-      if (k === 'workerCode') {
-        if (e.key === 'Escape') hideWorkerPicker();
-        return;
-      }
-      if (k === 'mid' || k === 'partMid') {
+      if (k === 'workerCode' || k === 'mid' || k === 'partMid') {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
           moveComboHighlight(e.target, 1);
@@ -1701,12 +1752,13 @@
         }
         if (e.key === 'Escape') {
           hideComboLists();
+          hideWorkerPicker();
         }
       }
     });
     $('tbody').addEventListener('focusout', function (e) {
       if (!e.target.dataset) return;
-      if (e.target.dataset.k !== 'mid' && e.target.dataset.k !== 'partMid') return;
+      if (e.target.dataset.k !== 'mid' && e.target.dataset.k !== 'partMid' && e.target.dataset.k !== 'workerCode') return;
       var input = e.target;
       setTimeout(function () {
         hideComboLists();
@@ -1736,8 +1788,9 @@
       if (!t.dataset || t.tagName !== 'INPUT') return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
-      if (k === 'mid' || k === 'partMid') {
+      if (k === 'mid' || k === 'partMid' || k === 'workerCode') {
         showComboList(t);
+        if (k === 'workerCode') items[i][k] = t.value;
         return;
       }
       items[i][k] = t.value;
