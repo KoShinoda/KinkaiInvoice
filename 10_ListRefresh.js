@@ -730,23 +730,22 @@ function workerCodeByNameMap_() {
  */
 function applyWorkListOpenDropdowns_(ss, workSheet) {
   const ref = ensureListRefSheet_(ss);
-  writeListRefValues_(ref);
+  writeListRefValues_(ref, workSheet);
   const lastCol = Math.max(workSheet.getLastColumn(), 1);
   const headers = workSheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const cols = resolveColumns_(headers, CONFIG.workList.headers);
-  const cfg = CONFIG.listRef;
   const lastData = Math.max(workSheet.getLastRow(), 2);
   const rows = Math.max(lastData + 80, 200) - 1;
   if (cols.workerCode) {
-    applyOpenRangeValidation_(
+    applyOpenListValidation_(
       workSheet.getRange(2, cols.workerCode, rows, 1),
-      listRefSourceRange_(ref, cfg.workerCodeCol)
+      workerCodesForDropdown_()
     );
   }
   if (cols.partMid) {
-    applyOpenRangeValidation_(
+    applyOpenListValidation_(
       workSheet.getRange(2, cols.partMid, rows, 1),
-      listRefSourceRange_(ref, cfg.partMidCol)
+      partMidsForDropdown_(workSheet)
     );
   }
 }
@@ -764,10 +763,10 @@ function ensureListRefSheet_(ss) {
   return sh;
 }
 
-function writeListRefValues_(ref) {
+function writeListRefValues_(ref, workSheet) {
   const cfg = CONFIG.listRef;
   writeListRefColumn_(ref, cfg.workerCodeCol, '作業者コード', workerCodesForDropdown_());
-  writeListRefColumn_(ref, cfg.partMidCol, '部品_中項目', partMidsForDropdown_());
+  writeListRefColumn_(ref, cfg.partMidCol, '部品_中項目', partMidsForDropdown_(workSheet));
 }
 
 function writeListRefColumn_(sheet, col, header, values) {
@@ -783,19 +782,35 @@ function writeListRefColumn_(sheet, col, header, values) {
   }
 }
 
-function listRefSourceRange_(ref, col) {
-  const last = Math.max(ref.getLastRow(), 2);
-  const height = Math.max(last - 1, 1);
-  return ref.getRange(2, col, height, 1);
-}
-
-function applyOpenRangeValidation_(range, source) {
+function applyOpenListValidation_(range, values) {
+  range.clearDataValidations();
+  const list = uniqueDropdownItems_(values);
+  if (!list.length) {
+    return;
+  }
   const rule = SpreadsheetApp.newDataValidation()
-    .requireValueInRange(source, true)
+    .requireValueInList(list, true)
     .setAllowInvalid(true)
-    .setHelpText('リストから選ぶか、今ある値のまま直接入力できます')
+    .setHelpText('リストにない値も入力できます')
     .build();
   range.setDataValidation(rule);
+}
+
+function uniqueDropdownItems_(values) {
+  const seen = {};
+  const out = [];
+  (values || []).forEach(function (v) {
+    if (out.length >= 500) {
+      return;
+    }
+    const key = normalize_(v);
+    if (!key || seen[key]) {
+      return;
+    }
+    seen[key] = true;
+    out.push(String(v));
+  });
+  return out;
 }
 
 function workerCodesForDropdown_() {
@@ -816,35 +831,50 @@ function workerCodesForDropdown_() {
   return out;
 }
 
-function partMidsForDropdown_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(CONFIG.parts.sheetName);
-  if (!sh) {
-    return [];
-  }
-  const vals = sh.getDataRange().getValues();
-  if (!vals.length) {
-    return [];
-  }
-  let start = 0;
-  const header = vals[0].map(function (v) {
-    return normalize_(v);
-  }).join('');
-  if (header.indexOf('大項目') !== -1 || header.indexOf('部品') !== -1 || header.indexOf('中項目') !== -1) {
-    start = 1;
-  }
-  const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
-  const midCol = cols.mid || 2;
+function partMidsForDropdown_(workSheet) {
   const seen = {};
   const out = [];
-  for (let i = start; i < vals.length; i++) {
-    const raw = cell_(vals[i], midCol);
+  function add(raw) {
     const key = normalize_(raw);
     if (!key || seen[key]) {
-      continue;
+      return;
     }
     seen[key] = true;
     out.push(raw);
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const parts = ss.getSheetByName(CONFIG.parts.sheetName);
+  if (parts) {
+    const vals = parts.getDataRange().getValues();
+    if (vals.length) {
+      let start = 0;
+      const header = vals[0].map(function (v) {
+        return normalize_(v);
+      }).join('');
+      if (header.indexOf('大項目') !== -1 || header.indexOf('部品') !== -1 || header.indexOf('中項目') !== -1) {
+        start = 1;
+      }
+      const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
+      const midCol = cols.mid || 2;
+      for (let i = start; i < vals.length; i++) {
+        add(cell_(vals[i], midCol));
+      }
+    }
+  }
+  const work = workSheet || ss.getSheetByName(CONFIG.workList.sheetName);
+  if (work) {
+    const lastCol = Math.max(work.getLastColumn(), 1);
+    const lastRow = work.getLastRow();
+    if (lastRow >= 2) {
+      const headers = work.getRange(1, 1, 1, lastCol).getValues()[0];
+      const cols = resolveColumns_(headers, CONFIG.workList.headers);
+      if (cols.partMid) {
+        const mids = work.getRange(2, cols.partMid, lastRow - 1, 1).getValues();
+        for (let r = 0; r < mids.length; r++) {
+          add(mids[r][0]);
+        }
+      }
+    }
   }
   return out;
 }
