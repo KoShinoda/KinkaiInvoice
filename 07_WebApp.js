@@ -106,6 +106,8 @@ function loadWorkerSheet_() {
   if (headers.length > 1 && !headers[1]) headers[1] = '名前';
 
   const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.workers.headers) : {};
+  const codeCol0 = cols.code ? cols.code - 1 : 0;
+  const nameCol0 = cols.name ? cols.name - 1 : 1;
   const keepIdx = [];
   let skipNext = false;
   const refreshLabel = CONFIG.listRefresh.buttonLabel;
@@ -132,8 +134,8 @@ function loadWorkerSheet_() {
   const rows = [];
   const seen = {};
   for (let i = start; i < vals.length; i++) {
-    const code = normalize_(vals[i][0]);
-    const name = vals[i].length > 1 ? normalize_(vals[i][1]) : '';
+    const code = normalize_(vals[i][codeCol0]);
+    const name = vals[i].length > nameCol0 ? normalize_(vals[i][nameCol0]) : '';
     if (!code && !name) {
       continue;
     }
@@ -157,11 +159,10 @@ function loadWorkerSheet_() {
       name: name,
       cells: cells,
       images: images,
-      order: cols.order ? cell_(vals[i], cols.order) : '',
       sourceIndex: i + 1
     });
   }
-  return { headers: showHeaders, rows: sortByOrder_(rows) };
+  return { headers: showHeaders, rows: rows };
 }
 
 function loadWorkers_() {

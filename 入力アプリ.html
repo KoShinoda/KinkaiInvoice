@@ -1284,12 +1284,24 @@
     }
 
     function copyWorkPart(target, w) {
-      if (!w || (!w.partMajor && !w.partMid)) return;
+      if (!w) return;
+      if (!w.partMajor && !w.partMid && !filled(w.qty) && !filled(w.unitPrice)) return;
       if (w.partMajor) target.partMajor = w.partMajor;
       if (w.partMid) target.partMid = w.partMid;
       if (filled(w.qty)) target.qty = w.qty;
       if (filled(w.unitPrice)) target.unitPrice = w.unitPrice;
       calcFromQtyPrice(target);
+    }
+
+    function masterHasPart(r) {
+      return !!(r && (r.partMajor || r.partMid || filled(r.qty) || filled(r.unitPrice)));
+    }
+
+    function partDetailFromMaster(src) {
+      var row = emptyRow();
+      row.kind = 'part';
+      copyWorkPart(row, src);
+      return row;
     }
 
     var lastExpandKey = '';
@@ -1318,11 +1330,22 @@
       var blanks = group.filter(function (r) { return !filled(r.content); });
       if (!it.major && group[0] && group[0].major) it.major = group[0].major;
 
+      var headerParts = blanks.filter(masterHasPart);
+      if (!headerParts.length) headerParts = group.filter(function (r) {
+        return masterHasPart(r) && !filled(r.content);
+      });
+      if (headerParts.length) {
+        copyWorkPart(it, headerParts[0]);
+      } else if (!works.length && group[0]) {
+        copyWorkPart(it, group[0]);
+      }
+
       if (works.length === 0) {
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
-        if (only) copyWorkPart(it, only);
+        var extraParts = headerParts.slice(1).map(partDetailFromMaster);
+        if (extraParts.length) writeBelow(rowIndex, 'part', extraParts);
         compactItems();
         renderGrid();
         setStatus('中項目「' + mid + '」を入力しました');
@@ -1338,17 +1361,12 @@
         row.workerCode = it.workerCode || '';
         row.workerName = it.workerName || '';
         row.kind = 'work';
-        copyWorkPart(row, w);
+        if (masterHasPart(w)) copyWorkPart(row, w);
         return row;
       });
-      blanks.forEach(function (b) {
-        if (!b.partMajor && !b.partMid) return;
-        var row = emptyRow();
-        row.kind = 'work';
-        copyWorkPart(row, b);
-        details.push(row);
-      });
       writeBelow(rowIndex, 'work', details);
+      var extraHeaderParts = headerParts.slice(1).map(partDetailFromMaster);
+      if (extraHeaderParts.length) writeBelow(rowIndex, 'part', extraHeaderParts);
       renderGrid();
       setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
     }

@@ -1,20 +1,11 @@
 /**
- * 作業リスト／部品リスト／作業者リストの「更新」チェック。
- * 順番（表示順）の小さい順にデータ行を並べ、同じ順で選択肢を作り直す。
- * 行の挿入はしない。数式（IMAGE など）は残す。
+ * 作業リスト／部品リストの並べ替えと、欠けている順番・列の補完。
+ * 更新は図形ボタンまたはメニューから refreshAllMasterLists を実行する（チェックは置かない）。
+ * 既存の順番は上書きしない。
  */
 
 function isListRefreshSheet_(sheetName) {
   return CONFIG.listRefresh.sheets.indexOf(sheetName) !== -1;
-}
-
-function listRefreshRangeName_(sheetName) {
-  const map = {
-    作業リスト: 'KINKAI_REFRESH_WORK',
-    部品リスト: 'KINKAI_REFRESH_PARTS',
-    作業者リスト: 'KINKAI_REFRESH_WORKERS'
-  };
-  return map[sheetName] || ('KINKAI_REFRESH_' + String(sheetName).replace(/\s+/g, '_'));
 }
 
 function isListMetaHeader_(header) {
@@ -22,52 +13,64 @@ function isListMetaHeader_(header) {
   return n === '順番' || n === '表示順' || n === CONFIG.listRefresh.buttonLabel;
 }
 
-function isTruthyCheck_(value) {
-  return value === true || value === 'TRUE' || value === 'true' || value === 1 || value === '1';
-}
-
-function isListRefreshCheckboxEdit_(sheet, range) {
-  const named = sheet.getParent().getRangeByName(listRefreshRangeName_(sheet.getName()));
-  if (named && named.getSheet().getSheetId() === sheet.getSheetId()) {
-    return rangesOverlap_(range, named);
-  }
-  const headerRow = 1;
-  const lastCol = Math.max(sheet.getLastColumn(), 1);
-  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
-  const label = CONFIG.listRefresh.buttonLabel;
-  for (let c = 0; c < headers.length; c++) {
-    if (normalize_(headers[c]) !== label) {
-      continue;
-    }
-    const box = sheet.getRange(headerRow, c + 2);
-    if (rangesOverlap_(range, box)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function rangesOverlap_(a, b) {
-  return a.getSheet().getSheetId() === b.getSheet().getSheetId()
-    && a.getRow() <= b.getLastRow()
-    && a.getLastRow() >= b.getRow()
-    && a.getColumn() <= b.getLastColumn()
-    && a.getLastColumn() >= b.getColumn();
+/**
+ * 図形のボタンに割り当てる。作業リスト・部品リストを順番で並べ、選択肢を作り直す。
+ */
+function refreshAllMasterLists() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  writeInternal_(function () {
+    ensureListMasterSheets_();
+    CONFIG.listRefresh.sheets.forEach(function (name) {
+      const sheet = ss.getSheetByName(name);
+      if (sheet) {
+        refreshMasterListSheet_(sheet);
+      }
+    });
+  });
+  ss.toast('リストを順番で並べ替え、選択肢を更新しました', '請求書入力', 5);
 }
 
 /**
- * 3 シートに順番列と「更新」チェックを置く（なければ）。
+ * 今見ているリストシートだけ更新する図形用。
  */
-function ensureListRefreshControls_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  CONFIG.listRefresh.sheets.forEach(function (name) {
-    const sheet = ss.getSheetByName(name);
-    if (!sheet) {
-      return;
-    }
-    ensureOrderColumnOnSheet_(sheet);
-    ensureListRefreshControlOnSheet_(sheet);
+function refreshActiveMasterList() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  if (!sheet || !isListRefreshSheet_(sheet.getName())) {
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      '作業リストまたは部品リストを表示してから実行してください',
+      '請求書入力',
+      5
+    );
+    return;
+  }
+  writeInternal_(function () {
+    refreshMasterListSheet_(sheet);
   });
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    sheet.getName() + ' を順番で並べ替え、選択肢を更新しました',
+    '請求書入力',
+    5
+  );
+}
+
+function ensureListMasterSheets_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const work = ss.getSheetByName(CONFIG.workList.sheetName);
+  if (work) {
+    ensureOrderColumnOnSheet_(work);
+    ensureWorkListPartColumns_(work);
+    assignMissingListOrders_(work);
+  }
+  const parts = ss.getSheetByName(CONFIG.parts.sheetName);
+  if (parts) {
+    ensureOrderColumnOnSheet_(parts);
+    assignMissingListOrders_(parts);
+  }
+  const workers = ss.getSheetByName(CONFIG.workers.sheetName);
+  if (workers) {
+    removeWorkerOrderColumn_(workers);
+    assignMissingWorkerCodes_(workers);
+  }
 }
 
 function lastDataHeaderCol_(headers) {
@@ -112,73 +115,57 @@ function ensureOrderColumnOnSheet_(sheet) {
   return orderCol;
 }
 
-function ensureListRefreshControlOnSheet_(sheet) {
-  const ss = sheet.getParent();
-  const rangeName = listRefreshRangeName_(sheet.getName());
-  const headerRow = 1;
-  const lastCol = Math.max(sheet.getLastColumn(), 1);
-  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
-  const label = CONFIG.listRefresh.buttonLabel;
-  let labelCol = 0;
-  for (let c = 0; c < headers.length; c++) {
-    if (normalize_(headers[c]) === label) {
-      labelCol = c + 1;
-      break;
-    }
-  }
-  let created = false;
-  if (!labelCol) {
-    labelCol = lastDataHeaderCol_(headers) + 2;
-    sheet.getRange(headerRow, labelCol).setValue(label).setFontWeight('bold');
-    created = true;
-  }
-  const box = sheet.getRange(headerRow, labelCol + 1);
-  box.insertCheckboxes();
-  if (created) {
-    box.setValue(false);
-  }
-  const existing = ss.getRangeByName(rangeName);
-  if (!existing
-      || existing.getSheet().getSheetId() !== sheet.getSheetId()
-      || existing.getRow() !== box.getRow()
-      || existing.getColumn() !== box.getColumn()) {
-    if (existing) {
-      ss.removeNamedRange(rangeName);
-    }
-    ss.setNamedRange(rangeName, box);
-  }
-}
-
-/**
- * メニュー「リストを更新（順番・選択肢）」
- */
-function refreshAllMasterLists() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  writeInternal_(function () {
-    ensureListRefreshControls_();
-    CONFIG.listRefresh.sheets.forEach(function (name) {
-      const sheet = ss.getSheetByName(name);
-      if (sheet) {
-        refreshMasterListSheet_(sheet);
-      }
+function ensureWorkListPartColumns_(sheet) {
+  const wanted = [
+    { name: '部品_中項目', aliases: CONFIG.workList.headers.partMid },
+    { name: '単価', aliases: CONFIG.workList.headers.unitPrice },
+    { name: '数量', aliases: CONFIG.workList.headers.qty }
+  ];
+  wanted.forEach(function (item) {
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const normalized = headers.map(function (h) {
+      return normalize_(h);
     });
+    let found = false;
+    for (let a = 0; a < item.aliases.length; a++) {
+      if (normalized.indexOf(normalize_(item.aliases[a])) !== -1) {
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      return;
+    }
+    const at = lastDataHeaderCol_(headers) + 1;
+    sheet.getRange(1, at).setValue(item.name).setFontWeight('bold');
   });
-  ss.toast('リストを順番で並べ替え、選択肢を更新しました', '請求書入力', 5);
+}
+
+function removeWorkerOrderColumn_(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const orderCol = findOrderCol_(headers);
+  if (orderCol) {
+    sheet.deleteColumn(orderCol);
+  }
 }
 
 /**
- * 1 シート：空の順番を埋める（全部空のときだけ）→ 行を並べ替え → 作業リストなら候補再生成。
+ * 1 シート：欠けている順番を補う → 行を並べ替え → 作業リストなら候補再生成。
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
 function refreshMasterListSheet_(sheet) {
   const headerRow = 1;
   const orderCol = ensureOrderColumnOnSheet_(sheet);
-  ensureListRefreshControlOnSheet_(sheet);
+  if (sheet.getName() === CONFIG.workList.sheetName) {
+    ensureWorkListPartColumns_(sheet);
+  }
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
   const dataCol = lastDataHeaderCol_(headers);
-  fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol, headers);
+  assignMissingListOrders_(sheet);
   sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers);
   invalidateContext_();
   if (sheet.getName() === CONFIG.workList.sheetName) {
@@ -187,48 +174,45 @@ function refreshMasterListSheet_(sheet) {
   log_('%s refreshMasterListSheet_: %s を順番で並べ替えました', CONFIG.logPrefix, sheet.getName());
 }
 
-function fillDefaultOrdersIfEmpty_(sheet, headerRow, orderCol, dataCol, headers) {
+/**
+ * 空の順番だけ埋める。手動で入っている値は触らない。
+ * 中項目が 1 件だけなら 1。追加行は既存の最大 + 1。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @return {boolean} 書き込んだか
+ */
+function assignMissingListOrders_(sheet) {
+  const headerRow = 1;
+  const orderCol = ensureOrderColumnOnSheet_(sheet);
   const lastRow = sheet.getLastRow();
   if (lastRow <= headerRow) {
-    return;
+    return false;
   }
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  const dataCol = lastDataHeaderCol_(headers);
   const height = lastRow - headerRow;
   const orders = sheet.getRange(headerRow + 1, orderCol, height, 1).getValues();
   const data = sheet.getRange(headerRow + 1, 1, height, dataCol).getValues();
   const formulas = sheet.getRange(headerRow + 1, 1, height, dataCol).getFormulas();
   const name = sheet.getName();
-  let out;
-  if (name === CONFIG.workList.sheetName) {
-    out = fillWorkListGroupOrders_(data, formulas, orders, resolveColumns_(headers, CONFIG.workList.headers));
-  } else if (name === CONFIG.parts.sheetName) {
-    out = fillWorkListGroupOrders_(data, formulas, orders, resolveColumns_(headers, CONFIG.parts.headers));
-  } else {
-    let anyOrder = false;
-    for (let i = 0; i < orders.length; i++) {
-      if (!listRowIsEmpty_(data[i], formulas[i]) && toOrderNumber_(orders[i][0]) !== Number.POSITIVE_INFINITY) {
-        anyOrder = true;
-        break;
-      }
+  const aliases = name === CONFIG.parts.sheetName ? CONFIG.parts.headers : CONFIG.workList.headers;
+  const out = fillWorkListGroupOrders_(data, formulas, orders, resolveColumns_(headers, aliases));
+  let changed = false;
+  for (let i = 0; i < out.length; i++) {
+    if (String(out[i][0]) !== String(orders[i][0])) {
+      changed = true;
+      break;
     }
-    if (anyOrder) {
-      return;
-    }
-    const step = CONFIG.listRefresh.orderStep || 10;
-    let n = 0;
-    out = orders.map(function (row, i) {
-      if (listRowIsEmpty_(data[i], formulas[i])) {
-        return [''];
-      }
-      n += 1;
-      return [n * step];
-    });
   }
-  sheet.getRange(headerRow + 1, orderCol, height, 1).setValues(out);
+  if (changed) {
+    sheet.getRange(headerRow + 1, orderCol, height, 1).setValues(out);
+  }
+  return changed;
 }
 
 /**
- * 中項目が 2 行以上で順番が全部空のときだけ埋める。
- * 先頭（作業内容が空、または先頭行）に 1、残りに 2, 3…。
+ * 空の順番だけ埋める。既存値は維持する。
  */
 function fillWorkListGroupOrders_(data, formulas, orders, cols) {
   const out = orders.map(function (row) {
@@ -270,42 +254,48 @@ function fillWorkListGroupOrders_(data, formulas, orders, cols) {
     groups[key].push(rec);
   }
   keys.forEach(function (key) {
-    const g = groups[key];
-    if (g.length < 2) {
-      return;
-    }
-    let any = false;
-    for (let k = 0; k < g.length; k++) {
-      if (toOrderNumber_(g[k].order) !== Number.POSITIVE_INFINITY) {
-        any = true;
-        break;
-      }
-    }
-    if (any) {
-      return;
-    }
-    g.sort(function (a, b) {
+    const g = groups[key].slice().sort(function (a, b) {
       return a.sourceIndex - b.sourceIndex;
     });
-    let anchorIdx = -1;
-    for (let k = 0; k < g.length; k++) {
-      if (isMidAnchorRow_(g[k])) {
-        anchorIdx = k;
-        break;
+    let maxN = 0;
+    g.forEach(function (rec) {
+      const n = toOrderNumber_(rec.order);
+      if (n !== Number.POSITIVE_INFINITY && n > maxN) {
+        maxN = n;
       }
+    });
+    const empty = g.filter(function (rec) {
+      return toOrderNumber_(rec.order) === Number.POSITIVE_INFINITY;
+    });
+    if (!empty.length) {
+      return;
     }
-    if (anchorIdx < 0) {
-      anchorIdx = 0;
-    }
-    out[g[anchorIdx].i] = [1];
-    let n = 2;
-    for (let k = 0; k < g.length; k++) {
-      if (k === anchorIdx) {
-        continue;
+    if (maxN === 0) {
+      let anchorIdx = -1;
+      for (let k = 0; k < g.length; k++) {
+        if (isMidAnchorRow_(g[k])) {
+          anchorIdx = k;
+          break;
+        }
       }
-      out[g[k].i] = [n];
-      n += 1;
+      if (anchorIdx < 0) {
+        anchorIdx = 0;
+      }
+      out[g[anchorIdx].i] = [1];
+      let n = 2;
+      for (let k = 0; k < g.length; k++) {
+        if (k === anchorIdx) {
+          continue;
+        }
+        out[g[k].i] = [n];
+        n += 1;
+      }
+      return;
     }
+    empty.forEach(function (rec) {
+      maxN += 1;
+      out[rec.i] = [maxN];
+    });
   });
   return out;
 }
@@ -325,6 +315,78 @@ function listRowIsEmpty_(values, formulas) {
     }
   }
   return true;
+}
+
+function assignMissingWorkerCodes_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 1) {
+    return;
+  }
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headerRow = 1;
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  let start = 0;
+  const h0 = normalize_(headers[0]);
+  if (h0.indexOf('コード') !== -1 || h0.indexOf('作業者') !== -1 || h0.indexOf('担当') !== -1) {
+    start = 1;
+  }
+  const cols = start === 1 ? resolveColumns_(headers, CONFIG.workers.headers) : {};
+  const codeCol = cols.code || 1;
+  const nameCol = cols.name || 2;
+  if (lastRow <= start) {
+    return;
+  }
+  const height = lastRow - start;
+  const codes = sheet.getRange(start + 1, codeCol, height, 1).getValues();
+  const names = sheet.getRange(start + 1, nameCol, height, 1).getValues();
+  const existing = [];
+  for (let i = 0; i < codes.length; i++) {
+    const c = normalize_(codes[i][0]);
+    if (c) {
+      existing.push(c);
+    }
+  }
+  let next = nextWorkerCode_(existing);
+  const out = [];
+  let changed = false;
+  for (let i = 0; i < codes.length; i++) {
+    const code = normalize_(codes[i][0]);
+    const name = normalize_(names[i][0]);
+    if (!code && name) {
+      out.push([next]);
+      existing.push(String(next));
+      next = nextWorkerCode_(existing);
+      changed = true;
+    } else {
+      out.push([codes[i][0]]);
+    }
+  }
+  if (changed) {
+    sheet.getRange(start + 1, codeCol, height, 1).setValues(out);
+  }
+}
+
+function nextWorkerCode_(codes) {
+  let max = 0;
+  let width = 1;
+  (codes || []).forEach(function (c) {
+    const s = String(c).trim();
+    if (/^\d+$/.test(s)) {
+      if (s.length > width) {
+        width = s.length;
+      }
+      const n = parseInt(s, 10);
+      if (n > max) {
+        max = n;
+      }
+    }
+  });
+  const n = max + 1;
+  const s = String(n);
+  if (s.length >= width) {
+    return s;
+  }
+  return ('0000000000' + s).slice(-width);
 }
 
 function sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers) {

@@ -23,9 +23,9 @@ function onOpen() {
     .addToUi();
 
   try {
-    ensureListRefreshControls_();
+    ensureListMasterSheets_();
   } catch (err) {
-    Logger.log('%s onOpen: リスト更新ボタンの配置に失敗: %s', CONFIG.logPrefix, err);
+    Logger.log('%s onOpen: リスト列の準備に失敗: %s', CONFIG.logPrefix, err);
   }
 
   Logger.log('%s onOpen: メニューを追加しました', CONFIG.logPrefix);
@@ -63,9 +63,9 @@ function setupInputDropdowns() {
   const startedAt = Date.now();
   Logger.log('%s setupInputDropdowns: 開始', CONFIG.logPrefix);
   try {
-    ensureListRefreshControls_();
+    ensureListMasterSheets_();
   } catch (err) {
-    Logger.log('%s setupInputDropdowns: リスト更新ボタンの配置に失敗: %s', CONFIG.logPrefix, err);
+    Logger.log('%s setupInputDropdowns: リスト列の準備に失敗: %s', CONFIG.logPrefix, err);
   }
   rebuildMidCandidateSheet_();
   SpreadsheetApp.getActiveSpreadsheet().toast('中項目候補とプルダウンを設定しました', '請求書入力', 5);
@@ -131,23 +131,24 @@ function handleEdit_(e) {
   const sheet = e.range.getSheet();
   const sheetName = sheet.getName();
 
-  if (isListRefreshSheet_(sheetName) && isListRefreshCheckboxEdit_(sheet, e.range)) {
-    if (isTruthyCheck_(e.value)) {
-      writeInternal_(function () {
-        e.range.setValue(false);
-        refreshMasterListSheet_(sheet);
-      });
-      SpreadsheetApp.getActiveSpreadsheet().toast(
-        sheetName + ' を順番で並べ替え、選択肢を更新しました',
-        '請求書入力',
-        5
-      );
-    }
+  if (sheetName === CONFIG.workers.sheetName) {
+    writeInternal_(function () {
+      assignMissingWorkerCodes_(sheet);
+    });
     return;
   }
 
-  if (sheetName === CONFIG.workList.sheetName) {
-    if (e.range.getColumn() <= 2) {
+  if (isListRefreshSheet_(sheetName)) {
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const orderCol = findOrderCol_(headers);
+    const touchedOrder = orderCol && columnOverlaps_(e.range.getColumn(), e.range.getNumColumns(), orderCol);
+    if (!touchedOrder) {
+      writeInternal_(function () {
+        assignMissingListOrders_(sheet);
+      });
+    }
+    if (sheetName === CONFIG.workList.sheetName && e.range.getColumn() <= 2) {
       rebuildMidCandidateSheet_();
     }
     return;
