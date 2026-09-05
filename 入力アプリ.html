@@ -957,20 +957,29 @@
       return (master.partMidsByMajor && master.partMidsByMajor[major]) || master.allPartMids || [];
     }
     function sortMasterLines(arr) {
-      return (arr || []).slice().sort(function (a, b) {
-        function ord(v) {
-          if (v === '' || v == null) return Number.POSITIVE_INFINITY;
-          var n = Number(String(v).replace(/,/g, '').trim());
-          return isFinite(n) ? n : Number.POSITIVE_INFINITY;
-        }
-        function isAnchor(r) {
-          if (ord(r.order) === 1) return true;
-          return !String(r.content == null ? '' : r.content).replace(/\u3000/g, ' ').trim();
-        }
-        var aA = isAnchor(a) ? 0 : 1;
-        var bA = isAnchor(b) ? 0 : 1;
-        if (aA !== bA) return aA - bA;
-        var d = ord(a.order) - ord(b.order);
+      var list = (arr || []).slice();
+      function ord(v) {
+        if (v === '' || v == null) return Number.POSITIVE_INFINITY;
+        var n = Number(String(v).replace(/,/g, '').trim());
+        return isFinite(n) ? n : Number.POSITIVE_INFINITY;
+      }
+      function hasContent(r) {
+        return !!String(r.content == null ? '' : r.content).replace(/\u3000/g, ' ').trim();
+      }
+      var blanks = list.filter(function (r) { return !hasContent(r); });
+      var ones = blanks.filter(function (r) { return ord(r.order) === 1; });
+      var pool = ones.length ? ones : blanks;
+      pool.sort(function (a, b) { return (a.sourceIndex || 0) - (b.sourceIndex || 0); });
+      var anchor = pool[0] || null;
+      function lane(r) {
+        if (anchor && r === anchor) return 0;
+        if (hasContent(r)) return 1;
+        return 2;
+      }
+      return list.sort(function (a, b) {
+        var d = lane(a) - lane(b);
+        if (d) return d;
+        d = ord(a.order) - ord(b.order);
         if (d) return d;
         return (a.sourceIndex || 0) - (b.sourceIndex || 0);
       });

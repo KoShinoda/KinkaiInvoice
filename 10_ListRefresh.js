@@ -57,8 +57,10 @@ function ensureListMasterSheets_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const work = ss.getSheetByName(CONFIG.workList.sheetName);
   if (work) {
-    ensureOrderColumnOnSheet_(work);
     ensureWorkListPartColumns_(work);
+    layoutWorkListColumns_(work);
+    ensureOrderColumnOnSheet_(work);
+    layoutWorkListColumns_(work);
     assignMissingListOrders_(work);
   }
   const parts = ss.getSheetByName(CONFIG.parts.sheetName);
@@ -142,6 +144,116 @@ function ensureWorkListPartColumns_(sheet) {
   });
 }
 
+/**
+ * 部品_中項目/単価/数量を E/F/G へ。順番をデータ列の末尾へ。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function layoutWorkListColumns_(sheet) {
+  const headerRow = 1;
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  const layout = CONFIG.workList.layout || { partMid: 5, unitPrice: 6, qty: 7 };
+  const used = {};
+  const orderIdx = [];
+
+  function pushCol(col1) {
+    if (!col1 || used[col1]) {
+      return;
+    }
+    orderIdx.push(col1 - 1);
+    used[col1] = true;
+  }
+
+  pushCol(cols.major);
+  pushCol(cols.mid);
+  pushCol(cols.content);
+  pushCol(cols.fee);
+
+  const frontKeys = ['partMid', 'unitPrice', 'qty'];
+  frontKeys.forEach(function (key) {
+    const want = layout[key];
+    if (cols[key]) {
+      pushCol(cols[key]);
+    } else if (want) {
+      return;
+    }
+  });
+
+  pushCol(cols.partMajor);
+  for (let c = 1; c <= lastCol; c++) {
+    if (used[c]) {
+      continue;
+    }
+    if (cols.order && c === cols.order) {
+      continue;
+    }
+    const h = normalize_(headers[c - 1]);
+    if (!h || h === CONFIG.listRefresh.buttonLabel) {
+      continue;
+    }
+    pushCol(c);
+  }
+  pushCol(cols.order);
+
+  let already = orderIdx.length > 0;
+  for (let i = 0; i < orderIdx.length; i++) {
+    if (orderIdx[i] !== i) {
+      already = false;
+      break;
+    }
+  }
+  const partOk = cols.partMid === layout.partMid && cols.unitPrice === layout.unitPrice && cols.qty === layout.qty;
+  const orderOk = !cols.order || cols.order === orderIdx.length;
+  if (already && partOk && orderOk) {
+    return;
+  }
+
+  const width = orderIdx.length;
+  if (!width) {
+    return;
+  }
+  const range = sheet.getRange(1, 1, lastRow, lastCol);
+  const values = range.getValues();
+  const formulas = range.getFormulas();
+  const formats = range.getNumberFormats();
+  const widths = orderIdx.map(function (c) {
+    return sheet.getColumnWidth(c + 1);
+  });
+  const outV = [];
+  const outFmt = [];
+  for (let r = 0; r < lastRow; r++) {
+    const vr = [];
+    const fr = [];
+    for (let i = 0; i < width; i++) {
+      const c = orderIdx[i];
+      const f = formulas[r][c];
+      vr.push(f ? f : values[r][c]);
+      fr.push(formats[r][c]);
+    }
+    outV.push(vr);
+    outFmt.push(fr);
+  }
+  if (lastCol > width) {
+    const rightHeaders = headers.slice(width).map(function (h) {
+      return normalize_(h);
+    });
+    const keepRight = rightHeaders.some(function (h) {
+      return h && h === CONFIG.listRefresh.buttonLabel;
+    });
+    if (!keepRight) {
+      sheet.getRange(1, width + 1, lastRow, lastCol - width).clearContent();
+    }
+  }
+  sheet.getRange(1, 1, lastRow, width).setValues(outV);
+  sheet.getRange(1, 1, lastRow, width).setNumberFormats(outFmt);
+  for (let i = 0; i < widths.length; i++) {
+    sheet.setColumnWidth(i + 1, widths[i]);
+  }
+}
+
 function removeWorkerOrderColumn_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -158,14 +270,19 @@ function removeWorkerOrderColumn_(sheet) {
  */
 function refreshMasterListSheet_(sheet) {
   const headerRow = 1;
-  const orderCol = ensureOrderColumnOnSheet_(sheet);
   if (sheet.getName() === CONFIG.workList.sheetName) {
     ensureWorkListPartColumns_(sheet);
+    layoutWorkListColumns_(sheet);
   }
+  ensureOrderColumnOnSheet_(sheet);
+  if (sheet.getName() === CONFIG.workList.sheetName) {
+    layoutWorkListColumns_(sheet);
+  }
+  assignMissingListOrders_(sheet);
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
   const dataCol = lastDataHeaderCol_(headers);
-  assignMissingListOrders_(sheet);
+  const orderCol = findOrderCol_(headers) || dataCol;
   sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers);
   invalidateContext_();
   if (sheet.getName() === CONFIG.workList.sheetName) {
@@ -243,6 +360,10 @@ function fillWorkListGroupOrders_(data, formulas, orders, cols) {
       major: rawMajor || carryMajor,
       mid: rawMid || carryMid,
       content: cols.content ? cell_(raw, cols.content) : '',
+      partMajor: cols.partMajor ? cell_(raw, cols.partMajor) : '',
+      partMid: cols.partMid ? cell_(raw, cols.partMid) : '',
+      qty: cols.qty ? cell_(raw, cols.qty) : '',
+      unitPrice: cols.unitPrice ? cell_(raw, cols.unitPrice) : '',
       order: orders[i][0],
       sourceIndex: i
     };
@@ -254,47 +375,46 @@ function fillWorkListGroupOrders_(data, formulas, orders, cols) {
     groups[key].push(rec);
   }
   keys.forEach(function (key) {
-    const g = groups[key].slice().sort(function (a, b) {
-      return a.sourceIndex - b.sourceIndex;
-    });
-    let maxN = 0;
-    g.forEach(function (rec) {
-      const n = toOrderNumber_(rec.order);
-      if (n !== Number.POSITIVE_INFINITY && n > maxN) {
-        maxN = n;
+    const g = groups[key];
+    tagMidGroups_(g);
+    [0, 1, 2].forEach(function (lane) {
+      const rows = g.filter(function (r) {
+        return r._midLane === lane;
+      });
+      if (!rows.length) {
+        return;
       }
-    });
-    const empty = g.filter(function (rec) {
-      return toOrderNumber_(rec.order) === Number.POSITIVE_INFINITY;
-    });
-    if (!empty.length) {
-      return;
-    }
-    if (maxN === 0) {
-      let anchorIdx = -1;
-      for (let k = 0; k < g.length; k++) {
-        if (isMidAnchorRow_(g[k])) {
-          anchorIdx = k;
-          break;
+      let maxN = 0;
+      rows.forEach(function (rec) {
+        const n = toOrderNumber_(rec.order);
+        if (n !== Number.POSITIVE_INFINITY && n > maxN) {
+          maxN = n;
         }
+      });
+      const empty = rows.filter(function (rec) {
+        return toOrderNumber_(rec.order) === Number.POSITIVE_INFINITY;
+      }).sort(function (a, b) {
+        return a.sourceIndex - b.sourceIndex;
+      });
+      if (!empty.length) {
+        return;
       }
-      if (anchorIdx < 0) {
-        anchorIdx = 0;
-      }
-      out[g[anchorIdx].i] = [1];
-      let n = 2;
-      for (let k = 0; k < g.length; k++) {
-        if (k === anchorIdx) {
-          continue;
+      if (maxN === 0) {
+        if (lane === 0) {
+          out[empty[0].i] = [1];
+          return;
         }
-        out[g[k].i] = [n];
-        n += 1;
+        let n = 2;
+        empty.forEach(function (rec) {
+          out[rec.i] = [n];
+          n += 1;
+        });
+        return;
       }
-      return;
-    }
-    empty.forEach(function (rec) {
-      maxN += 1;
-      out[rec.i] = [maxN];
+      empty.forEach(function (rec) {
+        maxN += 1;
+        out[rec.i] = [maxN];
+      });
     });
   });
   return out;

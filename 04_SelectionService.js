@@ -113,6 +113,7 @@ function applyMidSelectionForRow_(ctx, selectRow, major, mid) {
  */
 function resolveMidOutput_(ctx, major, mid) {
   const records = getRecordsForSelection_(ctx, major, mid);
+  tagMidGroups_(records);
   const sorted = records.slice().sort(compareMidGroupRows_);
   const workRows = [];
   for (let i = 0; i < sorted.length; i++) {
@@ -127,10 +128,9 @@ function resolveMidOutput_(ctx, major, mid) {
 }
 
 function pickMidFee_(sortedRows) {
-  for (let i = 0; i < sortedRows.length; i++) {
-    if (isMidAnchorRow_(sortedRows[i]) && isFilled_(sortedRows[i].fee)) {
-      return sortedRows[i].fee;
-    }
+  const anchor = pickMidAnchorRow_(sortedRows);
+  if (anchor && isFilled_(anchor.fee)) {
+    return anchor.fee;
   }
   for (let i = 0; i < sortedRows.length; i++) {
     if (!hasWorkContent_(sortedRows[i]) && isFilled_(sortedRows[i].fee)) {

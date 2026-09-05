@@ -92,8 +92,102 @@ function sortByOrder_(records) {
   });
 }
 
+function hasPartFields_(row) {
+  if (!row) {
+    return false;
+  }
+  return isFilled_(row.partMid) || isFilled_(row.partMajor) || isFilled_(row.qty) || isFilled_(row.unitPrice);
+}
+
 /**
- * 中項目ブロックの先頭行か。作業内容が空、または順番が 1（誤入力のフォールバック）。
+ * 中項目ブロックの先頭 1 行。作業内容が空の行を優先。順番 1 の空行があればそれ。
+ * 部品セットの追加行（作業内容空）は先頭にしない。
+ *
+ * @param {object[]} group
+ * @return {object|null}
+ */
+function pickMidAnchorRow_(group) {
+  if (!group || !group.length) {
+    return null;
+  }
+  const blanks = group.filter(function (r) {
+    return !hasWorkContent_(r);
+  });
+  const ones = blanks.filter(function (r) {
+    return toOrderNumber_(r.order) === 1;
+  });
+  if (ones.length) {
+    ones.sort(function (a, b) {
+      return (a.sourceIndex || 0) - (b.sourceIndex || 0);
+    });
+    return ones[0];
+  }
+  if (blanks.length) {
+    blanks.sort(function (a, b) {
+      return (a.sourceIndex || 0) - (b.sourceIndex || 0);
+    });
+    return blanks[0];
+  }
+  return group.slice().sort(function (a, b) {
+    return (a.sourceIndex || 0) - (b.sourceIndex || 0);
+  })[0];
+}
+
+/**
+ * レーン 0=先頭, 1=作業内容, 2=追加部品セット。
+ *
+ * @param {object[]} records
+ */
+function tagMidGroups_(records) {
+  const grouped = {};
+  (records || []).forEach(function (row) {
+    const key = normalize_(row.major) + '\t' + normalize_(row.mid);
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(row);
+    row._isMidAnchor = false;
+    row._midLane = 1;
+  });
+  Object.keys(grouped).forEach(function (key) {
+    const g = grouped[key];
+    const anchor = pickMidAnchorRow_(g);
+    g.forEach(function (row) {
+      row._isMidAnchor = !!(anchor && row === anchor);
+      if (row._isMidAnchor) {
+        row._midLane = 0;
+      } else if (hasWorkContent_(row)) {
+        row._midLane = 1;
+      } else {
+        row._midLane = 2;
+      }
+    });
+  });
+}
+
+/**
+ * 同じ中項目内：先頭 → 作業内容（順番） → 追加部品（順番）。
+ *
+ * @param {object} a
+ * @param {object} b
+ * @return {number}
+ */
+function compareMidGroupRows_(a, b) {
+  const la = a._midLane != null ? a._midLane : (isMidAnchorRow_(a) ? 0 : hasWorkContent_(a) ? 1 : 2);
+  const lb = b._midLane != null ? b._midLane : (isMidAnchorRow_(b) ? 0 : hasWorkContent_(b) ? 1 : 2);
+  if (la !== lb) {
+    return la - lb;
+  }
+  const oa = toOrderNumber_(a.order);
+  const ob = toOrderNumber_(b.order);
+  if (oa !== ob) {
+    return oa - ob;
+  }
+  return (a.sourceIndex || 0) - (b.sourceIndex || 0);
+}
+
+/**
+ * 中項目ブロックの先頭行か（タグ付きならそれを使う）。
  *
  * @param {object} row
  * @return {boolean}
@@ -102,31 +196,16 @@ function isMidAnchorRow_(row) {
   if (!row) {
     return false;
   }
-  if (toOrderNumber_(row.order) === 1) {
+  if (row._isMidAnchor === true) {
+    return true;
+  }
+  if (row._isMidAnchor === false) {
+    return false;
+  }
+  if (toOrderNumber_(row.order) === 1 && !hasWorkContent_(row)) {
     return true;
   }
   return !hasWorkContent_(row);
-}
-
-/**
- * 同じ中項目内：先頭行（空の作業内容 or 順番 1）を先に、残りは順番昇順。
- *
- * @param {object} a
- * @param {object} b
- * @return {number}
- */
-function compareMidGroupRows_(a, b) {
-  const aA = isMidAnchorRow_(a) ? 0 : 1;
-  const bA = isMidAnchorRow_(b) ? 0 : 1;
-  if (aA !== bA) {
-    return aA - bA;
-  }
-  const oa = toOrderNumber_(a.order);
-  const ob = toOrderNumber_(b.order);
-  if (oa !== ob) {
-    return oa - ob;
-  }
-  return (a.sourceIndex || 0) - (b.sourceIndex || 0);
 }
 
 function groupFirstSeen_(records, keyFn) {
@@ -149,6 +228,7 @@ function groupFirstSeen_(records, keyFn) {
  * @return {object[]}
  */
 function sortWorkListRecords_(records) {
+  tagMidGroups_(records);
   const majorOrder = groupFirstSeen_(records, function (r) {
     return normalize_(r.major);
   });
@@ -162,8 +242,11 @@ function sortWorkListRecords_(records) {
     grouped[key].push(row);
   });
   Object.keys(grouped).forEach(function (key) {
-    const g = grouped[key].slice().sort(compareMidGroupRows_);
-    const anchor = g[0];
+    const g = grouped[key];
+    const tagged = g.filter(function (r) {
+      return r._isMidAnchor;
+    })[0];
+    const anchor = tagged || pickMidAnchorRow_(g) || g[0];
     midKey[key] = {
       order: toOrderNumber_(anchor.order),
       sourceIndex: anchor.sourceIndex || 0
