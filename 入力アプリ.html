@@ -72,7 +72,8 @@
       border-collapse: collapse;
       table-layout: fixed;
     }
-    col.col-no { width: 28px; }
+    col.col-no { width: 36px; }
+    col.col-ins { width: 36px; }
     col.col-fee { width: 96px; }
     col.col-staff { width: 70px; }
     col.col-n { width: 52px; }
@@ -175,18 +176,17 @@
       color: var(--text);
     }
     td { padding: 3px 3px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
-    td.no {
+    td.no,
+    td.ins {
       color: var(--muted);
       text-align: center;
       font-size: 11px;
-      padding: 3px 0;
-    }
-    td.del {
-      text-align: center;
-      padding: 2px 0;
+      padding: 8px 0;
       position: relative;
       overflow: visible;
     }
+    td.del { text-align: center; padding: 2px 0; }
+    th.del-h { text-align: center; }
     button.side-ins {
       position: absolute;
       left: 50%;
@@ -205,8 +205,10 @@
       cursor: pointer;
       opacity: 0;
     }
-    th.del-h { text-align: center; }
-    th.del-h .side-ins {
+    th.no-h,
+    th.ins-h { text-align: center; }
+    th.no-h .side-ins,
+    th.ins-h .side-ins {
       position: static;
       display: block;
       margin: 2px auto 0;
@@ -349,6 +351,7 @@
             <col class="col-fee">
             <col class="col-staff">
             <col class="col-del">
+            <col class="col-ins">
             <col class="col-part-major">
             <col class="col-part-mid">
             <col class="col-n">
@@ -359,19 +362,20 @@
           </colgroup>
           <thead>
             <tr>
-              <th>#</th>
+              <th class="no-h">#<button type="button" class="side-ins" data-at="0" data-side="work" tabindex="-1" title="技術側の先頭に空行を挿入">+</button></th>
               <th>大項目</th>
               <th>中項目</th>
               <th>技術料</th>
               <th>作業者コード</th>
-              <th class="del-h" title="技術側">削<button type="button" class="side-ins" data-at="0" data-side="work" tabindex="-1" title="技術側の先頭に空行を挿入">+</button></th>
+              <th class="del-h" title="技術側">削</th>
+              <th class="ins-h"><button type="button" class="side-ins" data-at="0" data-side="part" tabindex="-1" title="部品側の先頭に空行を挿入">+</button></th>
               <th>部品大項目</th>
               <th>部品中項目</th>
               <th>単価</th>
               <th>数量</th>
               <th>合計</th>
               <th>値引額</th>
-              <th class="del-h" title="部品側">削<button type="button" class="side-ins" data-at="0" data-side="part" tabindex="-1" title="部品側の先頭に空行を挿入">+</button></th>
+              <th class="del-h" title="部品側">削</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -914,15 +918,18 @@
     }
 
     function rowHtml(i) {
+      var ins = i < lineCount() - 1;
       return '<tr>' +
-        '<td class="no">' + (i + 1) + '</td>' +
+        '<td class="no"><span class="no-n">' + (i + 1) + '</span>' +
+          (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
+        '</td>' +
         '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
         '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
         '<td class="staff"><select data-i="' + i + '" data-k="workerCode" data-filled="1">' + optHtml.worker + '</select></td>' +
-        '<td class="del">' +
-          '<button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button>' +
-          (i < lineCount() - 1 ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
+        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
+        '<td class="ins">' +
+          (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="part-major"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
         '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
@@ -930,10 +937,7 @@
         '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
         '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
         '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>' +
-        '<td class="del">' +
-          '<button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button>' +
-          (i < lineCount() - 1 ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
-        '</td>' +
+        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>' +
         '</tr>';
     }
 
