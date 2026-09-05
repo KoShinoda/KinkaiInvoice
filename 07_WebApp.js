@@ -44,6 +44,7 @@ function getInvoiceMaster() {
   });
   const parts = loadPartCatalog_(ctx.workRows);
   const service = loadServiceInfo_();
+  const workers = loadWorkers_();
   return {
     majors: majors,
     allMids: allMids,
@@ -53,7 +54,10 @@ function getInvoiceMaster() {
     allPartMids: parts.allPartMids,
     partMidsByMajor: parts.partMidsByMajor,
     partLines: parts.partLines,
-    workerCodes: loadWorkerCodes_(),
+    workers: workers,
+    workerCodes: workers.map(function (w) {
+      return w.name ? w.code + ' ' + w.name : w.code;
+    }),
     departments: service.departments,
     typesByDept: service.typesByDept,
     typeSlotsByDept: service.typeSlotsByDept || {},
@@ -64,7 +68,7 @@ function getInvoiceMaster() {
   };
 }
 
-function loadWorkerCodes_() {
+function loadWorkers_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.workers.sheetName);
   if (!sh) {
@@ -78,16 +82,28 @@ function loadWorkerCodes_() {
       start = 1;
     }
   }
-  const codes = [];
+  const rows = [];
+  const seen = {};
   for (let i = start; i < vals.length; i++) {
     const code = normalize_(vals[i][0]);
     const name = vals[i].length > 1 ? normalize_(vals[i][1]) : '';
     if (!code && !name) {
       continue;
     }
-    codes.push(name ? code + ' ' + name : code);
+    const key = code + '\t' + name;
+    if (seen[key]) {
+      continue;
+    }
+    seen[key] = true;
+    rows.push({ code: code, name: name });
   }
-  return uniqueValues_(codes);
+  return rows;
+}
+
+function loadWorkerCodes_() {
+  return loadWorkers_().map(function (w) {
+    return w.name ? w.code + ' ' + w.name : w.code;
+  });
 }
 
 function loadPartCatalog_(workRows) {
