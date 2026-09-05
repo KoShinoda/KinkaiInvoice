@@ -135,6 +135,21 @@ function handleEdit_(e) {
   if (sheetName === CONFIG.workers.sheetName) {
     writeInternal_(function () {
       assignMissingWorkerCodes_(sheet);
+      const work = sheet.getParent().getSheetByName(CONFIG.workList.sheetName);
+      if (work) {
+        fillWorkListWorkerCodesFromNames_(work);
+        applyWorkListOpenDropdowns_(sheet.getParent(), work);
+      }
+    });
+    return;
+  }
+
+  if (sheetName === CONFIG.parts.sheetName) {
+    writeInternal_(function () {
+      const work = sheet.getParent().getSheetByName(CONFIG.workList.sheetName);
+      if (work) {
+        applyWorkListOpenDropdowns_(sheet.getParent(), work);
+      }
     });
     return;
   }
@@ -143,6 +158,9 @@ function handleEdit_(e) {
     if (e.range.getColumn() <= 2) {
       rebuildMidCandidateSheet_();
     }
+    writeInternal_(function () {
+      fillWorkListWorkerCodesFromEdit_(sheet, e.range);
+    });
     return;
   }
 

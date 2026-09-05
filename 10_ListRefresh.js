@@ -111,6 +111,8 @@ function ensureListMasterSheets_() {
     layoutWorkListColumns_(work);
     ensureOrderColumnOnSheet_(work);
     layoutWorkListColumns_(work);
+    fillWorkListWorkerCodesFromNames_(work);
+    applyWorkListOpenDropdowns_(ss, work);
   }
   const parts = ss.getSheetByName(CONFIG.parts.sheetName);
   if (parts) {
@@ -357,6 +359,11 @@ function refreshMasterListSheet_(sheet) {
   invalidateContext_();
   if (sheet.getName() === CONFIG.workList.sheetName) {
     rebuildMidCandidateSheet_();
+    fillWorkListWorkerCodesFromNames_(sheet);
+  }
+  const work = sheet.getParent().getSheetByName(CONFIG.workList.sheetName);
+  if (work) {
+    applyWorkListOpenDropdowns_(sheet.getParent(), work);
   }
   log_('%s refreshMasterListSheet_: %s を順番で並べ替えました', CONFIG.logPrefix, sheet.getName());
 }
@@ -620,4 +627,224 @@ function sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers) {
   }
   range.setValues(outValues);
   range.setNumberFormats(outFormats);
+}
+
+/**
+ * 作業内容が作業者リストの氏名と一致し、作業コードが空ならコードを入れる。
+ * 既に入っているコードは上書きしない。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function fillWorkListWorkerCodesFromNames_(sheet) {
+  fillWorkListWorkerCodesInRows_(sheet, 2, Math.max(sheet.getLastRow(), 1));
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {GoogleAppsScript.Spreadsheet.Range} range
+ */
+function fillWorkListWorkerCodesFromEdit_(sheet, range) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  if (!cols.content || !cols.workerCode) {
+    return;
+  }
+  const startCol = range.getColumn();
+  const endCol = startCol + range.getNumColumns() - 1;
+  if (cols.content < startCol || cols.content > endCol) {
+    return;
+  }
+  const startRow = Math.max(range.getRow(), 2);
+  const endRow = range.getRow() + range.getNumRows() - 1;
+  fillWorkListWorkerCodesInRows_(sheet, startRow, endRow);
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} startRow
+ * @param {number} endRow
+ */
+function fillWorkListWorkerCodesInRows_(sheet, startRow, endRow) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2 || startRow > lastRow) {
+    return;
+  }
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  if (!cols.content || !cols.workerCode) {
+    return;
+  }
+  const byName = workerCodeByNameMap_();
+  if (!Object.keys(byName).length) {
+    return;
+  }
+  const from = Math.max(startRow, 2);
+  const to = Math.min(endRow, lastRow);
+  if (to < from) {
+    return;
+  }
+  const height = to - from + 1;
+  const contents = sheet.getRange(from, cols.content, height, 1).getValues();
+  const codes = sheet.getRange(from, cols.workerCode, height, 1).getValues();
+  let changed = false;
+  for (let i = 0; i < height; i++) {
+    if (normalize_(codes[i][0])) {
+      continue;
+    }
+    const nameKey = normalize_(contents[i][0]);
+    if (!nameKey || byName[nameKey] == null) {
+      continue;
+    }
+    codes[i][0] = byName[nameKey];
+    changed = true;
+  }
+  if (changed) {
+    sheet.getRange(from, cols.workerCode, height, 1).setValues(codes);
+  }
+}
+
+function workerCodeByNameMap_() {
+  const map = {};
+  try {
+    (loadWorkers_() || []).forEach(function (w) {
+      const name = normalize_(w.name);
+      const code = w.code;
+      if (name && code !== '' && code != null && map[name] == null) {
+        map[name] = code;
+      }
+    });
+  } catch (err) {
+    Logger.log('%s workerCodeByNameMap_: %s', CONFIG.logPrefix, err);
+  }
+  return map;
+}
+
+/**
+ * 作業リストの作業コード・部品_中項目を、リストから選べて手入力もできるプルダウンにする。
+ * セルの値は消さない。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} workSheet
+ */
+function applyWorkListOpenDropdowns_(ss, workSheet) {
+  const ref = ensureListRefSheet_(ss);
+  writeListRefValues_(ref);
+  const lastCol = Math.max(workSheet.getLastColumn(), 1);
+  const headers = workSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  const cfg = CONFIG.listRef;
+  const lastData = Math.max(workSheet.getLastRow(), 2);
+  const rows = Math.max(lastData + 80, 200) - 1;
+  if (cols.workerCode) {
+    applyOpenRangeValidation_(
+      workSheet.getRange(2, cols.workerCode, rows, 1),
+      listRefSourceRange_(ref, cfg.workerCodeCol)
+    );
+  }
+  if (cols.partMid) {
+    applyOpenRangeValidation_(
+      workSheet.getRange(2, cols.partMid, rows, 1),
+      listRefSourceRange_(ref, cfg.partMidCol)
+    );
+  }
+}
+
+function ensureListRefSheet_(ss) {
+  const name = CONFIG.listRef.sheetName;
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.hideSheet();
+  }
+  try {
+    sh.hideSheet();
+  } catch (err) {}
+  return sh;
+}
+
+function writeListRefValues_(ref) {
+  const cfg = CONFIG.listRef;
+  writeListRefColumn_(ref, cfg.workerCodeCol, '作業者コード', workerCodesForDropdown_());
+  writeListRefColumn_(ref, cfg.partMidCol, '部品_中項目', partMidsForDropdown_());
+}
+
+function writeListRefColumn_(sheet, col, header, values) {
+  sheet.getRange(1, col).setValue(header);
+  const maxR = sheet.getMaxRows();
+  if (maxR > 1) {
+    sheet.getRange(2, col, maxR - 1, 1).clearContent();
+  }
+  if (values.length) {
+    sheet.getRange(2, col, values.length, 1).setValues(values.map(function (v) {
+      return [v];
+    }));
+  }
+}
+
+function listRefSourceRange_(ref, col) {
+  const last = Math.max(ref.getLastRow(), 2);
+  const height = Math.max(last - 1, 1);
+  return ref.getRange(2, col, height, 1);
+}
+
+function applyOpenRangeValidation_(range, source) {
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(source, true)
+    .setAllowInvalid(true)
+    .setHelpText('リストから選ぶか、今ある値のまま直接入力できます')
+    .build();
+  range.setDataValidation(rule);
+}
+
+function workerCodesForDropdown_() {
+  const seen = {};
+  const out = [];
+  try {
+    (loadWorkers_() || []).forEach(function (w) {
+      const key = normalize_(w.code);
+      if (!key || seen[key]) {
+        return;
+      }
+      seen[key] = true;
+      out.push(w.code);
+    });
+  } catch (err) {
+    Logger.log('%s workerCodesForDropdown_: %s', CONFIG.logPrefix, err);
+  }
+  return out;
+}
+
+function partMidsForDropdown_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.parts.sheetName);
+  if (!sh) {
+    return [];
+  }
+  const vals = sh.getDataRange().getValues();
+  if (!vals.length) {
+    return [];
+  }
+  let start = 0;
+  const header = vals[0].map(function (v) {
+    return normalize_(v);
+  }).join('');
+  if (header.indexOf('大項目') !== -1 || header.indexOf('部品') !== -1 || header.indexOf('中項目') !== -1) {
+    start = 1;
+  }
+  const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
+  const midCol = cols.mid || 2;
+  const seen = {};
+  const out = [];
+  for (let i = start; i < vals.length; i++) {
+    const raw = cell_(vals[i], midCol);
+    const key = normalize_(raw);
+    if (!key || seen[key]) {
+      continue;
+    }
+    seen[key] = true;
+    out.push(raw);
+  }
+  return out;
 }

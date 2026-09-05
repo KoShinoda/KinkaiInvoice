@@ -282,6 +282,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   });
   const per = CONFIG.print.linesPerPage;
   const pageCount = Math.max(1, Math.ceil(items.length / per) || 1);
+  printWorkerValue_.maps_ = null;
   const sheet = replacePrintSheet_(ss, sheetName);
   const slotH = printDataRowHeight_();
 
@@ -498,11 +499,39 @@ function printWorkerValue_(it) {
   if (!it) {
     return '';
   }
-  const code = String(it.workerCode == null ? '' : it.workerCode).trim();
-  if (code) {
-    return code;
+  const maps = printWorkerValue_.maps_ || (printWorkerValue_.maps_ = workerPrintMaps_());
+  const code = normalize_(it.workerCode);
+  const name = normalize_(it.workerName);
+  if (code && maps.byCode[code]) {
+    return maps.byCode[code];
   }
-  return String(it.workerName || '').trim();
+  if (code && maps.byName[code]) {
+    return maps.byName[code];
+  }
+  if (name && maps.byName[name]) {
+    return maps.byName[name];
+  }
+  return '';
+}
+
+function workerPrintMaps_() {
+  const maps = { byCode: {}, byName: {} };
+  try {
+    (loadWorkers_() || []).forEach(function (w) {
+      const codeKey = normalize_(w.code);
+      const nameKey = normalize_(w.name);
+      const shown = String(w.code == null ? '' : w.code).trim();
+      if (codeKey && !maps.byCode[codeKey]) {
+        maps.byCode[codeKey] = shown;
+      }
+      if (nameKey && shown && !maps.byName[nameKey]) {
+        maps.byName[nameKey] = shown;
+      }
+    });
+  } catch (err) {
+    Logger.log('%s workerPrintMaps_: %s', CONFIG.logPrefix, err);
+  }
+  return maps;
 }
 
 function fillPrintBody_(sheet, first, lines, serialOffset) {

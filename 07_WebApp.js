@@ -24,6 +24,8 @@ function getInvoiceMaster() {
   const workSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.workList.sheetName);
   if (workSheet) {
     ensureWorkListWorkerCodeColumn_(workSheet);
+    fillWorkListWorkerCodesFromNames_(workSheet);
+    applyWorkListOpenDropdowns_(workSheet.getParent(), workSheet);
   }
   invalidateContext_();
   const ctx = loadContext_();
