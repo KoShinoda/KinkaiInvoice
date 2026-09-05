@@ -276,13 +276,14 @@
       z-index: 80;
       width: auto;
       max-width: calc(100vw - 16px);
-      max-height: calc(100vh - 16px);
+      max-height: none;
+      overflow: visible;
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(28, 36, 48, .16);
       flex-direction: column;
-      overflow: hidden;
+      overflow: visible;
     }
     .worker-picker[hidden] { display: none !important; }
     .worker-picker:not([hidden]) { display: flex; }
@@ -332,10 +333,7 @@
       align-items: flex-start;
       gap: 10px;
       padding: 0 10px 10px;
-      overflow: auto;
-      max-height: calc(100vh - 140px);
-      min-height: 0;
-      flex: 1;
+      overflow: visible;
     }
     table.worker-board {
       width: auto;
@@ -1415,7 +1413,7 @@
           if (qn && workerSearchText(w).indexOf(qn) === -1) return;
           var d = document.createElement('div');
           d.dataset.value = w.code || '';
-          d.textContent = w.name || w.code || '';
+          d.textContent = workerLabel(w);
           list.appendChild(d);
           opts.push(w);
         });
@@ -1553,17 +1551,34 @@
       });
     }
     function findWorker(q) {
-      var s = String(q || '').trim();
+      var s = String(q || '').trim().replace(/\u3000/g, ' ');
       if (!s) return null;
       var all = workerListRows();
       var i;
+      var w;
       for (i = 0; i < all.length; i++) {
-        if (String(all[i].code || '') === s) return all[i];
+        w = all[i];
+        if (String(w.code || '') === s) return w;
+        if (workerLabel(w) === s) return w;
+      }
+      var sp = s.indexOf(' ');
+      var codePart = (sp >= 0 ? s.slice(0, sp) : s).trim();
+      if (codePart) {
+        for (i = 0; i < all.length; i++) {
+          if (String(all[i].code || '') === codePart) return all[i];
+        }
       }
       for (i = 0; i < all.length; i++) {
         if (String(all[i].name || '') === s) return all[i];
       }
       return null;
+    }
+    function workerLabel(w) {
+      if (!w) return '';
+      var code = String(w.code || '').trim();
+      var name = String(w.name || '').trim();
+      if (code && name) return code + ' ' + name;
+      return name || code;
     }
     function assignWorker(it, w, fallback) {
       if (!it) return;
@@ -1576,7 +1591,7 @@
       }
     }
     function workerInputValue(it) {
-      return (it && (it.workerName || it.workerCode)) || '';
+      return workerLabel({ code: it && it.workerCode, name: it && it.workerName });
     }
     function syncWorkerInput(rowIndex) {
       var row = $('tbody').rows[rowIndex];
@@ -1611,7 +1626,7 @@
       return false;
     }
     function workerChunkSize() {
-      return 20;
+      return 15;
     }
     function workerRowHtml(w, idx, headers, active) {
       var cells = (w.cells && w.cells.length ? w.cells : [w.code, w.name]).slice();
