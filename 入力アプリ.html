@@ -75,7 +75,7 @@
     col.col-no { width: 36px; }
     col.col-ins { width: 36px; }
     col.col-fee { width: calc(96px - 1ch); }
-    col.col-staff { width: 88px; }
+    col.col-staff { width: 108px; }
     col.col-n { width: calc(52px + 2ch); }
     col.col-qty { width: 42px; }
     col.col-amt { width: calc(96px - 1ch); }
@@ -263,14 +263,25 @@
     .worker-picker {
       position: fixed;
       z-index: 80;
-      min-width: 260px;
-      max-width: min(420px, 90vw);
-      max-height: 280px;
-      overflow: auto;
+      width: min(360px, calc(100vw - 16px));
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(28, 36, 48, .16);
+      display: flex;
+      flex-direction: column;
+      max-height: min(340px, 50vh);
+    }
+    .worker-picker-hint,
+    .worker-picker-meta {
+      padding: 6px 10px 0;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .worker-picker-meta { padding-top: 2px; padding-bottom: 4px; }
+    .worker-picker-scroll {
+      overflow: auto;
+      max-height: 280px;
     }
     .worker-picker table {
       width: 100%;
@@ -297,6 +308,18 @@
     }
     .worker-picker tbody tr:hover td { background: #e8f0ec; }
     .worker-picker tbody tr.active td { background: #dce8e2; }
+    .worker-picker tr.worker-sec td {
+      background: #f6f8f7;
+      color: var(--muted);
+      font-size: 11px;
+      cursor: default;
+      font-weight: 600;
+    }
+    .worker-picker mark {
+      background: #fff3bf;
+      color: inherit;
+      padding: 0;
+    }
     .grid.header-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -485,12 +508,16 @@
     </div>
   </footer>
   <div id="workerPicker" class="worker-picker" hidden>
-    <table>
-      <thead>
-        <tr><th>コード</th><th>名前</th></tr>
-      </thead>
-      <tbody id="workerPickerBody"></tbody>
-    </table>
+    <div class="worker-picker-hint">入力するとコード・名前で絞り込みます</div>
+    <div id="workerPickerMeta" class="worker-picker-meta"></div>
+    <div class="worker-picker-scroll">
+      <table>
+        <thead>
+          <tr><th>コード</th><th>名前</th></tr>
+        </thead>
+        <tbody id="workerPickerBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <script>
@@ -993,8 +1020,8 @@
         '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
         '<td class="staff"><div class="staff-wrap">' +
-          '<input data-i="' + i + '" data-k="workerCode" autocomplete="off">' +
-          '<button type="button" class="staff-pick" data-i="' + i + '" tabindex="-1" title="作業者リストから選ぶ">▾</button>' +
+          '<input data-i="' + i + '" data-k="workerCode" autocomplete="off" placeholder="コード">' +
+          '<button type="button" class="staff-pick" data-i="' + i + '" tabindex="-1" title="作業者リストを開く">▾</button>' +
         '</div></td>' +
         '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
         '<td class="ins">' +
@@ -1408,6 +1435,8 @@
       insertSide(Number(ins.dataset.at), ins.dataset.side);
     });
     var workerPickerRow = -1;
+    var workerPickerActive = -1;
+    var workerPickerNavigated = false;
     function workerListRows() {
       if (master.workers && master.workers.length) return master.workers;
       return (master.workerCodes || []).map(function (s) {
@@ -1417,50 +1446,161 @@
         return { code: t.slice(0, sp), name: t.slice(sp + 1) };
       });
     }
-    function fillWorkerPicker() {
-      var tb = $('workerPickerBody');
-      tb.innerHTML = '';
-      var list = workerListRows();
-      if (!list.length) {
-        var empty = document.createElement('tr');
-        empty.innerHTML = '<td colspan="2">作業者リストが空です</td>';
-        tb.appendChild(empty);
-        return;
+    function fillWorkerPicker() {}
+    function workerQuery(s) {
+      return String(s || '').toLowerCase().replace(/\s+/g, '');
+    }
+    function workerRank(w, q) {
+      if (!q) return 2;
+      var c = workerQuery(w.code);
+      var n = workerQuery(w.name);
+      if (c === q) return 0;
+      if (c.indexOf(q) === 0) return 1;
+      if (n.indexOf(q) === 0) return 2;
+      if (c.indexOf(q) !== -1) return 3;
+      if (n.indexOf(q) !== -1) return 4;
+      return -1;
+    }
+    function markHit(text, q) {
+      var s = String(text || '');
+      if (!q) return htmlEscape(s);
+      var lower = s.toLowerCase();
+      var i = lower.indexOf(q);
+      if (i < 0) {
+        var compact = s.toLowerCase().replace(/\s+/g, '');
+        if (compact.indexOf(q) < 0) return htmlEscape(s);
+        return htmlEscape(s);
       }
-      list.forEach(function (w) {
-        var tr = document.createElement('tr');
-        tr.dataset.code = w.code || '';
-        tr.dataset.name = w.name || '';
-        tr.innerHTML = '<td>' + htmlEscape(w.code) + '</td><td>' + htmlEscape(w.name) + '</td>';
-        tb.appendChild(tr);
+      return htmlEscape(s.slice(0, i)) + '<mark>' + htmlEscape(s.slice(i, i + q.length)) + '</mark>' + htmlEscape(s.slice(i + q.length));
+    }
+    function workerMatchesCurrent(w, cur) {
+      if (!cur) return false;
+      var label = w.name ? w.code + ' ' + w.name : w.code;
+      return cur === w.code || cur === label;
+    }
+    function recentWorkers(exceptRow) {
+      var seen = {};
+      var out = [];
+      var all = workerListRows();
+      for (var i = 0; i < items.length; i++) {
+        if (i === exceptRow) continue;
+        var c = String(items[i].workerCode || '').trim();
+        if (!c || seen[c]) continue;
+        seen[c] = true;
+        var found = null;
+        for (var j = 0; j < all.length; j++) {
+          if (workerMatchesCurrent(all[j], c)) {
+            found = all[j];
+            break;
+          }
+        }
+        out.push(found || { code: c, name: '' });
+        if (out.length >= 6) break;
+      }
+      return out;
+    }
+    function workerDataRows() {
+      return $('workerPickerBody').querySelectorAll('tr[data-code]');
+    }
+    function highlightWorkerRow(idx) {
+      var rows = workerDataRows();
+      workerPickerActive = idx;
+      if (workerPickerActive < 0) workerPickerActive = rows.length ? 0 : -1;
+      if (workerPickerActive >= rows.length) workerPickerActive = rows.length - 1;
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.toggle('active', i === workerPickerActive);
+      }
+      if (workerPickerActive >= 0 && rows[workerPickerActive]) {
+        rows[workerPickerActive].scrollIntoView({ block: 'nearest' });
+      }
+    }
+    function renderWorkerPickerBody(qRaw) {
+      var tb = $('workerPickerBody');
+      var q = workerQuery(qRaw);
+      var qDisp = String(qRaw || '').toLowerCase();
+      var all = workerListRows();
+      var matched = [];
+      for (var i = 0; i < all.length; i++) {
+        var rank = workerRank(all[i], q);
+        if (rank < 0) continue;
+        matched.push({ w: all[i], rank: rank, i: i });
+      }
+      matched.sort(function (a, b) {
+        if (a.rank !== b.rank) return a.rank - b.rank;
+        return a.i - b.i;
       });
+      var html = '';
+      var rec = !q ? recentWorkers(workerPickerRow) : [];
+      if (rec.length) {
+        html += '<tr class="worker-sec"><td colspan="2">この明細で使用</td></tr>';
+        rec.forEach(function (w) {
+          html += '<tr data-code="' + htmlEscape(w.code) + '" data-name="' + htmlEscape(w.name) + '"><td>' +
+            htmlEscape(w.code) + '</td><td>' + htmlEscape(w.name) + '</td></tr>';
+        });
+        html += '<tr class="worker-sec"><td colspan="2">作業者リスト</td></tr>';
+      }
+      if (!matched.length) {
+        html += '<tr class="worker-sec"><td colspan="2">一致する作業者がいません</td></tr>';
+      } else {
+        matched.forEach(function (m) {
+          html += '<tr data-code="' + htmlEscape(m.w.code) + '" data-name="' + htmlEscape(m.w.name) + '"><td>' +
+            markHit(m.w.code, qDisp || q) + '</td><td>' + markHit(m.w.name, qDisp || q) + '</td></tr>';
+        });
+      }
+      tb.innerHTML = html;
+      var meta = $('workerPickerMeta');
+      if (!all.length) meta.textContent = '作業者リストが空です。手入力もできます。';
+      else if (!q) meta.textContent = all.length + ' 件　／　手入力もできます';
+      else meta.textContent = matched.length + ' / ' + all.length + ' 件';
+      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
+      var rows = workerDataRows();
+      var active = 0;
+      for (var r = 0; r < rows.length; r++) {
+        if (workerMatchesCurrent({ code: rows[r].dataset.code, name: rows[r].dataset.name }, cur)) {
+          active = r;
+          break;
+        }
+      }
+      highlightWorkerRow(rows.length ? active : -1);
     }
     function hideWorkerPicker() {
       $('workerPicker').hidden = true;
       workerPickerRow = -1;
+      workerPickerActive = -1;
+      workerPickerNavigated = false;
     }
-    function showWorkerPicker(btn) {
-      workerPickerRow = Number(btn.dataset.i);
+    function positionWorkerPicker(anchor) {
       var panel = $('workerPicker');
-      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
-      var rows = panel.querySelectorAll('tbody tr');
-      for (var r = 0; r < rows.length; r++) {
-        var code = rows[r].dataset.code || '';
-        var name = rows[r].dataset.name || '';
-        var label = name ? code + ' ' + name : code;
-        rows[r].classList.toggle('active', !!cur && (cur === code || cur === label));
-      }
-      panel.hidden = false;
-      var rect = btn.getBoundingClientRect();
-      var w = panel.offsetWidth;
-      var h = panel.offsetHeight;
-      var left = rect.right - w;
-      if (left < 8) left = 8;
-      if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
+      var wrap = (anchor && anchor.closest && anchor.closest('.staff-wrap')) || anchor;
+      var rect = wrap.getBoundingClientRect();
+      panel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 368)) + 'px';
       var top = rect.bottom + 4;
-      if (top + h > window.innerHeight - 8) top = Math.max(8, rect.top - h - 4);
-      panel.style.left = left + 'px';
+      panel.hidden = false;
+      var h = panel.offsetHeight;
+      if (top + h > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - h - 4);
+      }
       panel.style.top = top + 'px';
+    }
+    function showWorkerPicker(anchor) {
+      var row = Number(anchor.dataset.i);
+      workerPickerRow = row;
+      var input = $('tbody').rows[row] && $('tbody').rows[row]._cells && $('tbody').rows[row]._cells.workerCode;
+      renderWorkerPickerBody(input ? input.value : '');
+      positionWorkerPicker(anchor);
+    }
+    function moveWorkerHighlight(dir) {
+      if ($('workerPicker').hidden) {
+        var el = document.activeElement;
+        if (el && el.dataset && el.dataset.k === 'workerCode') showWorkerPicker(el);
+      }
+      var rows = workerDataRows();
+      if (!rows.length) return;
+      workerPickerNavigated = true;
+      var next = workerPickerActive + dir;
+      if (next < 0) next = rows.length - 1;
+      if (next >= rows.length) next = 0;
+      highlightWorkerRow(next);
     }
     function pickWorker(tr) {
       if (workerPickerRow < 0 || !items[workerPickerRow] || !tr || tr.dataset.code == null) return;
@@ -1472,15 +1612,25 @@
       hideWorkerPicker();
       recalc();
     }
+    function pickActiveWorker() {
+      if (!workerPickerNavigated) return false;
+      var rows = workerDataRows();
+      if (workerPickerActive >= 0 && rows[workerPickerActive]) {
+        pickWorker(rows[workerPickerActive]);
+        return true;
+      }
+      return false;
+    }
     $('workerPicker').addEventListener('mousedown', function (e) {
       var tr = e.target.closest('#workerPickerBody tr');
-      if (!tr || tr.dataset.code == null) return;
+      if (!tr || tr.classList.contains('worker-sec') || tr.dataset.code == null) return;
       e.preventDefault();
       pickWorker(tr);
     });
     document.addEventListener('mousedown', function (e) {
       if ($('workerPicker').hidden) return;
       if (e.target.closest('#workerPicker') || e.target.closest('button.staff-pick')) return;
+      if (e.target.dataset && e.target.dataset.k === 'workerCode' && Number(e.target.dataset.i) === workerPickerRow) return;
       hideWorkerPicker();
     });
     document.querySelector('.table-wrap').addEventListener('scroll', hideWorkerPicker);
@@ -1491,8 +1641,18 @@
       var pick = e.target.closest('button.staff-pick');
       if (pick) {
         e.preventDefault();
-        if (!$('workerPicker').hidden && workerPickerRow === Number(pick.dataset.i)) hideWorkerPicker();
-        else showWorkerPicker(pick);
+        var row = Number(pick.dataset.i);
+        if (!$('workerPicker').hidden && workerPickerRow === row) {
+          hideWorkerPicker();
+        } else {
+          var inp = $('tbody').rows[row] && $('tbody').rows[row]._cells && $('tbody').rows[row]._cells.workerCode;
+          if (inp) {
+            if (document.activeElement === inp) showWorkerPicker(inp);
+            else inp.focus();
+          } else {
+            showWorkerPicker(pick);
+          }
+        }
         return;
       }
       var btn = e.target.closest('button.row-del');
@@ -1518,9 +1678,14 @@
       }
     });
     $('tbody').addEventListener('focusin', function (e) {
-      if (e.target.dataset && (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid')) {
+      if (!e.target.dataset) return;
+      if (e.target.dataset.k !== 'workerCode') hideWorkerPicker();
+      if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid') {
         hideComboLists();
         showComboList(e.target);
+      } else if (e.target.dataset.k === 'workerCode') {
+        hideComboLists();
+        showWorkerPicker(e.target);
       }
     });
     $('tbody').addEventListener('keydown', function (e) {
@@ -1534,7 +1699,24 @@
       if (e.key === 'Enter') {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
+        if (k === 'workerCode' && !$('workerPicker').hidden) pickActiveWorker();
         moveDown(e.target, e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (k === 'workerCode') {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          moveWorkerHighlight(1);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          moveWorkerHighlight(-1);
+          return;
+        }
+        if (e.key === 'Escape') {
+          hideWorkerPicker();
+        }
         return;
       }
       if (k === 'mid' || k === 'partMid') {
@@ -1587,6 +1769,12 @@
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid') {
         showComboList(t);
+        return;
+      }
+      if (k === 'workerCode') {
+        items[i][k] = t.value;
+        showWorkerPicker(t);
+        recalc();
         return;
       }
       items[i][k] = t.value;
