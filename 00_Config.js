@@ -211,18 +211,20 @@ const CONFIG = {
     sampleSheetName: '印刷原本',
     sheetNamePrefix: '印刷_',
     samplePrefix: '印刷原本_',
-    title: '整備請求書',
-    linesPerPage: 30,
-    pageRows: 44,
+    title: '近海請求書',
+    linesPerPage: 20,
+    pageRows: 36,
     colCount: 8,
     layout: {
       title: 0,
-      meta1: 1,
-      meta2: 2,
-      spacer: 3,
-      colHead: 4,
-      firstLine: 5,
-      footerStart: 35
+      metaL1: 1,
+      metaV1: 2,
+      metaL2: 3,
+      metaV2: 4,
+      spacer: 5,
+      colHead: 6,
+      firstLine: 7,
+      footerStart: 28
     }
   },
 
