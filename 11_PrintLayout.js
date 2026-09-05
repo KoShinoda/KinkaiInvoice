@@ -9,13 +9,15 @@
  * 技術料 / 単価 / 金額 … 9,999,999 まで
  * 残りは作業内容を優先し、次に部品。
  */
-var PRINT_COL_WIDTHS_ = [32, 242, 88, 36, 122, 32, 88, 88];
+var PRINT_COL_WIDTHS_ = [32, 236, 86, 36, 118, 32, 86, 86];
 var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部品', '数量', '単価', '金額'];
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
-var PRINT_ROW_H_ = 22;
-var PRINT_FONT_MAX_ = 14;
+/** A4 縦（余白込み）に近いピクセル。明細スロットに余りを振る。 */
+var PRINT_PAGE_PX_ = 1100;
+var PRINT_FONT_MAX_ = 15;
 var PRINT_FONT_MIN_ = 9;
+var PRINT_SLOT_MAX_ = 4;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -55,27 +57,22 @@ function createPrintOriginalSample() {
 }
 
 function makePrintSamplePayload_() {
+  const pack = collectPrintSampleCatalog_();
+  const mids = pack.mids;
+  const parts = pack.parts;
   const items = [];
   let techSub = 0;
   let partSub = 0;
-  const mids = [
-    '＊＊　１２カ月定期点検　＊＊',
-    'シャシ洗浄、グリスアップ',
-    'シャシグレー塗装',
-    'シャシマスキング',
-    '保安確認検査料',
-    '代行料'
-  ];
-  const parts = ['部品1', '部品2', '部品3', 'カートリッジグリス', 'ｼｬｼｸﾞﾚｰ', 'ｽﾓｰﾙ･ﾊﾟｰﾂ'];
-  for (let i = 0; i < 72; i++) {
+  const n = Math.max(60, Math.min(90, mids.length + 20));
+  for (let i = 0; i < n; i++) {
     const fee = i % 7 === 0 ? 0 : 800 + (i % 12) * 200;
-    const qty = 1;
-    const unitPrice = 400 + (i % 9) * 50;
+    const qty = 1 + (i % 3 === 0 ? 1 : 0);
+    const unitPrice = 400 + (i % 15) * 80;
     const amount = qty * unitPrice;
     techSub += fee;
     partSub += amount;
     items.push({
-      mid: mids[i % mids.length] + (i >= 6 ? '（暫定' + (i + 1) + '）' : ''),
+      mid: mids[i % mids.length],
       fee: fee || '',
       workerCode: String((i % 9) + 1),
       partMid: parts[i % parts.length],
@@ -84,9 +81,6 @@ function makePrintSamplePayload_() {
       amount: amount
     });
   }
-  items[0].mid = '＊＊　１２カ月定期点検　＊＊\n（入力2行の例）';
-  items[1].mid = 'ながい作業内容のサンプルです。文字サイズを下げて1行の枠に収めます';
-  items[2].mid = 'これは計算上1行に収まらない長さの作業内容なので2行スロットで表示する目安の例です＊＊＊＊';
   const techPct = 3;
   const partPct = 10;
   const techDisc = Math.round(techSub * techPct / 100);
@@ -115,6 +109,115 @@ function makePrintSamplePayload_() {
     }
   };
 }
+
+function collectPrintSampleCatalog_() {
+  const mids = [];
+  const parts = [];
+  const seenMid = {};
+  const seenPart = {};
+  function addMid(v) {
+    const s = String(v || '').trim();
+    if (!s || seenMid[s]) {
+      return;
+    }
+    seenMid[s] = true;
+    mids.push(s);
+  }
+  function addPart(v) {
+    const s = String(v || '').trim();
+    if (!s || seenPart[s]) {
+      return;
+    }
+    seenPart[s] = true;
+    parts.push(s);
+  }
+  try {
+    const ctx = loadContext_();
+    (ctx.workRows || []).forEach(function (r) {
+      addMid(r.mid);
+      if (r.content && String(r.content).trim() !== String(r.mid || '').trim()) {
+        addMid(r.content);
+      }
+      addPart(r.partMid);
+    });
+  } catch (err) {
+    Logger.log('%s sample catalog: %s', CONFIG.logPrefix, err);
+  }
+  PRINT_SAMPLE_MIDS_.forEach(addMid);
+  PRINT_SAMPLE_PARTS_.forEach(addPart);
+  if (!mids.length) {
+    PRINT_SAMPLE_MIDS_.forEach(addMid);
+  }
+  if (!parts.length) {
+    PRINT_SAMPLE_PARTS_.forEach(addPart);
+  }
+  return { mids: mids, parts: parts };
+}
+
+var PRINT_SAMPLE_MIDS_ = [
+  '＊＊　１２カ月定期点検　＊＊',
+  'シャシ洗浄、グリスアップ',
+  'シャシグレー塗装',
+  'シャシマスキング',
+  '保安確認検査料',
+  '代行料',
+  '構造変更分解整備',
+  'リレーバルブＡＳＳＹ脱着',
+  'エアーカプラゴム交換',
+  'ホイールナット規定トルク締め付一式',
+  'タイヤ空気圧点検、調整（９ｋｇｆ）',
+  'エアサス廻り点検締め付け',
+  '左右ランディングASSY交換',
+  'ウイングシャワーテスト',
+  'ウイング開閉点検',
+  '左右車幅灯交換',
+  'バックランプ交換',
+  'ナンバー灯交換',
+  '左右Ｒ２エアサスブラケット当板補強修理',
+  'リヤバンパー上部リフレクター取付ブラケット製作交換',
+  '左右サイドバンパー製作交換',
+  '荷台アオリ支柱（４本）補強修理',
+  '＊＊　１２カ月定期点検　＊＊\nシャシ廻り一式',
+  'ランディング高さ違い点検修理\n（ギヤ灯高・低切り替え不良）',
+  '左右メーンフレーム当板修理およびリヤロッカーレール切断曲がり修理（６か所）当板補強一式'
+];
+
+var PRINT_SAMPLE_PARTS_ = [
+  'カートリッジグリス',
+  'ｼｬｼｸﾞﾚｰ',
+  'ｽﾓｰﾙ･ﾊﾟｰﾂ',
+  '産業廃棄物処理料',
+  'ＢＰＷ用ハブＢ／ｇグリス',
+  'ハブパッキン',
+  'ハブＢ／ｇグリス',
+  'エアカプラーゴム',
+  'リレーバルブインナーキット',
+  'リレーバルブアッパーカバー（６H）',
+  'エアーパイプジョイント',
+  '左ランディングASSY',
+  '右ランディングＡＳＳＹ',
+  'サンドシュー',
+  'ランバーメイト',
+  'ナンバープレートブラケット',
+  'アオリスケットASSY',
+  'カーゴロック',
+  '車幅灯（LED）',
+  'サイドウインカーランプ',
+  'テールランプレンズ',
+  'リヤウインカーランプレンズ',
+  'リフレクター',
+  'バックランプ',
+  'バックブザー',
+  'マーカーランプ',
+  'ナンバー灯',
+  '三角リフレクター',
+  '後部大型反射器',
+  'コーキング',
+  'アルミリベット',
+  '鋼材一式',
+  '10×65ボルト',
+  '16×35ボルト'
+];
 
 /**
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
@@ -221,15 +324,12 @@ function applyA4PageSetup_(sheet, pageCount) {
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
     ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
     ps.setPrintGridlines(false);
-    ps.setTopMargin(0.3);
-    ps.setBottomMargin(0.3);
-    ps.setLeftMargin(0.35);
-    ps.setRightMargin(0.35);
-    if (typeof ps.setFitToWidth === 'function') {
-      ps.setFitToWidth(1);
-    }
-    if (typeof ps.setFitToHeight === 'function') {
-      ps.setFitToHeight(pageCount);
+    ps.setTopMargin(0.28);
+    ps.setBottomMargin(0.28);
+    ps.setLeftMargin(0.32);
+    ps.setRightMargin(0.32);
+    if (typeof ps.setScale === 'function') {
+      ps.setScale(100);
     }
   } catch (err) {
     Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
@@ -255,7 +355,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
 
   sheet.getRange(start, 1, CONFIG.print.pageRows, cols)
     .setFontFamily('Yu Gothic')
-    .setFontSize(14)
+    .setFontSize(15)
     .setFontColor(PRINT_BLACK_)
     .setVerticalAlignment('middle')
     .setWrap(true);
@@ -338,8 +438,8 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
       workPt: fitPrintFont_(work, PRINT_COL_WIDTHS_[1], span),
       partPt: fitPrintFont_(part, PRINT_COL_WIDTHS_[4], span)
     });
-    if (span === 2) {
-      tallOffsets.push(slot);
+    if (span > 1) {
+      tallOffsets.push({ slot: slot, span: span });
     }
     slot += span;
   }
@@ -356,9 +456,10 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
   sheet.getRange(first, 5, per, 1).setWrap(true);
 
   for (let t = 0; t < tallOffsets.length; t++) {
-    const off = tallOffsets[t];
+    const off = tallOffsets[t].slot;
+    const span = tallOffsets[t].span;
     for (let c = 1; c <= cols; c++) {
-      sheet.getRange(first + off, c, 2, 1).merge();
+      sheet.getRange(first + off, c, span, 1).merge();
     }
   }
 
@@ -408,19 +509,41 @@ function printSlotCount_(it) {
   }
   const work = it.mid || it.name || '';
   const part = it.partMid || it.part || '';
-  return printTextNeedsTwoLines_(work, PRINT_COL_WIDTHS_[1]) ||
-    printTextNeedsTwoLines_(part, PRINT_COL_WIDTHS_[4]) ? 2 : 1;
+  const n = Math.max(
+    slotsForPrintText_(work, PRINT_COL_WIDTHS_[1]),
+    slotsForPrintText_(part, PRINT_COL_WIDTHS_[4])
+  );
+  if (n < 1) {
+    return 1;
+  }
+  return n > PRINT_SLOT_MAX_ ? PRINT_SLOT_MAX_ : n;
 }
 
-function printTextNeedsTwoLines_(text, colWidth) {
+function slotsForPrintText_(text, colWidth) {
   const s = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   if (!s) {
-    return false;
+    return 1;
   }
-  if (s.indexOf('\n') !== -1) {
-    return true;
+  const paras = s.split('\n');
+  let wrapMin = 0;
+  let wrapMax = 0;
+  for (let i = 0; i < paras.length; i++) {
+    const u = displayUnits_(paras[i]);
+    if (!u) {
+      wrapMin += 1;
+      wrapMax += 1;
+      continue;
+    }
+    wrapMax += Math.max(1, Math.ceil(u / (printColCapacity_(colWidth, PRINT_FONT_MAX_) * 0.82)));
+    wrapMin += Math.max(1, Math.ceil(u / (printColCapacity_(colWidth, PRINT_FONT_MIN_) * 0.82)));
   }
-  return displayUnits_(s) > printColCapacity_(colWidth, PRINT_FONT_MIN_);
+  if (wrapMin <= 1 && wrapMax <= 1) {
+    return 1;
+  }
+  if (wrapMin <= 2) {
+    return 2;
+  }
+  return wrapMin > PRINT_SLOT_MAX_ ? PRINT_SLOT_MAX_ : wrapMin;
 }
 
 function printColCapacity_(colWidth, fontPt) {
@@ -469,21 +592,29 @@ function fitPrintFont_(text, colWidth, lines) {
 
 function applyPrintPageHeights_(sheet, start) {
   const L = CONFIG.print.layout;
-  sheet.setRowHeight(start + L.title, 40);
-  sheet.setRowHeight(start + L.metaL1, 20);
-  sheet.setRowHeight(start + L.metaV1, 28);
-  sheet.setRowHeight(start + L.metaL2, 20);
-  sheet.setRowHeight(start + L.metaV2, 28);
-  sheet.setRowHeight(start + L.spacer, 8);
-  sheet.setRowHeight(start + L.colHead, 26);
-  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, PRINT_ROW_H_);
+  const titleH = 36;
+  const metaLH = 18;
+  const metaVH = 26;
+  const spacerH = 6;
+  const colHeadH = 24;
+  const footerH = 22;
+  const footerRows = CONFIG.print.pageRows - L.footerStart;
+  const chrome = titleH + metaLH + metaVH + metaLH + metaVH + spacerH + colHeadH + footerRows * footerH;
+  const slotH = Math.max(26, Math.floor((PRINT_PAGE_PX_ - chrome) / CONFIG.print.linesPerPage));
+  sheet.setRowHeight(start + L.title, titleH);
+  sheet.setRowHeight(start + L.metaL1, metaLH);
+  sheet.setRowHeight(start + L.metaV1, metaVH);
+  sheet.setRowHeight(start + L.metaL2, metaLH);
+  sheet.setRowHeight(start + L.metaV2, metaVH);
+  sheet.setRowHeight(start + L.spacer, spacerH);
+  sheet.setRowHeight(start + L.colHead, colHeadH);
+  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, slotH);
   const afterLines = start + L.firstLine + CONFIG.print.linesPerPage;
   const footerStart = start + L.footerStart;
   if (footerStart > afterLines) {
-    sheet.setRowHeights(afterLines, footerStart - afterLines, 8);
+    sheet.setRowHeights(afterLines, footerStart - afterLines, spacerH);
   }
-  const footerRows = CONFIG.print.pageRows - L.footerStart;
-  sheet.setRowHeights(footerStart, footerRows, 24);
+  sheet.setRowHeights(footerStart, footerRows, footerH);
 }
 
 function mergePrintPage_(sheet, start, showHeader, showFooter) {
