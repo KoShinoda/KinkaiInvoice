@@ -14,9 +14,9 @@ var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部�
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
 /** A4 縦（余白込み）に近いピクセル。明細行に余りを振る。 */
-var PRINT_PAGE_PX_ = 1100;
+var PRINT_PAGE_PX_ = 1000;
 var PRINT_FONT_MAX_ = 12;
-var PRINT_FONT_MIN_ = 7;
+var PRINT_FONT_MIN_ = 6;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -259,6 +259,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   const per = CONFIG.print.linesPerPage;
   const pageCount = Math.max(1, Math.ceil(items.length / per) || 1);
   const sheet = replacePrintSheet_(ss, sheetName);
+  const slotH = printDataRowHeight_();
 
   sheet.setHiddenGridlines(true);
 
@@ -266,22 +267,29 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
     sheet.setColumnWidth(c + 1, PRINT_COL_WIDTHS_[c]);
   }
 
+  let cursor = 1;
+  const breakRows = [];
   for (let p = 0; p < pageCount; p++) {
-    const start = 1 + p * CONFIG.print.pageRows;
     const slice = items.slice(p * per, p * per + per);
-    fillPrintPage_(sheet, start, payload.header || {}, slice, {
+    const used = fillPrintPage_(sheet, cursor, payload.header || {}, slice, {
       page: p + 1,
       pageCount: pageCount,
       serialOffset: p * per,
       showHeader: p === 0,
       showFooter: p === pageCount - 1,
-      summary: payload.summary || {}
+      summary: payload.summary || {},
+      slotH: slotH
     });
+    const end = cursor + used - 1;
+    if (p < pageCount - 1) {
+      breakRows.push(end);
+    }
+    cursor = end + 1;
   }
 
-  trimPrintSheet_(sheet, pageCount * CONFIG.print.pageRows);
+  trimPrintSheet_(sheet, cursor - 1);
   applyA4PageSetup_(sheet, pageCount);
-  applyPrintPageBreaks_(sheet, pageCount);
+  applyPrintPageBreaksAt_(sheet, breakRows);
   return { sheet: sheet, pageCount: pageCount };
 }
 
@@ -335,33 +343,73 @@ function applyA4PageSetup_(sheet, pageCount) {
 /**
  * 一部の GAS には setRowPageBreak が無い。あるときだけ使い、無ければ FitToHeight で枚数を合わせる。
  */
-function applyPrintPageBreaks_(sheet, pageCount) {
-  if (pageCount < 2 || typeof sheet.setRowPageBreak !== 'function') {
+function applyPrintPageBreaksAt_(sheet, breakRows) {
+  if (typeof sheet.setRowPageBreak !== 'function') {
     return;
   }
-  for (let p = 1; p < pageCount; p++) {
-    sheet.setRowPageBreak(p * CONFIG.print.pageRows, true);
+  for (let i = 0; i < breakRows.length; i++) {
+    sheet.setRowPageBreak(breakRows[i], true);
   }
 }
 
-function fillPrintPage_(sheet, start, header, lines, opts) {
-  const L = CONFIG.print.layout;
-  const cols = CONFIG.print.colCount;
-  const pageEnd = start + CONFIG.print.pageRows - 1;
+function printPageLayout_(showHeader, showFooter) {
+  let r = 0;
+  const L = { title: r };
+  r++;
+  if (showHeader) {
+    L.metaL1 = r;
+    r++;
+    L.metaV1 = r;
+    r++;
+    L.metaL2 = r;
+    r++;
+    L.metaV2 = r;
+    r++;
+    L.spacer = r;
+    r++;
+  }
+  L.colHead = r;
+  r++;
+  L.firstLine = r;
+  r += CONFIG.print.linesPerPage;
+  if (showFooter) {
+    L.footerStart = r;
+    r += 5;
+  }
+  L.pageRows = r;
+  return L;
+}
 
-  sheet.getRange(start, 1, CONFIG.print.pageRows, cols)
+function printDataRowHeight_() {
+  const titleH = 32;
+  const metaH = 18 + 24 + 18 + 24;
+  const spacerH = 4;
+  const colHeadH = 22;
+  const footerH = 20 * 5;
+  const chrome = titleH + metaH + spacerH + colHeadH + footerH;
+  return Math.max(18, Math.floor((PRINT_PAGE_PX_ - chrome) / CONFIG.print.linesPerPage));
+}
+
+function fillPrintPage_(sheet, start, header, lines, opts) {
+  const showHeader = !!opts.showHeader;
+  const showFooter = !!opts.showFooter;
+  const L = printPageLayout_(showHeader, showFooter);
+  const cols = CONFIG.print.colCount;
+  const slotH = opts.slotH || printDataRowHeight_();
+
+  sheet.getRange(start, 1, L.pageRows, cols)
     .setFontFamily('Yu Gothic')
-    .setFontSize(12)
+    .setFontSize(PRINT_FONT_MAX_)
     .setFontColor(PRINT_BLACK_)
     .setVerticalAlignment('middle')
     .setWrap(false);
 
-  applyPrintPageHeights_(sheet, start);
-  mergePrintPage_(sheet, start, opts.showHeader, opts.showFooter);
+  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH);
+  mergePrintPage_(sheet, start, L, showHeader, showFooter);
 
   const titleRow = start + L.title;
   const title = String(header.userName || CONFIG.print.title || '近海請求書').trim() || '近海請求書';
-  sheet.getRange(titleRow, 1).setValue(opts.showHeader ? title : '');
+  sheet.getRange(titleRow, 1).setValue(showHeader ? title : '');
   sheet.getRange(titleRow, 1, 1, 4)
     .setFontSize(20)
     .setFontWeight('bold')
@@ -372,8 +420,8 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
     .setFontWeight('bold')
     .setHorizontalAlignment('right');
 
-  if (opts.showHeader) {
-    fillPrintHeader_(sheet, start, header);
+  if (showHeader) {
+    fillPrintHeader_(sheet, start, L, header);
   }
 
   const headRow = start + L.colHead;
@@ -388,11 +436,13 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   const first = start + L.firstLine;
   fillPrintBody_(sheet, first, lines, opts.serialOffset || 0);
 
-  if (opts.showFooter) {
-    fillPrintFooterBlock_(sheet, start, opts.summary || {});
+  if (showFooter) {
+    fillPrintFooterBlock_(sheet, start + L.footerStart, opts.summary || {});
   }
 
-  sheet.getRange(start, 1, pageEnd - start + 1, cols).setVerticalAlignment('middle');
+  sheet.getRange(start, 1, L.pageRows, cols).setVerticalAlignment('middle');
+  fillPrintBodyFonts_(sheet, first, lines);
+  return L.pageRows;
 }
 
 function fillPrintBody_(sheet, first, lines, serialOffset) {
@@ -400,38 +450,25 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
   const cols = CONFIG.print.colCount;
   const empty = ['', '', '', '', '', '', '', ''];
   const body = [];
-  const fonts = [];
   for (let i = 0; i < per; i++) {
     const it = lines[i];
     if (!it) {
       body.push(empty.slice());
       continue;
     }
-    const work = it.mid || it.name || '';
-    const part = it.partMid || it.part || '';
     const qty = toNumberOrBlank_(it.qty);
     const price = toNumberOrBlank_(it.unitPrice);
     const amount = lineAmount_(it, qty, price);
-    const workBreak = hasPrintNewline_(work);
-    const partBreak = hasPrintNewline_(part);
     body.push([
       serialOffset + i + 1,
-      work,
+      it.mid || it.name || '',
       it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
       it.workerCode || '',
-      part,
+      it.partMid || it.part || '',
       qty,
       price,
       amount
     ]);
-    fonts.push({
-      row: i,
-      workPt: fitPrintFont_(work, PRINT_COL_WIDTHS_[1], workBreak ? newlineCount_(work) : 1),
-      partPt: fitPrintFont_(part, PRINT_COL_WIDTHS_[4], partBreak ? newlineCount_(part) : 1),
-      workWrap: workBreak,
-      partWrap: partBreak,
-      lines: Math.max(workBreak ? newlineCount_(work) : 1, partBreak ? newlineCount_(part) : 1)
-    });
   }
 
   const bodyRange = sheet.getRange(first, 1, per, cols);
@@ -444,16 +481,30 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
   sheet.getRange(first, 5, per, 1).setWrap(false);
   sheet.getRange(first, 6, per, 1).setHorizontalAlignment('center').setWrap(false);
   sheet.getRange(first, 7, per, 2).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  fillPrintBodyFonts_(sheet, first, lines);
+}
 
+function fillPrintBodyFonts_(sheet, first, lines) {
+  const per = CONFIG.print.linesPerPage;
   const baseH = sheet.getRowHeight(first);
-  for (let f = 0; f < fonts.length; f++) {
-    const info = fonts[f];
-    const workCell = sheet.getRange(first + info.row, 2);
-    const partCell = sheet.getRange(first + info.row, 5);
-    workCell.setFontSize(info.workPt).setWrap(info.workWrap);
-    partCell.setFontSize(info.partPt).setWrap(info.partWrap);
-    if (info.lines > 1) {
-      sheet.setRowHeight(first + info.row, Math.round(baseH * Math.min(info.lines, 3) * 0.92));
+  for (let i = 0; i < per; i++) {
+    const it = lines[i];
+    if (!it) {
+      continue;
+    }
+    const work = it.mid || it.name || '';
+    const part = it.partMid || it.part || '';
+    const workBreak = hasPrintNewline_(work);
+    const partBreak = hasPrintNewline_(part);
+    const workCell = sheet.getRange(first + i, 2);
+    const partCell = sheet.getRange(first + i, 5);
+    workCell.setFontSize(fitPrintFont_(work, PRINT_COL_WIDTHS_[1], workBreak ? newlineCount_(work) : 1));
+    partCell.setFontSize(fitPrintFont_(part, PRINT_COL_WIDTHS_[4], partBreak ? newlineCount_(part) : 1));
+    workCell.setWrap(workBreak);
+    partCell.setWrap(partBreak);
+    const linesN = Math.max(workBreak ? newlineCount_(work) : 1, partBreak ? newlineCount_(part) : 1);
+    if (linesN > 1) {
+      sheet.setRowHeight(first + i, Math.round(baseH * 1.4));
     }
   }
 }
@@ -471,7 +522,7 @@ function newlineCount_(text) {
 }
 
 function printColCapacity_(colWidth, fontPt) {
-  return (colWidth * 0.94) / fontPt;
+  return (colWidth - 6) / (fontPt * 1.18);
 }
 
 function displayUnits_(text) {
@@ -479,8 +530,10 @@ function displayUnits_(text) {
   let u = 0;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c <= 0x7f || (c >= 0xff61 && c <= 0xff9f)) {
-      u += 0.55;
+    if (c <= 0x7f) {
+      u += 0.62;
+    } else if (c >= 0xff61 && c <= 0xff9f) {
+      u += 0.62;
     } else {
       u += 1;
     }
@@ -489,7 +542,7 @@ function displayUnits_(text) {
 }
 
 function fitPrintFont_(text, colWidth, lines) {
-  const raw = String(text || '').replace(/\r/g, '');
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   if (!raw) {
     return PRINT_FONT_MAX_;
   }
@@ -498,51 +551,41 @@ function fitPrintFont_(text, colWidth, lines) {
   for (let i = 0; i < parts.length; i++) {
     units = Math.max(units, displayUnits_(parts[i]));
   }
-  if (lines >= 2 && parts.length === 1) {
-    units = displayUnits_(raw) / 2;
-  }
+  const lineCount = lines > 1 ? lines : 1;
   if (units < 0.5) {
     return PRINT_FONT_MAX_;
   }
-  let pt = Math.floor(printColCapacity_(colWidth, 1) / units);
-  if (pt > PRINT_FONT_MAX_) {
-    pt = PRINT_FONT_MAX_;
+  for (let pt = PRINT_FONT_MAX_; pt >= PRINT_FONT_MIN_; pt--) {
+    if (units <= printColCapacity_(colWidth, pt) * lineCount) {
+      return pt;
+    }
   }
-  if (pt < PRINT_FONT_MIN_) {
-    pt = PRINT_FONT_MIN_;
-  }
-  return pt;
+  return PRINT_FONT_MIN_;
 }
 
-function applyPrintPageHeights_(sheet, start) {
-  const L = CONFIG.print.layout;
-  const titleH = 36;
+function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) {
+  const titleH = 32;
   const metaLH = 18;
-  const metaVH = 26;
-  const spacerH = 6;
-  const colHeadH = 24;
-  const footerH = 22;
-  const footerRows = CONFIG.print.pageRows - L.footerStart;
-  const chrome = titleH + metaLH + metaVH + metaLH + metaVH + spacerH + colHeadH + footerRows * footerH;
-  const slotH = Math.max(26, Math.floor((PRINT_PAGE_PX_ - chrome) / CONFIG.print.linesPerPage));
+  const metaVH = 24;
+  const spacerH = 4;
+  const colHeadH = 22;
+  const footerH = 20;
   sheet.setRowHeight(start + L.title, titleH);
-  sheet.setRowHeight(start + L.metaL1, metaLH);
-  sheet.setRowHeight(start + L.metaV1, metaVH);
-  sheet.setRowHeight(start + L.metaL2, metaLH);
-  sheet.setRowHeight(start + L.metaV2, metaVH);
-  sheet.setRowHeight(start + L.spacer, spacerH);
+  if (showHeader) {
+    sheet.setRowHeight(start + L.metaL1, metaLH);
+    sheet.setRowHeight(start + L.metaV1, metaVH);
+    sheet.setRowHeight(start + L.metaL2, metaLH);
+    sheet.setRowHeight(start + L.metaV2, metaVH);
+    sheet.setRowHeight(start + L.spacer, spacerH);
+  }
   sheet.setRowHeight(start + L.colHead, colHeadH);
   sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, slotH);
-  const afterLines = start + L.firstLine + CONFIG.print.linesPerPage;
-  const footerStart = start + L.footerStart;
-  if (footerStart > afterLines) {
-    sheet.setRowHeights(afterLines, footerStart - afterLines, spacerH);
+  if (showFooter) {
+    sheet.setRowHeights(start + L.footerStart, 5, footerH);
   }
-  sheet.setRowHeights(footerStart, footerRows, footerH);
 }
 
-function mergePrintPage_(sheet, start, showHeader, showFooter) {
-  const L = CONFIG.print.layout;
+function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
   sheet.getRange(start + L.title, 1, 1, 4).merge();
   sheet.getRange(start + L.title, 5, 1, 4).merge();
   if (showHeader) {
@@ -567,8 +610,7 @@ function mergePrintPage_(sheet, start, showHeader, showFooter) {
   }
 }
 
-function fillPrintHeader_(sheet, start, header) {
-  const L = CONFIG.print.layout;
+function fillPrintHeader_(sheet, start, L, header) {
   const l1 = start + L.metaL1;
   const v1 = start + L.metaV1;
   const l2 = start + L.metaL2;
@@ -595,8 +637,7 @@ function fillPrintHeader_(sheet, start, header) {
     .setBorder(null, null, true, null, false, false, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
 }
 
-function fillPrintFooterBlock_(sheet, start, summary) {
-  const f = start + CONFIG.print.layout.footerStart;
+function fillPrintFooterBlock_(sheet, f, summary) {
   const techPct = printPct_(summary.techSub, summary.techDisc, summary.techPct);
   const partPct = printPct_(summary.partSub, summary.partDisc, summary.partPct);
 
