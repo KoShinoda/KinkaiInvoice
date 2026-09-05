@@ -11,7 +11,7 @@
  * 04_SelectionService.js  … 大項目変更時のクリア／中項目選択時の明細展開。
  * 05_Triggers.js          … onOpen / onEdit / メニュー。
  * 06_CandidateSheet.js    … 中項目候補マスタ。
- * 07_WebApp.js            … 入力 Web アプリ（doGet / メニュー）と印刷用シート出力。
+ * 07_WebApp.js            … 入力 Web アプリと印刷（1枚目ヘッダー／最終フッター／右上 No.）。
  * 08_ServiceInfo.js       … 整備情報マスタ。
  * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
@@ -202,14 +202,22 @@ const CONFIG = {
 
   /**
    * 印刷用。テンプレ「車検　原紙」をコピーし、明細を 30 行ずつ流し込む。
-   * 列番号は原紙の結合セル左上（連番=B, 作業=C, 技術料=T など）。
-   * ヘッダー位置が違う場合は header の A1 だけ直す。
+   * ヘッダーは 1 枚目だけ、フッター（小計・値引・合計）は最終枚だけ。
+   * 右上に No.（何枚目か）。中間ページは明細と列見出しと No. のみ。
    */
   print: {
     templateSheetName: '車検　原紙',
     sheetNamePrefix: '印刷_',
+    samplePrefix: '印刷原本_',
     linesPerPage: 30,
     firstLineRow: 8,
+    /** 顧客・K-No・日付。列見出しより上。中間・最終では消す（1枚だけのときは残す）。 */
+    headerRowStart: 1,
+    headerRowEnd: 5,
+    /** 明細 30 行の下。1 枚目（最終でない）と中間では消す。 */
+    footerRowStart: 38,
+    footerRowEnd: 44,
+    pageNo: 'AZ2',
     cols: {
       serial: 2,
       work: 3,
@@ -227,6 +235,15 @@ const CONFIG = {
       inDate: 'AP3',
       outDate: 'AP4',
       billDate: 'AP5'
+    },
+    footer: {
+      techSub: 'T39',
+      techDisc: 'T40',
+      techTotal: 'T41',
+      partSub: 'AJ39',
+      partDisc: 'AJ40',
+      partTotal: 'AJ41',
+      grand: 'AV41'
     }
   },
 

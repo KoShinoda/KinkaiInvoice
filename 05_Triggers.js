@@ -17,6 +17,7 @@ function onOpen() {
     .addItem('明細テンプレート（サンプル）を用意', 'ensureInvoiceTemplateSheet')
     .addItem('選択内容を再出力', 'refreshOutputFromSelection')
     .addItem('リストを更新（順番・選択肢）', 'refreshAllMasterLists')
+    .addItem('印刷原本（暫定3枚）を作成', 'createPrintOriginalSample')
     .addSeparator()
     .addItem('作業リストの列マップをログ出力', 'logWorkListColumnMap')
     .addItem('編集トリガーを作成', 'createInstallableOnEditTrigger')
