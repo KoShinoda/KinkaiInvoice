@@ -14,9 +14,10 @@ var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部�
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
 /** A4 縦（余白込み）に近いピクセル。明細行に余りを振る。 */
-var PRINT_PAGE_PX_ = 1000;
+var PRINT_PAGE_PX_ = 1040;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
+var PRINT_PAGE_NO_H_ = 22;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -49,7 +50,7 @@ function createPrintOriginalSample() {
   const built = buildInvoicePrintSheet_(ss, name, payload);
   ss.setActiveSheet(built.sheet);
   ss.toast(
-    name + ' を作成しました（A4 ' + built.pageCount + ' 枚分を 1 シート）。暫定データです。',
+    name + ' を作成しました（A4縦 ' + built.pageCount + ' 枚分を 1 シート）。印刷は「縦向き」で。暫定データです。',
     '請求書入力',
     8
   );
@@ -328,8 +329,8 @@ function applyA4PageSetup_(sheet, pageCount) {
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
     ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
     ps.setPrintGridlines(false);
-    ps.setTopMargin(0.28);
-    ps.setBottomMargin(0.28);
+    ps.setTopMargin(0.32);
+    ps.setBottomMargin(0.4);
     ps.setLeftMargin(0.32);
     ps.setRightMargin(0.32);
     if (typeof ps.setScale === 'function') {
@@ -338,6 +339,7 @@ function applyA4PageSetup_(sheet, pageCount) {
   } catch (err) {
     Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
   }
+  SpreadsheetApp.flush();
 }
 
 /**
@@ -376,17 +378,16 @@ function printPageLayout_(showHeader, showFooter) {
     L.footerStart = r;
     r += 5;
   }
+  L.pad = r;
+  r++;
+  L.pageNo = r;
+  r++;
   L.pageRows = r;
   return L;
 }
 
 function printDataRowHeight_() {
-  const titleH = 32;
-  const metaH = 18 + 24 + 18 + 24;
-  const spacerH = 4;
-  const colHeadH = 22;
-  const footerH = 20 * 5;
-  const chrome = titleH + metaH + spacerH + colHeadH + footerH;
+  const chrome = 32 + 18 + 24 + 18 + 24 + 4 + 22 + 20 * 5 + PRINT_PAGE_NO_H_ + 8;
   return Math.max(18, Math.floor((PRINT_PAGE_PX_ - chrome) / CONFIG.print.linesPerPage));
 }
 
@@ -410,15 +411,10 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   const titleRow = start + L.title;
   const title = String(header.userName || CONFIG.print.title || '近海請求書').trim() || '近海請求書';
   sheet.getRange(titleRow, 1).setValue(showHeader ? title : '');
-  sheet.getRange(titleRow, 1, 1, 4)
+  sheet.getRange(titleRow, 1, 1, 8)
     .setFontSize(20)
     .setFontWeight('bold')
     .setHorizontalAlignment('left');
-  sheet.getRange(titleRow, 5).setValue('No.' + opts.page + '／' + opts.pageCount);
-  sheet.getRange(titleRow, 5, 1, 4)
-    .setFontSize(12)
-    .setFontWeight('bold')
-    .setHorizontalAlignment('right');
 
   if (showHeader) {
     fillPrintHeader_(sheet, start, L, header);
@@ -439,6 +435,14 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   if (showFooter) {
     fillPrintFooterBlock_(sheet, start + L.footerStart, opts.summary || {});
   }
+
+  const noRow = start + L.pageNo;
+  sheet.getRange(noRow, 5).setValue('No.' + opts.page + '／' + opts.pageCount);
+  sheet.getRange(noRow, 5, 1, 4)
+    .setFontSize(11)
+    .setFontWeight('bold')
+    .setHorizontalAlignment('right')
+    .setVerticalAlignment('middle');
 
   sheet.getRange(start, 1, L.pageRows, cols).setVerticalAlignment('middle');
   fillPrintBodyFonts_(sheet, first, lines);
@@ -486,7 +490,6 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
 
 function fillPrintBodyFonts_(sheet, first, lines) {
   const per = CONFIG.print.linesPerPage;
-  const baseH = sheet.getRowHeight(first);
   for (let i = 0; i < per; i++) {
     const it = lines[i];
     if (!it) {
@@ -502,10 +505,6 @@ function fillPrintBodyFonts_(sheet, first, lines) {
     partCell.setFontSize(fitPrintFont_(part, PRINT_COL_WIDTHS_[4], partBreak ? newlineCount_(part) : 1));
     workCell.setWrap(workBreak);
     partCell.setWrap(partBreak);
-    const linesN = Math.max(workBreak ? newlineCount_(work) : 1, partBreak ? newlineCount_(part) : 1);
-    if (linesN > 1) {
-      sheet.setRowHeight(first + i, Math.round(baseH * 1.4));
-    }
   }
 }
 
@@ -576,6 +575,7 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
   const spacerH = 4;
   const colHeadH = 22;
   const footerH = 20;
+  let used = titleH + colHeadH + CONFIG.print.linesPerPage * slotH + PRINT_PAGE_NO_H_;
   sheet.setRowHeight(start + L.title, titleH);
   if (showHeader) {
     sheet.setRowHeight(start + L.metaL1, metaLH);
@@ -583,17 +583,21 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
     sheet.setRowHeight(start + L.metaL2, metaLH);
     sheet.setRowHeight(start + L.metaV2, metaVH);
     sheet.setRowHeight(start + L.spacer, spacerH);
+    used += metaLH + metaVH + metaLH + metaVH + spacerH;
   }
   sheet.setRowHeight(start + L.colHead, colHeadH);
   sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, slotH);
   if (showFooter) {
     sheet.setRowHeights(start + L.footerStart, 5, footerH);
+    used += footerH * 5;
   }
+  const padH = Math.max(8, PRINT_PAGE_PX_ - used);
+  sheet.setRowHeight(start + L.pad, padH);
+  sheet.setRowHeight(start + L.pageNo, PRINT_PAGE_NO_H_);
 }
 
 function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
-  sheet.getRange(start + L.title, 1, 1, 4).merge();
-  sheet.getRange(start + L.title, 5, 1, 4).merge();
+  sheet.getRange(start + L.title, 1, 1, 8).merge();
   if (showHeader) {
     [L.metaL1, L.metaV1, L.metaL2, L.metaV2].forEach(function (off) {
       sheet.getRange(start + off, 1, 1, 2).merge();
@@ -614,6 +618,7 @@ function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
     sheet.getRange(f + 4, 1, 1, 6).merge();
     sheet.getRange(f + 4, 7, 1, 2).merge();
   }
+  sheet.getRange(start + L.pageNo, 5, 1, 4).merge();
 }
 
 function fillPrintHeader_(sheet, start, L, header) {
