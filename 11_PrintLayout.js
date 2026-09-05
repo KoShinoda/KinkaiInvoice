@@ -4,10 +4,18 @@
  * 大量印刷向けに色は使わない。
  */
 
-var PRINT_COL_WIDTHS_ = [54, 196, 96, 58, 172, 52, 90, 102];
+/** 列幅（px）。A4 印刷幅に収まる合計。
+ * No / 作業者 / 数量 … 999 まで
+ * 技術料 / 単価 / 金額 … 9,999,999 まで
+ * 残りは作業内容を優先し、次に部品。
+ */
+var PRINT_COL_WIDTHS_ = [32, 242, 88, 36, 122, 32, 88, 88];
 var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部品', '数量', '単価', '金額'];
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
+var PRINT_ROW_H_ = 22;
+var PRINT_FONT_MAX_ = 14;
+var PRINT_FONT_MIN_ = 9;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -76,6 +84,9 @@ function makePrintSamplePayload_() {
       amount: amount
     });
   }
+  items[0].mid = '＊＊　１２カ月定期点検　＊＊\n（入力2行の例）';
+  items[1].mid = 'ながい作業内容のサンプルです。文字サイズを下げて1行の枠に収めます';
+  items[2].mid = 'これは計算上1行に収まらない長さの作業内容なので2行スロットで表示する目安の例です＊＊＊＊';
   const techPct = 3;
   const partPct = 10;
   const techDisc = Math.round(techSub * techPct / 100);
@@ -144,7 +155,8 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
     return rowHasContent_(it);
   });
   const per = CONFIG.print.linesPerPage;
-  const pageCount = Math.max(1, Math.ceil(items.length / per) || 1);
+  const pages = paginatePrintItems_(items, per);
+  const pageCount = Math.max(1, pages.length);
   const sheet = replacePrintSheet_(ss, sheetName);
 
   sheet.setHiddenGridlines(true);
@@ -153,17 +165,19 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
     sheet.setColumnWidth(c + 1, PRINT_COL_WIDTHS_[c]);
   }
 
+  let serial = 0;
   for (let p = 0; p < pageCount; p++) {
     const start = 1 + p * CONFIG.print.pageRows;
-    const slice = items.slice(p * per, p * per + per);
+    const slice = pages[p] || [];
     fillPrintPage_(sheet, start, payload.header || {}, slice, {
       page: p + 1,
       pageCount: pageCount,
-      serialOffset: p * per,
+      serialOffset: serial,
       showHeader: p === 0,
       showFooter: p === pageCount - 1,
       summary: payload.summary || {}
     });
+    serial += slice.length;
   }
 
   trimPrintSheet_(sheet, pageCount * CONFIG.print.pageRows);
@@ -237,7 +251,6 @@ function applyPrintPageBreaks_(sheet, pageCount) {
 function fillPrintPage_(sheet, start, header, lines, opts) {
   const L = CONFIG.print.layout;
   const cols = CONFIG.print.colCount;
-  const per = CONFIG.print.linesPerPage;
   const pageEnd = start + CONFIG.print.pageRows - 1;
 
   sheet.getRange(start, 1, CONFIG.print.pageRows, cols)
@@ -271,49 +284,187 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   sheet.getRange(headRow, 1, 1, cols)
     .setValues([PRINT_COL_HEADERS_])
     .setFontWeight('bold')
-    .setFontSize(14)
+    .setFontSize(11)
     .setHorizontalAlignment('center')
-    .setWrap(false);
-
-  const first = start + L.firstLine;
-  const body = [];
-  for (let i = 0; i < per; i++) {
-    const it = lines[i];
-    if (!it) {
-      body.push(['', '', '', '', '', '', '', '']);
-      continue;
-    }
-    const qty = toNumberOrBlank_(it.qty);
-    const price = toNumberOrBlank_(it.unitPrice);
-    const amount = lineAmount_(it, qty, price);
-    body.push([
-      opts.serialOffset + i + 1,
-      it.mid || it.name || '',
-      it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
-      it.workerCode || '',
-      it.partMid || it.part || '',
-      qty,
-      price,
-      amount
-    ]);
-  }
-  const bodyRange = sheet.getRange(first, 1, per, cols);
-  bodyRange.setValues(body);
-  bodyRange.setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(headRow, 1, 1, cols)
+    .setWrap(true)
     .setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
 
-  sheet.getRange(first, 1, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 3, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
-  sheet.getRange(first, 4, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 6, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 7, per, 2).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  const first = start + L.firstLine;
+  fillPrintBody_(sheet, first, lines, opts.serialOffset || 0);
 
   if (opts.showFooter) {
     fillPrintFooterBlock_(sheet, start, opts.summary || {});
   }
 
   sheet.getRange(start, 1, pageEnd - start + 1, cols).setVerticalAlignment('middle');
+}
+
+function fillPrintBody_(sheet, first, lines, serialOffset) {
+  const per = CONFIG.print.linesPerPage;
+  const cols = CONFIG.print.colCount;
+  const empty = ['', '', '', '', '', '', '', ''];
+  const body = [];
+  const tallOffsets = [];
+  const fonts = [];
+  for (let i = 0; i < per; i++) {
+    body.push(empty.slice());
+  }
+
+  let slot = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const it = lines[i];
+    const span = printSlotCount_(it);
+    if (slot + span > per) {
+      break;
+    }
+    const work = it.mid || it.name || '';
+    const part = it.partMid || it.part || '';
+    const qty = toNumberOrBlank_(it.qty);
+    const price = toNumberOrBlank_(it.unitPrice);
+    const amount = lineAmount_(it, qty, price);
+    body[slot] = [
+      serialOffset + i + 1,
+      work,
+      it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
+      it.workerCode || '',
+      part,
+      qty,
+      price,
+      amount
+    ];
+    fonts.push({
+      slot: slot,
+      span: span,
+      workPt: fitPrintFont_(work, PRINT_COL_WIDTHS_[1], span),
+      partPt: fitPrintFont_(part, PRINT_COL_WIDTHS_[4], span)
+    });
+    if (span === 2) {
+      tallOffsets.push(slot);
+    }
+    slot += span;
+  }
+
+  const bodyRange = sheet.getRange(first, 1, per, cols);
+  bodyRange.setValues(body);
+  bodyRange.setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(first, 1, per, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 3, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(first, 4, per, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 6, per, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 7, per, 2).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(first, 2, per, 1).setWrap(true);
+  sheet.getRange(first, 5, per, 1).setWrap(true);
+
+  for (let t = 0; t < tallOffsets.length; t++) {
+    const off = tallOffsets[t];
+    for (let c = 1; c <= cols; c++) {
+      sheet.getRange(first + off, c, 2, 1).merge();
+    }
+  }
+
+  for (let f = 0; f < fonts.length; f++) {
+    const info = fonts[f];
+    const workCell = sheet.getRange(first + info.slot, 2);
+    const partCell = sheet.getRange(first + info.slot, 5);
+    workCell.setFontSize(info.workPt).setWrap(info.span > 1 || String(body[info.slot][1]).indexOf('\n') !== -1);
+    partCell.setFontSize(info.partPt).setWrap(info.span > 1 || String(body[info.slot][4]).indexOf('\n') !== -1);
+    if (info.span === 1) {
+      if (info.workPt >= PRINT_FONT_MAX_ && displayUnits_(body[info.slot][1]) <= printColCapacity_(PRINT_COL_WIDTHS_[1], info.workPt)) {
+        workCell.setWrap(false);
+      }
+      if (info.partPt >= PRINT_FONT_MAX_ && displayUnits_(body[info.slot][4]) <= printColCapacity_(PRINT_COL_WIDTHS_[4], info.partPt)) {
+        partCell.setWrap(false);
+      }
+    }
+  }
+}
+
+function paginatePrintItems_(items, slotsPerPage) {
+  const pages = [];
+  let page = [];
+  let used = 0;
+  for (let i = 0; i < items.length; i++) {
+    const n = printSlotCount_(items[i]);
+    if (used + n > slotsPerPage && page.length) {
+      pages.push(page);
+      page = [];
+      used = 0;
+    }
+    page.push(items[i]);
+    used += n;
+  }
+  if (page.length) {
+    pages.push(page);
+  }
+  if (!pages.length) {
+    pages.push([]);
+  }
+  return pages;
+}
+
+function printSlotCount_(it) {
+  if (!it) {
+    return 1;
+  }
+  const work = it.mid || it.name || '';
+  const part = it.partMid || it.part || '';
+  return printTextNeedsTwoLines_(work, PRINT_COL_WIDTHS_[1]) ||
+    printTextNeedsTwoLines_(part, PRINT_COL_WIDTHS_[4]) ? 2 : 1;
+}
+
+function printTextNeedsTwoLines_(text, colWidth) {
+  const s = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!s) {
+    return false;
+  }
+  if (s.indexOf('\n') !== -1) {
+    return true;
+  }
+  return displayUnits_(s) > printColCapacity_(colWidth, PRINT_FONT_MIN_);
+}
+
+function printColCapacity_(colWidth, fontPt) {
+  return (colWidth * 0.94) / fontPt;
+}
+
+function displayUnits_(text) {
+  const s = String(text || '').replace(/\n/g, '');
+  let u = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c <= 0x7f || (c >= 0xff61 && c <= 0xff9f)) {
+      u += 0.55;
+    } else {
+      u += 1;
+    }
+  }
+  return u;
+}
+
+function fitPrintFont_(text, colWidth, lines) {
+  const raw = String(text || '').replace(/\r/g, '');
+  if (!raw) {
+    return PRINT_FONT_MAX_;
+  }
+  const parts = raw.split('\n');
+  let units = 0;
+  for (let i = 0; i < parts.length; i++) {
+    units = Math.max(units, displayUnits_(parts[i]));
+  }
+  if (lines >= 2 && parts.length === 1) {
+    units = displayUnits_(raw) / 2;
+  }
+  if (units < 0.5) {
+    return PRINT_FONT_MAX_;
+  }
+  let pt = Math.floor(printColCapacity_(colWidth, 1) / units);
+  if (pt > PRINT_FONT_MAX_) {
+    pt = PRINT_FONT_MAX_;
+  }
+  if (pt < PRINT_FONT_MIN_) {
+    pt = PRINT_FONT_MIN_;
+  }
+  return pt;
 }
 
 function applyPrintPageHeights_(sheet, start) {
@@ -325,7 +476,7 @@ function applyPrintPageHeights_(sheet, start) {
   sheet.setRowHeight(start + L.metaV2, 28);
   sheet.setRowHeight(start + L.spacer, 8);
   sheet.setRowHeight(start + L.colHead, 26);
-  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, 22);
+  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, PRINT_ROW_H_);
   const afterLines = start + L.firstLine + CONFIG.print.linesPerPage;
   const footerStart = start + L.footerStart;
   if (footerStart > afterLines) {
