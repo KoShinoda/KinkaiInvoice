@@ -263,8 +263,8 @@
     .worker-picker {
       position: fixed;
       z-index: 80;
-      width: min(560px, calc(100vw - 24px));
-      max-height: min(420px, calc(100vh - 24px));
+      width: auto;
+      max-width: calc(100vw - 16px);
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -278,7 +278,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 8px 10px 6px;
+      padding: 6px 10px;
       border-bottom: 1px solid var(--line);
       font-size: 13px;
       font-weight: 600;
@@ -286,13 +286,13 @@
     .worker-picker-bar {
       display: flex;
       gap: 6px;
-      padding: 8px 10px;
+      padding: 6px 10px 4px;
       align-items: center;
     }
     .worker-picker-bar input {
       flex: 1;
-      min-width: 0;
-      padding: 6px 8px;
+      min-width: 160px;
+      padding: 5px 8px;
     }
     button.worker-picker-x {
       width: 28px;
@@ -312,49 +312,59 @@
       font-size: 11px;
       color: var(--muted);
     }
-    .worker-picker-table-wrap {
-      overflow: auto;
-      flex: 1;
-      min-height: 0;
-      border-top: 1px solid var(--line);
+    .worker-picker-boards {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 0 10px 10px;
+      overflow: visible;
     }
-    .worker-picker table {
-      width: 100%;
+    table.worker-board {
+      width: auto;
       border-collapse: collapse;
       table-layout: auto;
+      border: 1px solid var(--line);
+      flex: 0 0 auto;
     }
     .worker-picker th {
-      position: sticky;
-      top: 0;
-      z-index: 1;
+      position: static;
       background: #eef3f0;
       font-size: 11px;
       color: var(--muted);
       text-align: left;
-      padding: 6px 8px;
+      padding: 3px 6px;
       border-bottom: 1px solid var(--line);
     }
     .worker-picker td {
-      padding: 6px 8px;
-      font-size: 13px;
+      padding: 2px 6px;
+      font-size: 12px;
       border-bottom: 1px solid #eef1f4;
       cursor: pointer;
       white-space: nowrap;
       vertical-align: middle;
+      height: 22px;
+      line-height: 1.2;
     }
     .worker-picker tbody tr:hover td { background: #e8f0ec; }
     .worker-picker tbody tr.active td { background: #dce8e2; }
-    .worker-picker td.worker-img { width: 56px; padding: 4px; }
+    .worker-picker tr.worker-pad td {
+      cursor: default;
+      background: #fafbfb;
+      border-bottom: 1px solid #f0f2f4;
+    }
+    .worker-picker td.worker-img { width: 28px; padding: 1px 4px; }
     .worker-picker td.worker-img img {
       display: block;
-      max-width: 48px;
-      max-height: 48px;
+      max-width: 22px;
+      max-height: 20px;
       object-fit: contain;
     }
-    .worker-picker mark {
-      background: #fff3bf;
-      color: inherit;
-      padding: 0;
+    .worker-empty-msg {
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
     }
     .grid.header-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -552,12 +562,7 @@
       <input id="workerPickerFilter" placeholder="コード・名前で絞り込み" autocomplete="off">
     </div>
     <div id="workerPickerMeta" class="worker-picker-meta"></div>
-    <div class="worker-picker-table-wrap">
-      <table>
-        <thead id="workerPickerHead"></thead>
-        <tbody id="workerPickerBody"></tbody>
-      </table>
-    </div>
+    <div id="workerPickerBoards" class="worker-picker-boards"></div>
   </div>
 
   <script>
@@ -1509,64 +1514,73 @@
       var label = w.name ? w.code + ' ' + w.name : w.code;
       return cur === w.code || cur === label;
     }
-    function fillWorkerPicker() {
+    function workerChunkSize() {
+      return master.linesPerPage || 30;
+    }
+    function workerRowHtml(w, idx, headers, active) {
+      var cells = (w.cells && w.cells.length ? w.cells : [w.code, w.name]).slice();
+      var images = w.images || [];
+      while (cells.length < headers.length) cells.push('');
+      var tds = headers.map(function (_, c) {
+        if (images[c]) {
+          return '<td class="worker-img"><img src="' + htmlEscape(images[c]) + '" alt=""></td>';
+        }
+        return '<td>' + htmlEscape(cells[c] || '') + '</td>';
+      }).join('');
+      return '<tr data-code="' + htmlEscape(w.code || '') + '" data-idx="' + idx + '"' +
+        (active ? ' class="active"' : '') + '>' + tds + '</tr>';
+    }
+    function fillWorkerPicker(qRaw) {
       var headers = workerHeaders();
-      var head = $('workerPickerHead');
-      head.innerHTML = '<tr>' + headers.map(function (h) {
+      var q = workerQuery(qRaw);
+      var all = workerListRows();
+      var list = [];
+      for (var i = 0; i < all.length; i++) {
+        if (!q || workerSearchText(all[i]).indexOf(q) !== -1) list.push({ w: all[i], idx: i });
+      }
+      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
+      var chunk = workerChunkSize();
+      var boards = $('workerPickerBoards');
+      var head = '<tr>' + headers.map(function (h) {
         return '<th>' + htmlEscape(h || '') + '</th>';
       }).join('') + '</tr>';
-      var tb = $('workerPickerBody');
       var html = '';
-      workerListRows().forEach(function (w, idx) {
-        var cells = (w.cells && w.cells.length ? w.cells : [w.code, w.name]).slice();
-        var images = w.images || [];
-        while (cells.length < headers.length) cells.push('');
-        var tds = headers.map(function (_, c) {
-          if (images[c]) {
-            return '<td class="worker-img"><img src="' + htmlEscape(images[c]) + '" alt=""></td>';
+      if (!list.length) {
+        html = '<div class="worker-empty-msg">' + (all.length ? '一致する作業者がいません' : '作業者リストが空です') + '</div>';
+      } else {
+        var b;
+        for (b = 0; b < list.length; b += chunk) {
+          html += '<table class="worker-board"><thead>' + head + '</thead><tbody>';
+          var end = Math.min(b + chunk, list.length);
+          var r;
+          for (r = b; r < end; r++) {
+            html += workerRowHtml(list[r].w, list[r].idx, headers, workerMatchesCurrent(list[r].w, cur));
           }
-          return '<td>' + htmlEscape(cells[c] || '') + '</td>';
-        }).join('');
-        html += '<tr data-code="' + htmlEscape(w.code || '') + '" data-idx="' + idx + '">' + tds + '</tr>';
-      });
-      tb.innerHTML = html || '<tr><td colspan="' + headers.length + '">作業者リストが空です</td></tr>';
-    }
-    function filterWorkerPicker(qRaw) {
-      var q = workerQuery(qRaw);
-      var rows = workerListRows();
-      var trs = $('workerPickerBody').querySelectorAll('tr[data-code]');
-      var shown = 0;
-      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
-      for (var i = 0; i < trs.length; i++) {
-        var w = rows[Number(trs[i].dataset.idx)] || { code: trs[i].dataset.code, name: '', cells: [] };
-        var ok = !q || workerSearchText(w).indexOf(q) !== -1;
-        trs[i].hidden = !ok;
-        var on = ok && workerMatchesCurrent(w, cur);
-        trs[i].classList.toggle('active', on);
-        if (ok) shown++;
+          for (; r < b + chunk; r++) {
+            html += '<tr class="worker-pad"><td colspan="' + headers.length + '">&nbsp;</td></tr>';
+          }
+          html += '</tbody></table>';
+        }
       }
-      var allN = rows.length;
+      boards.innerHTML = html;
       var meta = $('workerPickerMeta');
-      if (!allN) meta.textContent = '作業者リストが空です。手入力もできます。';
-      else if (q) meta.textContent = shown + ' / ' + allN + ' 件';
-      else meta.textContent = allN + ' 件　／　行をクリックして選択';
+      var blocks = list.length ? Math.ceil(list.length / chunk) : 0;
+      if (!all.length) meta.textContent = '作業者リストが空です。手入力もできます。';
+      else if (q) meta.textContent = list.length + ' / ' + all.length + ' 件　／　' + chunk + '行ごとに右へ';
+      else meta.textContent = all.length + ' 件　／　' + chunk + '行ごとに右の表へ　／　行をクリックして選択';
+      if (blocks) meta.textContent += '（' + blocks + '列）';
     }
     function hideWorkerPicker() {
       $('workerPicker').hidden = true;
       workerPickerRow = -1;
     }
-    function positionWorkerPicker(anchor) {
+    function positionWorkerPicker() {
       var panel = $('workerPicker');
-      var wrap = (anchor && anchor.closest && anchor.closest('.staff-wrap')) || anchor;
-      var rect = wrap.getBoundingClientRect();
-      panel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 580)) + 'px';
-      var top = rect.bottom + 4;
       panel.hidden = false;
+      var w = panel.offsetWidth;
       var h = panel.offsetHeight;
-      if (top + h > window.innerHeight - 8) {
-        top = Math.max(8, rect.top - h - 4);
-      }
-      panel.style.top = top + 'px';
+      panel.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
+      panel.style.top = Math.max(8, Math.round((window.innerHeight - h) / 2)) + 'px';
     }
     function showWorkerPicker(anchor) {
       var row = Number(anchor.dataset.i);
@@ -1574,9 +1588,8 @@
       var input = $('tbody').rows[row] && $('tbody').rows[row]._cells && $('tbody').rows[row]._cells.workerCode;
       var q = input ? input.value : '';
       $('workerPickerFilter').value = q;
-      fillWorkerPicker();
-      filterWorkerPicker(q);
-      positionWorkerPicker(anchor);
+      fillWorkerPicker(q);
+      positionWorkerPicker();
     }
     function applyWorkerCode(code) {
       if (workerPickerRow < 0 || !items[workerPickerRow]) return;
@@ -1587,7 +1600,7 @@
       hideWorkerPicker();
       recalc();
     }
-    $('workerPickerBody').addEventListener('mousedown', function (e) {
+    $('workerPickerBoards').addEventListener('mousedown', function (e) {
       var tr = e.target.closest('tr[data-code]');
       if (!tr) return;
       e.preventDefault();
@@ -1598,7 +1611,8 @@
       hideWorkerPicker();
     });
     $('workerPickerFilter').addEventListener('input', function () {
-      filterWorkerPicker($('workerPickerFilter').value);
+      fillWorkerPicker($('workerPickerFilter').value);
+      positionWorkerPicker();
     });
     $('workerPickerFilter').addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
