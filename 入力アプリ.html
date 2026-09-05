@@ -211,7 +211,8 @@
       bottom: auto;
       top: -8px;
     }
-    tr:hover .side-ins,
+    tr:has(.side-work:hover) .side-ins[data-side="work"],
+    tr:has(.side-part:hover) .side-ins[data-side="part"],
     button.side-ins:hover,
     button.side-ins:focus {
       opacity: 1;
@@ -1105,33 +1106,33 @@
     function rowHtml(i) {
       var ins = i < lineCount() - 1;
       return '<tr>' +
-        '<td class="no"><span class="no-n">' + (i + 1) + '</span>' +
+        '<td class="no side-work"><span class="no-n">' + (i + 1) + '</span>' +
           (i === 0 ? '<button type="button" class="side-ins side-ins-top" data-at="0" data-side="work" tabindex="-1" title="先頭に技術側の空行を挿入">+</button>' : '') +
           (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
         '</td>' +
-        '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
-        '<td class="mid"><div class="combo">' +
+        '<td class="major side-work"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
+        '<td class="mid side-work"><div class="combo">' +
           '<textarea data-i="' + i + '" data-k="mid" rows="1" autocomplete="off"></textarea>' +
           '<div class="combo-list" hidden></div>' +
         '</div></td>' +
-        '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
-        '<td class="staff"><div class="combo staff-wrap">' +
+        '<td class="fee side-work"><input data-i="' + i + '" data-k="fee"></td>' +
+        '<td class="staff side-work"><div class="combo staff-wrap">' +
           '<input data-i="' + i + '" data-k="workerCode" autocomplete="off">' +
           '<button type="button" class="staff-pick" data-i="' + i + '" tabindex="-1" title="作業者リストを開く">▾</button>' +
           '<div class="combo-list" hidden></div>' +
         '</div></td>' +
-        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
-        '<td class="ins">' +
+        '<td class="del side-work"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
+        '<td class="ins side-part">' +
           (i === 0 ? '<button type="button" class="side-ins side-ins-top" data-at="0" data-side="part" tabindex="-1" title="先頭に部品側の空行を挿入">+</button>' : '') +
           (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
         '</td>' +
-        '<td class="part-major"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
-        '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
-        '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
-        '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
-        '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
-        '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>' +
-        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>' +
+        '<td class="part-major side-part"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
+        '<td class="part-mid side-part"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
+        '<td class="num side-part"><input data-i="' + i + '" data-k="unitPrice"></td>' +
+        '<td class="num side-part"><input data-i="' + i + '" data-k="qty"></td>' +
+        '<td class="num side-part"><input data-i="' + i + '" data-k="amount"></td>' +
+        '<td class="num side-part"><input data-i="' + i + '" data-k="discYen"></td>' +
+        '<td class="del side-part"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>' +
         '</tr>';
     }
 
