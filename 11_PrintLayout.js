@@ -312,26 +312,41 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   }
 
   trimPrintSheet_(sheet, cursor - 1);
-  applyA4PageSetup_(sheet, pageCount);
   applyPrintPageBreaksAt_(sheet, breakRows);
+  applyA4PageSetup_(sheet, pageCount);
+  ss.setActiveSheet(sheet);
+  applyA4PageSetup_(sheet, pageCount);
   return { sheet: sheet, pageCount: pageCount };
 }
 
 function replacePrintSheet_(ss, name) {
+  const tpl = ensurePrintSetupSheet_(ss);
+  const copy = tpl.copyTo(ss);
+  try {
+    copy.showSheet();
+  } catch (err) {}
   const old = ss.getSheetByName(name);
-  const temp = name + '_tmp';
-  let n = temp;
-  let i = 1;
-  while (ss.getSheetByName(n)) {
-    n = temp + i;
-    i++;
-  }
-  const sheet = ss.insertSheet(n);
-  if (old && ss.getSheets().length > 1) {
+  if (old && old.getSheetId() !== copy.getSheetId() && ss.getSheets().length > 1) {
     ss.deleteSheet(old);
   }
-  sheet.setName(name);
-  return sheet;
+  copy.setName(name);
+  copy.clear();
+  applyA4PageSetup_(copy, 1);
+  return copy;
+}
+
+function ensurePrintSetupSheet_(ss) {
+  const name = '_印刷A4縦';
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1).setValue('印刷設定用（非表示）');
+    applyA4PageSetup_(sh, 1);
+    sh.hideSheet();
+  } else {
+    applyA4PageSetup_(sh, 1);
+  }
+  return sh;
 }
 
 function trimPrintSheet_(sheet, lastRow) {
@@ -350,14 +365,19 @@ function applyA4PageSetup_(sheet, pageCount) {
   try {
     const ps = sheet.getPageSetup();
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
-    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
     ps.setPrintGridlines(false);
-    ps.setTopMargin(0.2);
-    ps.setBottomMargin(0.2);
-    ps.setLeftMargin(0.2);
-    ps.setRightMargin(0.2);
     if (typeof ps.setScale === 'function') {
       ps.setScale(100);
+    }
+    if (typeof ps.setTopMargin === 'function') {
+      ps.setTopMargin(0.2);
+      ps.setBottomMargin(0.2);
+      ps.setLeftMargin(0.2);
+      ps.setRightMargin(0.2);
+    }
+    if (typeof ps.setHeaderMargin === 'function') {
+      ps.setHeaderMargin(0.15);
+      ps.setFooterMargin(0.15);
     }
     ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
   } catch (err) {
@@ -656,11 +676,15 @@ function fillPrintHeader_(sheet, start, L, header) {
   sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(12);
   sheet.getRange(v2, 6).setValue(header.billDate || '').setFontSize(12);
 
-  sheet.getRange(l1, 2, 4, 7)
+  sheet.getRange(l1, 2, 4, 1)
     .setHorizontalAlignment('left')
-    .setBorder(true, true, true, true, true, false, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(v1, 2, 1, 7)
-    .setBorder(null, null, true, null, false, false, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+    .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(l1, 3, 4, 3)
+    .setHorizontalAlignment('left')
+    .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(l1, 6, 4, 3)
+    .setHorizontalAlignment('left')
+    .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
 }
 
 function fillPrintFooterBlock_(sheet, f, summary) {
