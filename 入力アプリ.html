@@ -1340,7 +1340,7 @@
       if (!it.major && group[0] && group[0].major) it.major = group[0].major;
 
       var partSources = group.filter(function (r) {
-        return masterHasPart(r) && !filled(r.content);
+        return masterHasPart(r);
       }).slice().sort(function (a, b) {
         function ord(v) {
           if (v === '' || v == null) return Number.POSITIVE_INFINITY;
@@ -1359,8 +1359,8 @@
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
-        var extraParts = partSources.slice(1).map(partDetailFromMaster);
-        if (extraParts.length) writeBelow(rowIndex, 'part', extraParts);
+        var extraPartsOnly = partSources.slice(1).map(partDetailFromMaster);
+        if (extraPartsOnly.length) writeBelow(rowIndex, 'part', extraPartsOnly);
         compactItems();
         renderGrid();
         setStatus('中項目「' + mid + '」を入力しました');
@@ -1376,12 +1376,11 @@
         row.workerCode = it.workerCode || '';
         row.workerName = it.workerName || '';
         row.kind = 'work';
-        if (masterHasPart(w)) copyWorkPart(row, w);
         return row;
       });
       writeBelow(rowIndex, 'work', details);
-      var extraHeaderParts = partSources.slice(1).map(partDetailFromMaster);
-      if (extraHeaderParts.length) writeBelow(rowIndex, 'part', extraHeaderParts);
+      var extraParts = partSources.slice(1).map(partDetailFromMaster);
+      if (extraParts.length) writeBelow(rowIndex, 'part', extraParts);
       renderGrid();
       setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
     }
