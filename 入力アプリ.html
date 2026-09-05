@@ -1262,6 +1262,44 @@
       return false;
     }
 
+    function firstFreePartRow(rowIndex) {
+      if (!items[rowIndex] || !hasPart(items[rowIndex])) return rowIndex;
+      var r = rowIndex + 1;
+      while (r < items.length && hasPart(items[r])) r++;
+      return r;
+    }
+    function appendSide(start, side, details) {
+      if (!details || !details.length) return;
+      if (start < 0) start = 0;
+      if (start >= items.length) return;
+      var d = details.length;
+      var c;
+      for (c = 0; c < d; c++) shiftSideDown(start, side);
+      for (c = 0; c < d; c++) {
+        var t = items[start + c];
+        if (!t) break;
+        if (side === 'work') {
+          copyWorkFields(t, details[c]);
+          if (hasPart(details[c])) copyPartFields(t, details[c]);
+        } else {
+          copyPartFields(t, details[c]);
+        }
+        t.kind = details[c].kind || (side === 'part' ? 'part' : 'work');
+        refreshKind(t);
+      }
+    }
+    function writeSetParts(rowIndex, partSources) {
+      if (!partSources || !partSources.length) return;
+      var start = firstFreePartRow(rowIndex);
+      var rows = partSources.map(partDetailFromMaster);
+      if (start === rowIndex) {
+        copyWorkPart(items[rowIndex], partSources[0]);
+        refreshKind(items[rowIndex]);
+        appendSide(rowIndex + 1, 'part', rows.slice(1));
+      } else {
+        appendSide(start, 'part', rows);
+      }
+    }
     function writeBelow(rowIndex, kind, details) {
       var side = kind === 'part' ? 'part' : 'work';
       var j = rowIndex + 1;
@@ -1352,15 +1390,13 @@
         return (a.sourceIndex || 0) - (b.sourceIndex || 0);
       });
       if (partSources.length) {
-        copyWorkPart(it, partSources[0]);
+        writeSetParts(rowIndex, partSources);
       }
 
       if (works.length === 0) {
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
-        var extraPartsOnly = partSources.slice(1).map(partDetailFromMaster);
-        if (extraPartsOnly.length) writeBelow(rowIndex, 'part', extraPartsOnly);
         compactItems();
         renderGrid();
         setStatus('中項目「' + mid + '」を入力しました');
@@ -1379,8 +1415,6 @@
         return row;
       });
       writeBelow(rowIndex, 'work', details);
-      var extraParts = partSources.slice(1).map(partDetailFromMaster);
-      if (extraParts.length) writeBelow(rowIndex, 'part', extraParts);
       renderGrid();
       setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
     }
@@ -1438,11 +1472,19 @@
       setStatus('部品中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
     }
 
-    function hideComboLists() {
+    function hideComboLists(keepInput) {
+      var keepList = keepInput ? comboListEl(keepInput) : null;
       Array.prototype.forEach.call(document.querySelectorAll('.combo-list'), function (el) {
+        if (keepList && el === keepList) return;
         el.hidden = true;
       });
-      comboActiveIndex = -1;
+      if (!keepList) comboActiveIndex = -1;
+    }
+    function isComboField(el) {
+      return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid' || el.dataset.k === 'workerCode'));
+    }
+    function comboKeepInput() {
+      return isComboField(document.activeElement) ? document.activeElement : null;
     }
     function fitMidHeight(el) {
       if (!el || el.dataset.k !== 'mid') return;
@@ -1534,9 +1576,11 @@
     function commitCombo(input) {
       var i = Number(input.dataset.i);
       var k = input.dataset.k;
+      var keep = comboKeepInput();
+      if (keep === input) keep = null;
       if (comboIgnoreBlur) {
         comboIgnoreBlur = false;
-        hideComboLists();
+        hideComboLists(keep);
         return;
       }
       var list = comboListEl(input);
@@ -1544,7 +1588,7 @@
         input.value = list.children[comboActiveIndex].dataset.value;
       }
       var v = input.value;
-      hideComboLists();
+      hideComboLists(keep);
       if (k === 'mid') {
         if (items[i] && items[i].mid === v) return;
         items[i].mid = v;
@@ -1574,7 +1618,7 @@
         el.value = list.children[comboActiveIndex].dataset.value;
       }
       var changed = items[i][k] !== el.value;
-      hideComboLists();
+      hideComboLists(comboKeepInput());
       items[i][k] = el.value;
       if (k === 'workerCode') {
         assignWorker(items[i], findWorker(el.value), el.value);
@@ -1917,8 +1961,8 @@
       if (e.target.dataset.k !== 'mid' && e.target.dataset.k !== 'partMid' && e.target.dataset.k !== 'workerCode') return;
       var input = e.target;
       setTimeout(function () {
-        hideComboLists();
         if (!items[Number(input.dataset.i)]) return;
+        if (document.activeElement === input) return;
         commitCombo(input);
       }, 120);
     });
