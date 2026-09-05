@@ -14,6 +14,55 @@ function isListMetaHeader_(header) {
 }
 
 /**
+ * 更新忘れのとき、シートは触らず案内だけ出す。入力側は仮の順番で動く。
+ */
+function notifyPendingListOrders_() {
+  if (!masterSheetsHaveEmptyOrders_()) {
+    return;
+  }
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    '順番が空の行があります。入力は仮の順番で動きます。シートに確定するにはリストを更新してください。',
+    '請求書入力',
+    8
+  );
+}
+
+function masterSheetsHaveEmptyOrders_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const names = CONFIG.listRefresh.sheets || [];
+  for (let s = 0; s < names.length; s++) {
+    const sheet = ss.getSheetByName(names[s]);
+    if (!sheet) {
+      continue;
+    }
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      continue;
+    }
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const orderCol = findOrderCol_(headers);
+    if (!orderCol) {
+      return true;
+    }
+    const height = lastRow - 1;
+    const dataCol = lastDataHeaderCol_(headers);
+    const orders = sheet.getRange(2, orderCol, height, 1).getValues();
+    const data = sheet.getRange(2, 1, height, dataCol).getValues();
+    const formulas = sheet.getRange(2, 1, height, dataCol).getFormulas();
+    for (let i = 0; i < orders.length; i++) {
+      if (listRowIsEmpty_(data[i], formulas[i])) {
+        continue;
+      }
+      if (toOrderNumber_(orders[i][0]) === Number.POSITIVE_INFINITY) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * 図形のボタンに割り当てる。作業リスト・部品リストを順番で並べ、選択肢を作り直す。
  */
 function refreshAllMasterLists() {
@@ -61,12 +110,10 @@ function ensureListMasterSheets_() {
     layoutWorkListColumns_(work);
     ensureOrderColumnOnSheet_(work);
     layoutWorkListColumns_(work);
-    assignMissingListOrders_(work);
   }
   const parts = ss.getSheetByName(CONFIG.parts.sheetName);
   if (parts) {
     ensureOrderColumnOnSheet_(parts);
-    assignMissingListOrders_(parts);
   }
   const workers = ss.getSheetByName(CONFIG.workers.sheetName);
   if (workers) {
@@ -293,7 +340,8 @@ function refreshMasterListSheet_(sheet) {
 
 /**
  * 空の順番だけ埋める。手動で入っている値は触らない。
- * 中項目が 1 件だけなら 1。追加行は既存の最大 + 1。
+ * 中項目が 1 件だけなら 1。追加行はレーン内の既存最大 + 1。
+ * 更新ボタンからだけ呼ぶ（編集のたびに付けない）。
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @return {boolean} 書き込んだか
@@ -374,48 +422,16 @@ function fillWorkListGroupOrders_(data, formulas, orders, cols) {
     }
     groups[key].push(rec);
   }
+  const recs = [];
   keys.forEach(function (key) {
     const g = groups[key];
-    tagMidGroups_(g);
-    [0, 1, 2].forEach(function (lane) {
-      const rows = g.filter(function (r) {
-        return r._midLane === lane;
-      });
-      if (!rows.length) {
-        return;
-      }
-      let maxN = 0;
-      rows.forEach(function (rec) {
-        const n = toOrderNumber_(rec.order);
-        if (n !== Number.POSITIVE_INFINITY && n > maxN) {
-          maxN = n;
-        }
-      });
-      const empty = rows.filter(function (rec) {
-        return toOrderNumber_(rec.order) === Number.POSITIVE_INFINITY;
-      }).sort(function (a, b) {
-        return a.sourceIndex - b.sourceIndex;
-      });
-      if (!empty.length) {
-        return;
-      }
-      if (maxN === 0) {
-        if (lane === 0) {
-          out[empty[0].i] = [1];
-          return;
-        }
-        let n = 2;
-        empty.forEach(function (rec) {
-          out[rec.i] = [n];
-          n += 1;
-        });
-        return;
-      }
-      empty.forEach(function (rec) {
-        maxN += 1;
-        out[rec.i] = [maxN];
-      });
-    });
+    for (let i = 0; i < g.length; i++) {
+      recs.push(g[i]);
+    }
+  });
+  assignEmptyOrdersInGroups_(recs);
+  recs.forEach(function (rec) {
+    out[rec.i] = [rec.order];
   });
   return out;
 }

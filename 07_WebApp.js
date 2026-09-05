@@ -10,6 +10,7 @@ function doGet() {
 }
 
 function openInputApp() {
+  notifyPendingListOrders_();
   const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
     .setWidth(1640)
     .setHeight(860);
@@ -65,7 +66,8 @@ function getInvoiceMaster() {
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
     lineCount: CONFIG.input.appRows || 120,
-    linesPerPage: CONFIG.print.linesPerPage
+    linesPerPage: CONFIG.print.linesPerPage,
+    ordersPending: !!ctx.ordersPending
   };
 }
 
@@ -239,6 +241,7 @@ function loadPartCatalog_(workRows) {
     }
   }
 
+  assignEmptyOrdersInGroups_(partLines);
   const seenPart = {};
   const uniquePartLines = [];
   sortWorkListRecords_(partLines).forEach(function (r) {

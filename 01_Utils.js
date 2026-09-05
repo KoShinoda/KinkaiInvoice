@@ -166,6 +166,84 @@ function tagMidGroups_(records) {
 }
 
 /**
+ * 空の順番だけ埋める（レコード上）。シートへは書かない。
+ * 更新忘れでも入力アプリの並びを更新後と同じにする。
+ *
+ * @param {object[]} records
+ * @return {boolean} 1件でも埋めたか
+ */
+function assignEmptyOrdersInGroups_(records) {
+  if (!records || !records.length) {
+    return false;
+  }
+  tagMidGroups_(records);
+  const grouped = {};
+  records.forEach(function (row) {
+    const key = normalize_(row.major) + '\t' + normalize_(row.mid);
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(row);
+  });
+  let changed = false;
+  Object.keys(grouped).forEach(function (key) {
+    [0, 1, 2].forEach(function (lane) {
+      const rows = grouped[key].filter(function (r) {
+        return r._midLane === lane;
+      });
+      if (!rows.length) {
+        return;
+      }
+      let maxN = 0;
+      rows.forEach(function (rec) {
+        const n = toOrderNumber_(rec.order);
+        if (n !== Number.POSITIVE_INFINITY && n > maxN) {
+          maxN = n;
+        }
+      });
+      const empty = rows.filter(function (rec) {
+        return toOrderNumber_(rec.order) === Number.POSITIVE_INFINITY;
+      }).sort(function (a, b) {
+        return (a.sourceIndex || 0) - (b.sourceIndex || 0);
+      });
+      if (!empty.length) {
+        return;
+      }
+      changed = true;
+      if (maxN === 0) {
+        if (lane === 0) {
+          empty[0].order = 1;
+          return;
+        }
+        let n = 2;
+        empty.forEach(function (rec) {
+          rec.order = n;
+          n += 1;
+        });
+        return;
+      }
+      empty.forEach(function (rec) {
+        maxN += 1;
+        rec.order = maxN;
+      });
+    });
+  });
+  return changed;
+}
+
+function rowsHaveEmptyOrder_(records) {
+  if (!records) {
+    return false;
+  }
+  for (let i = 0; i < records.length; i++) {
+    if (toOrderNumber_(records[i].order) === Number.POSITIVE_INFINITY) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * 同じ中項目内：先頭 → 作業内容（順番） → 追加部品（順番）。
  *
  * @param {object} a

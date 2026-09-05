@@ -1339,21 +1339,27 @@
       var blanks = group.filter(function (r) { return !filled(r.content); });
       if (!it.major && group[0] && group[0].major) it.major = group[0].major;
 
-      var headerParts = blanks.filter(masterHasPart);
-      if (!headerParts.length) headerParts = group.filter(function (r) {
+      var partSources = group.filter(function (r) {
         return masterHasPart(r) && !filled(r.content);
+      }).slice().sort(function (a, b) {
+        function ord(v) {
+          if (v === '' || v == null) return Number.POSITIVE_INFINITY;
+          var n = Number(String(v).replace(/,/g, '').trim());
+          return isFinite(n) ? n : Number.POSITIVE_INFINITY;
+        }
+        var d = ord(a.order) - ord(b.order);
+        if (d) return d;
+        return (a.sourceIndex || 0) - (b.sourceIndex || 0);
       });
-      if (headerParts.length) {
-        copyWorkPart(it, headerParts[0]);
-      } else if (!works.length && group[0]) {
-        copyWorkPart(it, group[0]);
+      if (partSources.length) {
+        copyWorkPart(it, partSources[0]);
       }
 
       if (works.length === 0) {
         var only = group[0];
         it.fee = only ? only.fee : it.fee;
         if (only && !it.major && only.major) it.major = only.major;
-        var extraParts = headerParts.slice(1).map(partDetailFromMaster);
+        var extraParts = partSources.slice(1).map(partDetailFromMaster);
         if (extraParts.length) writeBelow(rowIndex, 'part', extraParts);
         compactItems();
         renderGrid();
@@ -1374,7 +1380,7 @@
         return row;
       });
       writeBelow(rowIndex, 'work', details);
-      var extraHeaderParts = headerParts.slice(1).map(partDetailFromMaster);
+      var extraHeaderParts = partSources.slice(1).map(partDetailFromMaster);
       if (extraHeaderParts.length) writeBelow(rowIndex, 'part', extraHeaderParts);
       renderGrid();
       setStatus('中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
@@ -2060,7 +2066,11 @@
         bindDateField('billDate', 'billDateCal');
         $('dept').addEventListener('change', applyDeptDefaults);
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
-        setStatus('ヘッダーは整備情報マスタ、日付はカレンダーまたは yyyymmdd で入力できます。');
+        if (master.ordersPending) {
+          setStatus('順番が空の行があります。入力は仮の順番で動きます。確定するにはリストを更新してください。');
+        } else {
+          setStatus('ヘッダーは整備情報マスタ、日付はカレンダーまたは yyyymmdd で入力できます。');
+        }
       })
       .withFailureHandler(function (err) {
         setStatus(err.message || String(err), true);

@@ -138,17 +138,8 @@ function handleEdit_(e) {
     return;
   }
 
-  if (isListRefreshSheet_(sheetName)) {
-    const lastCol = Math.max(sheet.getLastColumn(), 1);
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    const orderCol = findOrderCol_(headers);
-    const touchedOrder = orderCol && columnOverlaps_(e.range.getColumn(), e.range.getNumColumns(), orderCol);
-    if (!touchedOrder) {
-      writeInternal_(function () {
-        assignMissingListOrders_(sheet);
-      });
-    }
-    if (sheetName === CONFIG.workList.sheetName && e.range.getColumn() <= 2) {
+  if (sheetName === CONFIG.workList.sheetName) {
+    if (e.range.getColumn() <= 2) {
       rebuildMidCandidateSheet_();
     }
     return;

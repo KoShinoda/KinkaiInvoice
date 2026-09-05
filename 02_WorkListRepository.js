@@ -38,7 +38,10 @@ function loadContext_() {
   }
 
   const inputCols = resolveInputCols_(inputSheet);
-  const workRows = sortWorkListRecords_(parseWorkList_(workValues, workCols));
+  const parsed = parseWorkList_(workValues, workCols);
+  const ordersPending = rowsHaveEmptyOrder_(parsed);
+  assignEmptyOrdersInGroups_(parsed);
+  const workRows = sortWorkListRecords_(parsed);
   const index = buildWorkIndex_(workRows);
 
   log_(
@@ -54,6 +57,7 @@ function loadContext_() {
     workCols: workCols,
     inputCols: inputCols,
     workRows: workRows,
+    ordersPending: ordersPending,
     midsByMajor: index.midsByMajor,
     recordsByMajorMid: index.recordsByMajorMid
   };
