@@ -79,7 +79,7 @@
     col.col-qty { width: 42px; }
     col.col-amt { width: 96px; }
     col.col-disc { width: 56px; }
-    col.col-del { width: 28px; }
+    col.col-del { width: 56px; }
     col.col-major { width: 15%; }
     col.col-mid { width: 25%; }
     col.col-part-major { width: 15%; }
@@ -179,40 +179,25 @@
       color: var(--muted);
       text-align: center;
       font-size: 11px;
-      padding: 8px 0;
-      position: relative;
+      padding: 3px 0;
     }
-    th.no-h { text-align: center; position: sticky; }
-    .row-ins {
-      position: absolute;
-      left: 50%;
-      bottom: -8px;
-      z-index: 3;
-      width: 16px;
-      height: 16px;
+    td.del { text-align: center; padding: 2px 0; white-space: nowrap; }
+    td.del button { margin: 0 1px; }
+    button.side-ins {
+      width: 22px;
+      height: 22px;
       padding: 0;
-      margin: 0 0 0 -8px;
       border: 1px solid var(--accent);
-      border-radius: 50%;
+      border-radius: 6px;
       background: #fff;
       color: var(--accent);
-      font-size: 12px;
-      line-height: 14px;
+      font-size: 14px;
+      line-height: 20px;
       cursor: pointer;
-      opacity: 0;
     }
-    th.no-h .row-ins {
-      position: static;
-      display: block;
-      margin: 2px auto 0;
-      opacity: 1;
-    }
-    tr:hover .row-ins,
-    .row-ins:hover,
-    .row-ins:focus {
-      opacity: 1;
-    }
-    td.del { text-align: center; padding: 2px 0; }
+    button.side-ins:hover { background: #e8f0ec; }
+    th.del-h { text-align: center; }
+    th.del-h .side-ins { display: block; margin: 2px auto 0; }
     button.row-del {
       width: 22px;
       height: 22px;
@@ -355,19 +340,19 @@
           </colgroup>
           <thead>
             <tr>
-              <th class="no-h">#<button type="button" class="row-ins" data-at="0" tabindex="-1" title="先頭に空行を挿入">+</button></th>
+              <th>#</th>
               <th>大項目</th>
               <th>中項目</th>
               <th>技術料</th>
               <th>作業者コード</th>
-              <th title="技術側を削除">削</th>
+              <th class="del-h" title="技術側">削<button type="button" class="side-ins" data-at="0" data-side="work" tabindex="-1" title="技術側の先頭に空行を挿入">+</button></th>
               <th>部品大項目</th>
               <th>部品中項目</th>
               <th>単価</th>
               <th>数量</th>
               <th>合計</th>
               <th>値引額</th>
-              <th title="部品側を削除">削</th>
+              <th class="del-h" title="部品側">削<button type="button" class="side-ins" data-at="0" data-side="part" tabindex="-1" title="部品側の先頭に空行を挿入">+</button></th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -727,21 +712,28 @@
       else clearPartSide(items[items.length - 1]);
       for (var k = start; k < items.length; k++) refreshKind(items[k]);
     }
-    function insertBlankRow(at) {
+    function shiftSideDown(start, side) {
+      if (start < 0 || start >= items.length) return;
+      for (var j = items.length - 1; j > start; j--) {
+        if (side === 'work') copyWorkFields(items[j], items[j - 1]);
+        else copyPartFields(items[j], items[j - 1]);
+      }
+      if (side === 'work') clearWorkSide(items[start]);
+      else clearPartSide(items[start]);
+      for (var k = start; k < items.length; k++) refreshKind(items[k]);
+    }
+    function insertSide(at, side) {
       var n = lineCount();
       if (at < 0) at = 0;
-      if (at > n) at = n;
-      items.splice(at, 0, emptyRow());
-      padItems();
-      pendingFocus = { i: at, k: 'mid' };
+      if (at >= n) return;
+      shiftSideDown(at, side);
+      pendingFocus = { i: at, k: side === 'work' ? 'mid' : 'partMid' };
       renderGrid();
-      setStatus('空行を挿入しました（明細は ' + n + ' 行まで。末尾は押し出されます）');
+      setStatus(side === 'work' ? '技術側に空行を挿入しました' : '部品側に空行を挿入しました');
     }
     function deleteSide(rowIndex, side) {
       var it = items[rowIndex];
       if (!it) return;
-      if (side === 'work' && !hasWork(it)) return;
-      if (side === 'part' && !hasPart(it)) return;
       shiftSideUp(rowIndex, side);
       renderGrid();
       setStatus(side === 'work' ? '技術側を削除して詰めました' : '部品側を削除して詰めました');
@@ -896,8 +888,6 @@
       c.amount.value = it.amount == null || it.amount === '' ? '' : it.amount;
       c.discYen.value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
       paintDiscWarn(tr, it);
-      if (c.wDel) c.wDel.disabled = !hasWork(it);
-      if (c.pDel) c.pDel.disabled = !hasPart(it);
     }
 
     function lineCount() {
@@ -906,21 +896,25 @@
 
     function rowHtml(i) {
       return '<tr>' +
-        '<td class="no"><span class="no-n">' + (i + 1) + '</span>' +
-          (i < lineCount() - 1 ? '<button type="button" class="row-ins" data-at="' + (i + 1) + '" tabindex="-1" title="この行の下に空行を挿入">+</button>' : '') +
-        '</td>' +
+        '<td class="no">' + (i + 1) + '</td>' +
         '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
         '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
         '<td class="staff"><select data-i="' + i + '" data-k="workerCode" data-filled="1">' + optHtml.worker + '</select></td>' +
-        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
+        '<td class="del">' +
+          '<button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button>' +
+          (i < lineCount() - 1 ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
+        '</td>' +
         '<td class="part-major"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
         '<td class="part-mid"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="num"><input data-i="' + i + '" data-k="unitPrice"></td>' +
         '<td class="num"><input data-i="' + i + '" data-k="qty"></td>' +
         '<td class="num"><input data-i="' + i + '" data-k="amount"></td>' +
         '<td class="num"><input data-i="' + i + '" data-k="discYen"></td>' +
-        '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>' +
+        '<td class="del">' +
+          '<button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button>' +
+          (i < lineCount() - 1 ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
+        '</td>' +
         '</tr>';
     }
 
@@ -1035,25 +1029,27 @@
     }
 
     function writeBelow(rowIndex, kind, details) {
+      var side = kind === 'part' ? 'part' : 'work';
       var j = rowIndex + 1;
       while (j < items.length && items[j] && items[j].kind === kind) {
-        var r = items[j];
-        if (kind === 'work' && hasPart(r)) {
-          clearWorkSide(r);
-          r.kind = hasPart(r) ? 'part' : '';
-          break;
-        }
-        if (kind === 'part' && hasWork(r)) {
-          clearPartSide(r);
-          r.kind = hasWork(r) ? 'work' : '';
-          break;
-        }
-        items.splice(j, 1);
+        shiftSideUp(j, side);
       }
-      for (var k = details.length - 1; k >= 0; k--) {
-        items.splice(rowIndex + 1, 0, details[k]);
+      var start = rowIndex + 1;
+      var d = details.length;
+      var c;
+      for (c = 0; c < d; c++) shiftSideDown(start, side);
+      for (c = 0; c < d; c++) {
+        var t = items[start + c];
+        if (!t) break;
+        if (side === 'work') {
+          copyWorkFields(t, details[c]);
+          if (hasPart(details[c])) copyPartFields(t, details[c]);
+        } else {
+          copyPartFields(t, details[c]);
+        }
+        t.kind = details[c].kind || kind;
+        refreshKind(t);
       }
-      padItems();
     }
     function firstFilled(rows, key) {
       for (var i = 0; i < rows.length; i++) {
@@ -1314,10 +1310,10 @@
     }
 
     document.querySelector('.table-wrap').addEventListener('click', function (e) {
-      var ins = e.target.closest('button.row-ins');
+      var ins = e.target.closest('button.side-ins');
       if (!ins) return;
       e.preventDefault();
-      insertBlankRow(Number(ins.dataset.at));
+      insertSide(Number(ins.dataset.at), ins.dataset.side);
     });
     $('tbody').addEventListener('click', function (e) {
       var btn = e.target.closest('button.row-del');
