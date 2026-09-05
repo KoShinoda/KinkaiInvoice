@@ -276,11 +276,13 @@
       z-index: 80;
       width: auto;
       max-width: calc(100vw - 16px);
+      max-height: calc(100vh - 16px);
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(28, 36, 48, .16);
       flex-direction: column;
+      overflow: hidden;
     }
     .worker-picker[hidden] { display: none !important; }
     .worker-picker:not([hidden]) { display: flex; }
@@ -330,7 +332,10 @@
       align-items: flex-start;
       gap: 10px;
       padding: 0 10px 10px;
-      overflow: visible;
+      overflow: auto;
+      max-height: calc(100vh - 140px);
+      min-height: 0;
+      flex: 1;
     }
     table.worker-board {
       width: auto;
@@ -619,7 +624,7 @@
     }
     function emptyRow() {
       return {
-        major: '', mid: '', fee: '', workerCode: '',
+        major: '', mid: '', fee: '', workerCode: '', workerName: '',
         partMajor: '', partMid: '',
         qty: '', unitPrice: '', amount: '', discYen: 0,
         kind: ''
@@ -750,6 +755,8 @@
         row.mid = src.mid || '';
         row.fee = src.fee == null ? '' : src.fee;
         row.workerCode = src.workerCode || '';
+        var tw = findWorker(row.workerCode);
+        row.workerName = tw ? (tw.name || '') : '';
         row.partMajor = src.partMajor || '';
         row.partMid = src.partMid || '';
         row.qty = src.qty == null ? '' : src.qty;
@@ -823,7 +830,7 @@
     }
 
     function hasWork(r) {
-      return !!(r && (r.major || r.mid || filled(r.fee) || r.workerCode));
+      return !!(r && (r.major || r.mid || filled(r.fee) || r.workerCode || r.workerName));
     }
     function hasPart(r) {
       return !!(r && (r.partMajor || r.partMid || filled(r.qty) || filled(r.unitPrice) || filled(r.amount)));
@@ -834,6 +841,7 @@
       if (src.mid) target.mid = src.mid;
       if (filled(src.fee)) target.fee = src.fee;
       if (src.workerCode) target.workerCode = src.workerCode;
+      if (src.workerName) target.workerName = src.workerName;
       if (src.kind) target.kind = src.kind;
     }
     function applyPartOnto(target, src) {
@@ -850,6 +858,7 @@
       r.mid = '';
       r.fee = '';
       r.workerCode = '';
+      r.workerName = '';
     }
     function clearPartSide(r) {
       r.partMajor = '';
@@ -864,6 +873,7 @@
       to.mid = from.mid;
       to.fee = from.fee;
       to.workerCode = from.workerCode;
+      to.workerName = from.workerName || '';
     }
     function copyPartFields(to, from) {
       to.partMajor = from.partMajor;
@@ -1062,7 +1072,7 @@
       }
       setSelectValue(c.major, master.majors, it.major);
       setSelectValue(c.partMajor, master.partMajors, it.partMajor);
-      if (c.workerCode) c.workerCode.value = it.workerCode || '';
+      if (c.workerCode) c.workerCode.value = workerInputValue(it);
       if (c.mid) {
         c.mid.value = it.mid || '';
         c.mid.dataset.options = midsJson(it.major);
@@ -1093,7 +1103,7 @@
         '<td class="mid"><div class="combo"><input data-i="' + i + '" data-k="mid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
         '<td class="staff"><div class="combo staff-wrap">' +
-          '<input data-i="' + i + '" data-k="workerCode" maxlength="3" inputmode="numeric" autocomplete="off">' +
+          '<input data-i="' + i + '" data-k="workerCode" autocomplete="off">' +
           '<button type="button" class="staff-pick" data-i="' + i + '" tabindex="-1" title="作業者リストを開く">▾</button>' +
           '<div class="combo-list" hidden></div>' +
         '</div></td>' +
@@ -1156,7 +1166,7 @@
     }
 
     function rowIsEmpty(r) {
-      return !r || (!r.major && !r.mid && !filled(r.fee) && !r.workerCode && !r.partMajor && !r.partMid &&
+      return !r || (!r.major && !r.mid && !filled(r.fee) && !r.workerCode && !r.workerName && !r.partMajor && !r.partMid &&
         !filled(r.qty) && !filled(r.unitPrice) && !filled(r.amount));
     }
     function padItems() {
@@ -1304,6 +1314,7 @@
         row.mid = w.content;
         row.fee = w.fee;
         row.workerCode = it.workerCode || '';
+        row.workerName = it.workerName || '';
         row.kind = 'work';
         copyWorkPart(row, w);
         return row;
@@ -1404,7 +1415,7 @@
           if (qn && workerSearchText(w).indexOf(qn) === -1) return;
           var d = document.createElement('div');
           d.dataset.value = w.code || '';
-          d.textContent = w.name ? (w.code || '') + '　' + w.name : (w.code || '');
+          d.textContent = w.name || w.code || '';
           list.appendChild(d);
           opts.push(w);
         });
@@ -1462,7 +1473,8 @@
         items[i].partMid = v;
         onPartMidChosen(i);
       } else if (k === 'workerCode') {
-        items[i].workerCode = v;
+        assignWorker(items[i], findWorker(v), v);
+        syncWorkerInput(i);
         recalc();
       }
     }
@@ -1484,6 +1496,8 @@
       hideComboLists();
       items[i][k] = el.value;
       if (k === 'workerCode') {
+        assignWorker(items[i], findWorker(el.value), el.value);
+        syncWorkerInput(i);
         if (force || changed || fromList) recalc();
         return;
       }
@@ -1538,6 +1552,37 @@
         return { code: t.slice(0, sp), name: t.slice(sp + 1), cells: [t.slice(0, sp), t.slice(sp + 1)], images: ['', ''] };
       });
     }
+    function findWorker(q) {
+      var s = String(q || '').trim();
+      if (!s) return null;
+      var all = workerListRows();
+      var i;
+      for (i = 0; i < all.length; i++) {
+        if (String(all[i].code || '') === s) return all[i];
+      }
+      for (i = 0; i < all.length; i++) {
+        if (String(all[i].name || '') === s) return all[i];
+      }
+      return null;
+    }
+    function assignWorker(it, w, fallback) {
+      if (!it) return;
+      if (w) {
+        it.workerCode = w.code || '';
+        it.workerName = w.name || '';
+      } else {
+        it.workerCode = fallback || '';
+        it.workerName = '';
+      }
+    }
+    function workerInputValue(it) {
+      return (it && (it.workerName || it.workerCode)) || '';
+    }
+    function syncWorkerInput(rowIndex) {
+      var row = $('tbody').rows[rowIndex];
+      var input = row && row._cells && row._cells.workerCode;
+      if (input) input.value = workerInputValue(items[rowIndex]);
+    }
     function workerHeaders() {
       var h = master.workerHeaders && master.workerHeaders.length ? master.workerHeaders.slice() : ['コード', '名前'];
       var rows = workerListRows();
@@ -1557,10 +1602,13 @@
       (w.cells || []).forEach(function (c) { parts.push(c); });
       return workerQuery(parts.join(' '));
     }
-    function workerMatchesCurrent(w, cur) {
-      if (!cur) return false;
-      var label = w.name ? w.code + ' ' + w.name : w.code;
-      return cur === w.code || cur === label;
+    function workerMatchesCurrent(w, it) {
+      if (!w || !it) return false;
+      var code = String(it.workerCode || '');
+      var name = String(it.workerName || '');
+      if (code && w.code === code) return true;
+      if (name && w.name === name) return true;
+      return false;
     }
     function workerChunkSize() {
       return 20;
@@ -1587,7 +1635,7 @@
       for (var i = 0; i < all.length; i++) {
         if (!q || workerSearchText(all[i]).indexOf(q) !== -1) list.push({ w: all[i], idx: i });
       }
-      var cur = items[workerPickerRow] ? String(items[workerPickerRow].workerCode || '') : '';
+      var curItem = items[workerPickerRow];
       var chunk = workerChunkSize();
       var boards = $('workerPickerBoards');
       var head = '<tr>' + headers.map(function (h, c) {
@@ -1604,7 +1652,7 @@
           var end = Math.min(b + chunk, list.length);
           var r;
           for (r = b; r < end; r++) {
-            html += workerRowHtml(list[r].w, list[r].idx, headers, workerMatchesCurrent(list[r].w, cur));
+            html += workerRowHtml(list[r].w, list[r].idx, headers, workerMatchesCurrent(list[r].w, curItem));
           }
           for (; r < b + chunk; r++) {
             html += '<tr class="worker-pad"><td colspan="' + headers.length + '">&nbsp;</td></tr>';
@@ -1629,8 +1677,11 @@
       panel.hidden = false;
       var w = panel.offsetWidth;
       var h = panel.offsetHeight;
-      panel.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
-      panel.style.top = Math.max(8, Math.round((window.innerHeight - h) / 2)) + 'px';
+      var left = Math.max(8, Math.round((window.innerWidth - w) / 2));
+      var top = Math.max(8, Math.round((window.innerHeight - h) / 2));
+      if (top + h > window.innerHeight - 8) top = 8;
+      panel.style.left = left + 'px';
+      panel.style.top = top + 'px';
     }
     function showWorkerPicker(anchor) {
       var row = Number(anchor.dataset.i);
@@ -1643,10 +1694,8 @@
     }
     function applyWorkerCode(code) {
       if (workerPickerRow < 0 || !items[workerPickerRow]) return;
-      items[workerPickerRow].workerCode = code || '';
-      var row = $('tbody').rows[workerPickerRow];
-      var input = row && row._cells && row._cells.workerCode;
-      if (input) input.value = code || '';
+      assignWorker(items[workerPickerRow], findWorker(code), code);
+      syncWorkerInput(workerPickerRow);
       hideWorkerPicker();
       recalc();
     }
@@ -1713,7 +1762,8 @@
         items[i].partMid = opt.dataset.value;
         onPartMidChosen(i);
       } else if (input.dataset.k === 'workerCode') {
-        items[i].workerCode = opt.dataset.value;
+        assignWorker(items[i], findWorker(opt.dataset.value), opt.dataset.value);
+        syncWorkerInput(i);
         recalc();
       }
     });
@@ -1790,7 +1840,6 @@
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') {
         showComboList(t);
-        if (k === 'workerCode') items[i][k] = t.value;
         return;
       }
       items[i][k] = t.value;
