@@ -212,8 +212,8 @@ const CONFIG = {
     sheetNamePrefix: '印刷_',
     samplePrefix: '印刷原本_',
     title: '近海請求書',
-    linesPerPage: 20,
-    pageRows: 36,
+    linesPerPage: 30,
+    pageRows: 42,
     colCount: 8,
     layout: {
       title: 0,
@@ -224,7 +224,7 @@ const CONFIG = {
       spacer: 5,
       colHead: 6,
       firstLine: 7,
-      footerStart: 28
+      footerStart: 37
     }
   },
 

@@ -4,7 +4,7 @@
  * 大量印刷向けに色は使わない。
  */
 
-var PRINT_COL_WIDTHS_ = [48, 188, 86, 52, 168, 48, 80, 92];
+var PRINT_COL_WIDTHS_ = [54, 196, 96, 58, 172, 52, 90, 102];
 var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部品', '数量', '単価', '金額'];
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
@@ -59,7 +59,7 @@ function makePrintSamplePayload_() {
     '代行料'
   ];
   const parts = ['部品1', '部品2', '部品3', 'カートリッジグリス', 'ｼｬｼｸﾞﾚｰ', 'ｽﾓｰﾙ･ﾊﾟｰﾂ'];
-  for (let i = 0; i < 48; i++) {
+  for (let i = 0; i < 72; i++) {
     const fee = i % 7 === 0 ? 0 : 800 + (i % 12) * 200;
     const qty = 1;
     const unitPrice = 400 + (i % 9) * 50;
@@ -168,9 +168,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
 
   trimPrintSheet_(sheet, pageCount * CONFIG.print.pageRows);
   applyA4PageSetup_(sheet, pageCount);
-  for (let p = 1; p < pageCount; p++) {
-    sheet.setRowPageBreak(p * CONFIG.print.pageRows, true);
-  }
+  applyPrintPageBreaks_(sheet, pageCount);
   return { sheet: sheet, pageCount: pageCount };
 }
 
@@ -209,13 +207,30 @@ function applyA4PageSetup_(sheet, pageCount) {
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
     ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
     ps.setPrintGridlines(false);
-    ps.setTopMargin(0.35);
-    ps.setBottomMargin(0.35);
-    ps.setLeftMargin(0.4);
-    ps.setRightMargin(0.4);
-    ps.setScale(100);
+    ps.setTopMargin(0.3);
+    ps.setBottomMargin(0.3);
+    ps.setLeftMargin(0.35);
+    ps.setRightMargin(0.35);
+    if (typeof ps.setFitToWidth === 'function') {
+      ps.setFitToWidth(1);
+    }
+    if (typeof ps.setFitToHeight === 'function') {
+      ps.setFitToHeight(pageCount);
+    }
   } catch (err) {
     Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
+  }
+}
+
+/**
+ * 一部の GAS には setRowPageBreak が無い。あるときだけ使い、無ければ FitToHeight で枚数を合わせる。
+ */
+function applyPrintPageBreaks_(sheet, pageCount) {
+  if (pageCount < 2 || typeof sheet.setRowPageBreak !== 'function') {
+    return;
+  }
+  for (let p = 1; p < pageCount; p++) {
+    sheet.setRowPageBreak(p * CONFIG.print.pageRows, true);
   }
 }
 
@@ -227,7 +242,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
 
   sheet.getRange(start, 1, CONFIG.print.pageRows, cols)
     .setFontFamily('Yu Gothic')
-    .setFontSize(12)
+    .setFontSize(14)
     .setFontColor(PRINT_BLACK_)
     .setVerticalAlignment('middle')
     .setWrap(true);
@@ -239,12 +254,12 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   const title = String(header.userName || CONFIG.print.title || '近海請求書').trim() || '近海請求書';
   sheet.getRange(titleRow, 1).setValue(opts.showHeader ? title : '');
   sheet.getRange(titleRow, 1, 1, 4)
-    .setFontSize(22)
+    .setFontSize(24)
     .setFontWeight('bold')
     .setHorizontalAlignment('left');
   sheet.getRange(titleRow, 5).setValue('No.' + opts.page + '／' + opts.pageCount);
   sheet.getRange(titleRow, 5, 1, 4)
-    .setFontSize(14)
+    .setFontSize(16)
     .setFontWeight('bold')
     .setHorizontalAlignment('right');
 
@@ -256,7 +271,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   sheet.getRange(headRow, 1, 1, cols)
     .setValues([PRINT_COL_HEADERS_])
     .setFontWeight('bold')
-    .setFontSize(12)
+    .setFontSize(14)
     .setHorizontalAlignment('center')
     .setWrap(false);
 
@@ -304,20 +319,20 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
 function applyPrintPageHeights_(sheet, start) {
   const L = CONFIG.print.layout;
   sheet.setRowHeight(start + L.title, 40);
-  sheet.setRowHeight(start + L.metaL1, 22);
-  sheet.setRowHeight(start + L.metaV1, 32);
-  sheet.setRowHeight(start + L.metaL2, 22);
-  sheet.setRowHeight(start + L.metaV2, 32);
-  sheet.setRowHeight(start + L.spacer, 12);
-  sheet.setRowHeight(start + L.colHead, 30);
-  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, 28);
+  sheet.setRowHeight(start + L.metaL1, 20);
+  sheet.setRowHeight(start + L.metaV1, 28);
+  sheet.setRowHeight(start + L.metaL2, 20);
+  sheet.setRowHeight(start + L.metaV2, 28);
+  sheet.setRowHeight(start + L.spacer, 8);
+  sheet.setRowHeight(start + L.colHead, 26);
+  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, 22);
   const afterLines = start + L.firstLine + CONFIG.print.linesPerPage;
   const footerStart = start + L.footerStart;
   if (footerStart > afterLines) {
-    sheet.setRowHeights(afterLines, footerStart - afterLines, 12);
+    sheet.setRowHeights(afterLines, footerStart - afterLines, 8);
   }
   const footerRows = CONFIG.print.pageRows - L.footerStart;
-  sheet.setRowHeights(footerStart, footerRows, 28);
+  sheet.setRowHeights(footerStart, footerRows, 24);
 }
 
 function mergePrintPage_(sheet, start, showHeader, showFooter) {
@@ -353,19 +368,19 @@ function fillPrintHeader_(sheet, start, header) {
   const l2 = start + L.metaL2;
   const v2 = start + L.metaV2;
 
-  sheet.getRange(l1, 1).setValue('K-No').setFontSize(10).setFontWeight('bold');
-  sheet.getRange(l1, 3).setValue('登録番号').setFontSize(10).setFontWeight('bold');
-  sheet.getRange(l1, 5).setValue('受付').setFontSize(10).setFontWeight('bold');
-  sheet.getRange(v1, 1).setValue(header.kNo || '').setFontSize(13);
-  sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(13);
-  sheet.getRange(v1, 5).setValue(header.receptionist || header.staff || '').setFontSize(13);
+  sheet.getRange(l1, 1).setValue('K-No').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l1, 3).setValue('登録番号').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l1, 5).setValue('受付').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v1, 1).setValue(header.kNo || '').setFontSize(16);
+  sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(16);
+  sheet.getRange(v1, 5).setValue(header.receptionist || header.staff || '').setFontSize(16);
 
-  sheet.getRange(l2, 1).setValue('入庫日').setFontSize(10).setFontWeight('bold');
-  sheet.getRange(l2, 3).setValue('出庫日').setFontSize(10).setFontWeight('bold');
-  sheet.getRange(l2, 5).setValue('請求日').setFontSize(10).setFontWeight('bold');
-  sheet.getRange(v2, 1).setValue(header.inDate || '').setFontSize(13);
-  sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(13);
-  sheet.getRange(v2, 5).setValue(header.billDate || '').setFontSize(13);
+  sheet.getRange(l2, 1).setValue('入庫日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l2, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l2, 5).setValue('請求日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v2, 1).setValue(header.inDate || '').setFontSize(16);
+  sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(16);
+  sheet.getRange(v2, 5).setValue(header.billDate || '').setFontSize(16);
 
   sheet.getRange(l1, 1, 4, 6)
     .setHorizontalAlignment('left')
@@ -379,28 +394,28 @@ function fillPrintFooterBlock_(sheet, start, summary) {
   const techPct = printPct_(summary.techSub, summary.techDisc, summary.techPct);
   const partPct = printPct_(summary.partSub, summary.partDisc, summary.partPct);
 
-  sheet.getRange(f, 1).setValue('技術').setFontWeight('bold').setFontSize(13).setHorizontalAlignment('center');
-  sheet.getRange(f, 5).setValue('部品').setFontWeight('bold').setFontSize(13).setHorizontalAlignment('center');
+  sheet.getRange(f, 1).setValue('技術').setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
+  sheet.getRange(f, 5).setValue('部品').setFontWeight('bold').setFontSize(14).setHorizontalAlignment('center');
 
   sheet.getRange(f + 1, 1).setValue('合計').setFontWeight('bold');
   sheet.getRange(f + 1, 3).setValue(blankIfEmpty_(summary.techSub)).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
   sheet.getRange(f + 1, 5).setValue('合計').setFontWeight('bold');
   sheet.getRange(f + 1, 7).setValue(blankIfEmpty_(summary.partSub)).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
 
-  sheet.getRange(f + 2, 1).setValue('値引額').setFontWeight('bold');
-  sheet.getRange(f + 2, 3).setValue(formatDiscWithPct_(summary.techDisc, techPct)).setHorizontalAlignment('right');
-  sheet.getRange(f + 2, 5).setValue('値引額').setFontWeight('bold');
-  sheet.getRange(f + 2, 7).setValue(formatDiscWithPct_(summary.partDisc, partPct)).setHorizontalAlignment('right');
+  sheet.getRange(f + 2, 1).setValue(discLabel_(techPct)).setFontWeight('bold');
+  sheet.getRange(f + 2, 3).setValue(blankIfEmpty_(summary.techDisc)).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(f + 2, 5).setValue(discLabel_(partPct)).setFontWeight('bold');
+  sheet.getRange(f + 2, 7).setValue(blankIfEmpty_(summary.partDisc)).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
 
   sheet.getRange(f + 3, 1).setValue('値引後').setFontWeight('bold');
   sheet.getRange(f + 3, 3).setValue(blankIfEmpty_(summary.techTotal)).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
   sheet.getRange(f + 3, 5).setValue('値引後').setFontWeight('bold');
   sheet.getRange(f + 3, 7).setValue(blankIfEmpty_(summary.partTotal)).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
 
-  sheet.getRange(f + 4, 1).setValue('合計').setFontWeight('bold').setFontSize(14).setHorizontalAlignment('right');
+  sheet.getRange(f + 4, 1).setValue('合計').setFontWeight('bold').setFontSize(18).setHorizontalAlignment('right');
   sheet.getRange(f + 4, 7)
     .setValue(blankIfEmpty_(summary.grand))
-    .setFontSize(14)
+    .setFontSize(18)
     .setFontWeight('bold')
     .setNumberFormat(PRINT_YEN_FORMAT_)
     .setHorizontalAlignment('right');
@@ -422,16 +437,11 @@ function printPct_(sub, disc, given) {
   return Math.round(d / s * 100);
 }
 
-function formatDiscWithPct_(amount, pct) {
-  if (amount === undefined || amount === null || amount === '') {
-    return pct ? '0（' + pct + '%）' : '';
-  }
-  const n = Number(amount);
-  const yen = isFinite(n) ? n.toLocaleString('ja-JP') : String(amount);
+function discLabel_(pct) {
   if (pct === undefined || pct === null || pct === '') {
-    return yen;
+    return '値引額（％）';
   }
-  return yen + '（' + pct + '%）';
+  return '値引額（' + pct + '％）';
 }
 
 function blankIfEmpty_(value) {
