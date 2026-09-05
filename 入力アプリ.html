@@ -75,7 +75,7 @@
     col.col-no { width: 36px; }
     col.col-ins { width: 36px; }
     col.col-fee { width: calc(96px - 1ch); }
-    col.col-staff { width: calc(3ch + 40px); }
+    col.col-staff { width: 108px; }
     col.col-n { width: calc(52px + 2ch); }
     col.col-qty { width: 42px; }
     col.col-amt { width: calc(96px - 1ch); }
@@ -240,11 +240,10 @@
     td.num input,
     td.fee input { padding: 4px 2px; text-align: right; }
     td.staff input {
-      padding: 4px 2px;
+      padding: 4px 4px;
       text-align: right;
-      width: 3ch;
-      max-width: 3ch;
-      flex: 0 0 3ch;
+      flex: 1;
+      min-width: 0;
       font-variant-numeric: tabular-nums;
     }
     .staff-wrap {
@@ -361,9 +360,9 @@
       box-sizing: content-box;
     }
     .worker-picker th.worker-code {
-      white-space: normal;
-      line-height: 1.15;
-      max-width: 4.5em;
+      white-space: nowrap;
+      width: auto;
+      max-width: none;
     }
     .worker-picker td {
       padding: 2px 6px;
@@ -1592,7 +1591,8 @@
       var chunk = workerChunkSize();
       var boards = $('workerPickerBoards');
       var head = '<tr>' + headers.map(function (h, c) {
-        return '<th' + (c === 0 ? ' class="worker-code"' : '') + '>' + htmlEscape(h || '') + '</th>';
+        var label = c === 0 ? 'ID' : h;
+        return '<th' + (c === 0 ? ' class="worker-code"' : '') + '>' + htmlEscape(label || '') + '</th>';
       }).join('') + '</tr>';
       var html = '';
       if (!list.length) {
