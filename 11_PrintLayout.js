@@ -14,10 +14,9 @@ var PRINT_COL_HEADERS_ = ['No', '作業内容', '技術料', '作業者', '部�
 var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
 /** A4 縦（余白込み）に近いピクセル。明細行に余りを振る。 */
-var PRINT_PAGE_PX_ = 1040;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
-var PRINT_PAGE_NO_H_ = 22;
+var PRINT_PAGE_NO_H_ = 18;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -60,10 +59,34 @@ function makePrintSamplePayload_() {
   const pack = collectPrintSampleCatalog_();
   const mids = pack.mids;
   const parts = pack.parts;
-  const items = [];
+  const twoLine = [
+    {
+      mid: '左右ウイングアッパーレール\nコーキング修理',
+      fee: 18000,
+      workerCode: '1',
+      partMid: 'リレーバルブインナーキット\n（新品）',
+      qty: 1,
+      unitPrice: 7400,
+      amount: 7400
+    },
+    {
+      mid: 'ランディング高さ違い点検修理\n（ギヤ灯高・低切り替え不良）',
+      fee: 20000,
+      workerCode: '2',
+      partMid: '左ランディングASSY\n右ランディングＡＳＳＹ',
+      qty: 1,
+      unitPrice: 108510,
+      amount: 108510
+    }
+  ];
+  const items = twoLine.slice();
   let techSub = 0;
   let partSub = 0;
-  const n = 60;
+  twoLine.forEach(function (it) {
+    techSub += Number(it.fee) || 0;
+    partSub += Number(it.amount) || 0;
+  });
+  const n = 58;
   for (let i = 0; i < n; i++) {
     const fee = i % 7 === 0 ? 0 : 800 + (i % 12) * 200;
     const qty = 1 + (i % 3 === 0 ? 1 : 0);
@@ -329,13 +352,14 @@ function applyA4PageSetup_(sheet, pageCount) {
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
     ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
     ps.setPrintGridlines(false);
-    ps.setTopMargin(0.32);
-    ps.setBottomMargin(0.4);
-    ps.setLeftMargin(0.32);
-    ps.setRightMargin(0.32);
+    ps.setTopMargin(0.2);
+    ps.setBottomMargin(0.2);
+    ps.setLeftMargin(0.2);
+    ps.setRightMargin(0.2);
     if (typeof ps.setScale === 'function') {
       ps.setScale(100);
     }
+    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
   } catch (err) {
     Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
   }
@@ -378,8 +402,6 @@ function printPageLayout_(showHeader, showFooter) {
     L.footerStart = r;
     r += 5;
   }
-  L.pad = r;
-  r++;
   L.pageNo = r;
   r++;
   L.pageRows = r;
@@ -387,8 +409,8 @@ function printPageLayout_(showHeader, showFooter) {
 }
 
 function printDataRowHeight_() {
-  const chrome = 32 + 18 + 24 + 18 + 24 + 4 + 22 + 20 * 5 + PRINT_PAGE_NO_H_ + 8;
-  return Math.max(18, Math.floor((PRINT_PAGE_PX_ - chrome) / CONFIG.print.linesPerPage));
+  const chrome = 28 + 16 + 22 + 16 + 22 + 2 + 20 + 18 * 5 + PRINT_PAGE_NO_H_;
+  return Math.max(24, Math.floor((920 - chrome) / CONFIG.print.linesPerPage));
 }
 
 function fillPrintPage_(sheet, start, header, lines, opts) {
@@ -569,13 +591,12 @@ function fitPrintFont_(text, colWidth, lines) {
 }
 
 function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) {
-  const titleH = 32;
-  const metaLH = 18;
-  const metaVH = 24;
-  const spacerH = 4;
-  const colHeadH = 22;
-  const footerH = 20;
-  let used = titleH + colHeadH + CONFIG.print.linesPerPage * slotH + PRINT_PAGE_NO_H_;
+  const titleH = 28;
+  const metaLH = 16;
+  const metaVH = 22;
+  const spacerH = 2;
+  const colHeadH = 20;
+  const footerH = 18;
   sheet.setRowHeight(start + L.title, titleH);
   if (showHeader) {
     sheet.setRowHeight(start + L.metaL1, metaLH);
@@ -583,16 +604,12 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
     sheet.setRowHeight(start + L.metaL2, metaLH);
     sheet.setRowHeight(start + L.metaV2, metaVH);
     sheet.setRowHeight(start + L.spacer, spacerH);
-    used += metaLH + metaVH + metaLH + metaVH + spacerH;
   }
   sheet.setRowHeight(start + L.colHead, colHeadH);
   sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, slotH);
   if (showFooter) {
     sheet.setRowHeights(start + L.footerStart, 5, footerH);
-    used += footerH * 5;
   }
-  const padH = Math.max(8, PRINT_PAGE_PX_ - used);
-  sheet.setRowHeight(start + L.pad, padH);
   sheet.setRowHeight(start + L.pageNo, PRINT_PAGE_NO_H_);
 }
 
