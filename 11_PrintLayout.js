@@ -521,8 +521,13 @@ function newlineCount_(text) {
   return s.split('\n').length;
 }
 
+function printCharPx_(fontPt) {
+  return fontPt * (96 / 72);
+}
+
 function printColCapacity_(colWidth, fontPt) {
-  return (colWidth - 6) / (fontPt * 1.18);
+  const inner = Math.max(8, colWidth - 12);
+  return inner / printCharPx_(fontPt);
 }
 
 function displayUnits_(text) {
@@ -531,9 +536,9 @@ function displayUnits_(text) {
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
     if (c <= 0x7f) {
-      u += 0.62;
+      u += 0.72;
     } else if (c >= 0xff61 && c <= 0xff9f) {
-      u += 0.62;
+      u += 0.7;
     } else {
       u += 1;
     }
@@ -555,6 +560,7 @@ function fitPrintFont_(text, colWidth, lines) {
   if (units < 0.5) {
     return PRINT_FONT_MAX_;
   }
+  units += 0.35;
   for (let pt = PRINT_FONT_MAX_; pt >= PRINT_FONT_MIN_; pt--) {
     if (units <= printColCapacity_(colWidth, pt) * lineCount) {
       return pt;
