@@ -207,12 +207,9 @@
     }
     th.no-h,
     th.ins-h { text-align: center; }
-    th.no-h .side-ins,
-    th.ins-h .side-ins {
-      position: static;
-      display: block;
-      margin: 2px auto 0;
-      opacity: 1;
+    button.side-ins.side-ins-top {
+      bottom: auto;
+      top: -8px;
     }
     tr:hover .side-ins,
     button.side-ins:hover,
@@ -425,27 +422,6 @@
       box-sizing: border-box;
     }
     td.mid { vertical-align: top; }
-    .mid-wrap {
-      display: flex;
-      gap: 2px;
-      align-items: flex-start;
-      position: relative;
-    }
-    .mid-wrap textarea { flex: 1; min-width: 0; }
-    button.mid-nl {
-      width: 22px;
-      flex: 0 0 22px;
-      margin-top: 3px;
-      padding: 0;
-      background: #fff;
-      color: var(--muted);
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      font-size: 12px;
-      line-height: 20px;
-      cursor: pointer;
-    }
-    button.mid-nl:hover { background: #e8f0ec; color: var(--accent); }
     .combo-list {
       position: absolute;
       left: 0; right: 0; top: 100%;
@@ -553,13 +529,13 @@
           </colgroup>
           <thead>
             <tr>
-              <th class="no-h">#<button type="button" class="side-ins" data-at="0" data-side="work" tabindex="-1" title="技術側の先頭に空行を挿入">+</button></th>
+              <th class="no-h">#</th>
               <th>大項目</th>
               <th>中項目</th>
               <th>技術料</th>
               <th>作業コード</th>
               <th class="del-h" title="技術側">削</th>
-              <th class="ins-h"><button type="button" class="side-ins" data-at="0" data-side="part" tabindex="-1" title="部品側の先頭に空行を挿入">+</button></th>
+              <th class="ins-h"></th>
               <th>部品大項目</th>
               <th>部品中項目</th>
               <th>単価</th>
@@ -1130,12 +1106,12 @@
       var ins = i < lineCount() - 1;
       return '<tr>' +
         '<td class="no"><span class="no-n">' + (i + 1) + '</span>' +
+          (i === 0 ? '<button type="button" class="side-ins side-ins-top" data-at="0" data-side="work" tabindex="-1" title="先頭に技術側の空行を挿入">+</button>' : '') +
           (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="major"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
-        '<td class="mid"><div class="combo mid-wrap">' +
+        '<td class="mid"><div class="combo">' +
           '<textarea data-i="' + i + '" data-k="mid" rows="1" autocomplete="off"></textarea>' +
-          '<button type="button" class="mid-nl" data-i="' + i + '" tabindex="-1" title="改行（Ctrl+Enter / Alt+Enter）">↵</button>' +
           '<div class="combo-list" hidden></div>' +
         '</div></td>' +
         '<td class="fee"><input data-i="' + i + '" data-k="fee"></td>' +
@@ -1146,6 +1122,7 @@
         '</div></td>' +
         '<td class="del"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
         '<td class="ins">' +
+          (i === 0 ? '<button type="button" class="side-ins side-ins-top" data-at="0" data-side="part" tabindex="-1" title="先頭に部品側の空行を挿入">+</button>' : '') +
           (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="part-major"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
@@ -1809,17 +1786,6 @@
       if (e.key === 'Escape') hideWorkerPicker();
     });
     $('tbody').addEventListener('click', function (e) {
-      var nl = e.target.closest('button.mid-nl');
-      if (nl) {
-        e.preventDefault();
-        var row = $('tbody').rows[Number(nl.dataset.i)];
-        var midEl = row && row._cells && row._cells.mid;
-        if (midEl) {
-          midEl.focus();
-          insertMidNewline(midEl);
-        }
-        return;
-      }
       var pick = e.target.closest('button.staff-pick');
       if (pick) {
         e.preventDefault();
@@ -1839,10 +1805,6 @@
       deleteSide(Number(btn.dataset.i), btn.dataset.side);
     });
     $('tbody').addEventListener('mousedown', function (e) {
-      if (e.target.closest('button.mid-nl')) {
-        e.preventDefault();
-        return;
-      }
       var opt = e.target.closest('.combo-list div');
       if (!opt) return;
       e.preventDefault();
