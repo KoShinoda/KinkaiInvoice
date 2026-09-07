@@ -367,6 +367,14 @@
     .invoice-picker col.c-n { width: 44px; }
     .invoice-picker tbody tr { cursor: pointer; }
     .invoice-picker tbody tr:hover { background: #e8f0ec; }
+    .save-mode-picker { width: min(420px, calc(100vw - 16px)); max-height: none; }
+    .save-mode-msg { padding: 12px 14px 4px; font-size: 13px; line-height: 1.5; color: var(--text); }
+    .save-mode-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 14px 14px;
+    }
     .invoice-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; }
     .worker-picker:not([hidden]) { display: flex; }
     .worker-picker-head {
@@ -743,6 +751,18 @@
       </table>
     </div>
   </div>
+  <div id="saveModePicker" class="invoice-picker save-mode-picker" hidden>
+    <div class="worker-picker-head">
+      <span>保存</span>
+      <button type="button" id="saveModeClose" class="worker-picker-x" title="閉じる">×</button>
+    </div>
+    <div class="save-mode-msg">呼び出した内容を上書きしますか？別バージョン（例: 3カ月／12カ月）にする場合は新規です。</div>
+    <div class="save-mode-actions">
+      <button type="button" id="saveModeOverwrite">上書きする</button>
+      <button type="button" id="saveModeNew" class="sub">新規として保存</button>
+      <button type="button" id="saveModeCancel" class="ghost">キャンセル</button>
+    </div>
+  </div>
 
   <script>
     var master = {
@@ -763,6 +783,8 @@
     var pendingFocus = null;
     var comboActiveIndex = -1;
     var comboIgnoreBlur = false;
+    var currentSaveId = '';
+    var boundKNo = '';
 
     function $(id) { return document.getElementById(id); }
     function setStatus(msg, isErr) {
@@ -899,6 +921,7 @@
       applyDateField('inDate', 'inDateCal', '');
       applyDateField('outDate', 'outDateCal', '');
       applyDateField('billDate', 'billDateCal', '');
+      bindCurrentSave('', '');
     }
     function clearItemRows() {
       items = [];
@@ -1021,6 +1044,54 @@
       $('btnSave').disabled = busy;
       $('btnLoad').disabled = busy;
       $('btnPrint').disabled = busy;
+    }
+    function bindCurrentSave(saveId, kNo) {
+      currentSaveId = String(saveId || '').trim();
+      boundKNo = normalizeKNo(kNo || '');
+    }
+    function boundSaveId() {
+      if (!currentSaveId) return '';
+      var k = normalizeKNo($('kNo').value);
+      if (!k || k !== boundKNo) return '';
+      return currentSaveId;
+    }
+    function hideSaveModePicker() {
+      $('saveModePicker').hidden = true;
+    }
+    function showSaveModePicker() {
+      var panel = $('saveModePicker');
+      panel.hidden = false;
+      var w = panel.offsetWidth;
+      var h = panel.offsetHeight;
+      panel.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
+      panel.style.top = Math.max(8, Math.round((window.innerHeight - h) / 2)) + 'px';
+    }
+    function runSave(mode) {
+      hideSaveModePicker();
+      var payload = collectPayload();
+      if (!String(payload.header.kNo || '').trim()) {
+        setStatus('保存するには K-No を入力してください。', true);
+        return;
+      }
+      payload.saveMode = mode === 'overwrite' ? 'overwrite' : 'new';
+      payload.saveId = mode === 'overwrite' ? boundSaveId() : '';
+      if (mode === 'overwrite' && !payload.saveId) {
+        payload.saveMode = 'new';
+      }
+      setBusy(true);
+      setStatus(payload.saveMode === 'overwrite' ? '上書き保存しています…' : '保存しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
+          var kind = res.overwritten ? '上書き保存' : '新規保存';
+          setStatus(kind + 'しました（K-No ' + payload.header.kNo + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .saveInvoiceDraft(payload);
     }
     function onTemplatePicked() {
       var name = $('invoiceTemplate').value;
@@ -2364,18 +2435,11 @@
         setStatus('保存するには K-No を入力してください。', true);
         return;
       }
-      setBusy(true);
-      setStatus('保存しています…');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setBusy(false);
-          setStatus('保存しました（K-No ' + payload.header.kNo + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
-        })
-        .withFailureHandler(function (err) {
-          setBusy(false);
-          setStatus(err.message || String(err), true);
-        })
-        .saveInvoiceDraft(payload);
+      if (boundSaveId()) {
+        showSaveModePicker();
+        return;
+      }
+      runSave('new');
     });
 
     function hideInvoicePicker() {
@@ -2426,6 +2490,7 @@
         .withSuccessHandler(function (data) {
           try {
             applySavedPayload(data);
+            bindCurrentSave((data && data.saveId) || saveId, (data && data.header && data.header.kNo) || '');
             setBusy(false);
             setStatus('呼び出しました（K-No ' + ((data && data.header && data.header.kNo) || '') + '）');
           } catch (err) {
@@ -2469,16 +2534,29 @@
       if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
       restoreInvoice(tr.getAttribute('data-save-id'));
     });
+    $('saveModeOverwrite').addEventListener('click', function () { runSave('overwrite'); });
+    $('saveModeNew').addEventListener('click', function () { runSave('new'); });
+    $('saveModeCancel').addEventListener('click', function () { hideSaveModePicker(); });
+    $('saveModeClose').addEventListener('click', function (e) {
+      e.preventDefault();
+      hideSaveModePicker();
+    });
 
     $('btnPrint').addEventListener('click', function () {
       var payload = collectPayload();
+      var sid = boundSaveId();
+      payload.saveId = sid;
+      payload.saveMode = sid ? 'overwrite' : 'new';
       setBusy(true);
       setStatus('印刷シートと PDF を作成しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
+          if (res.saveId) bindCurrentSave(res.saveId, payload.header.kNo);
           var printed = downloadPdfAndPrint(res.pdfBase64, res.filename);
-          var extra = res.savedAt ? '／保存 ' + formatYmd(res.savedAt) : '／K-No が空のため保存なし';
+          var extra = !res.saveId
+            ? '／K-No が空のため保存なし'
+            : (res.overwritten ? '／既存を上書き保存しました' : '／新規保存しました');
           setStatus(
             (printed ? 'PDFを開き、印刷ダイアログを出します。' : 'PDFをダウンロードしました。ファイルを開いて印刷してください。') +
             ' ' + res.filename + '（' + res.pageCount + ' 枚）' + extra

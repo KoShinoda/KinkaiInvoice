@@ -1,6 +1,6 @@
 /**
  * 請求書の保存・呼び出し（キーは K-No 4桁。同一番号で複数件）。
- * 一覧は 1 件 1 行、明細は年シート。印刷は A4 縦・余白狭の PDF。
+ * 一覧は 1 件 1 行、明細は年シート。同一保存IDは上書き可。印刷は A4 縦・余白狭の PDF。
  */
 
 var INVOICE_INDEX_HEADERS_ = [
@@ -15,7 +15,7 @@ var INVOICE_DETAIL_HEADERS_ = [
 ];
 
 function saveInvoiceDraft(payload) {
-  return saveInvoiceDraft_(payload);
+  return invoiceJsonSafe_(saveInvoiceDraft_(payload));
 }
 
 function listInvoiceDrafts(kNo) {
@@ -114,6 +114,7 @@ function loadInvoiceDraft(saveId) {
     detailSheet: String(meta[16] || '')
   });
   return invoiceJsonSafe_({
+    saveId: id,
     header: header,
     items: items,
     summary: {
@@ -126,7 +127,7 @@ function loadInvoiceDraft(saveId) {
 function publishInvoicePdf(payload) {
   const printed = publishInvoices(payload);
   let saved = null;
-  if (payload.header && normalizeInvoiceKNo_(payload.header.kNo)) {
+  if (payload && payload.header && normalizeInvoiceKNo_(payload.header.kNo)) {
     saved = saveInvoiceDraft_(payload);
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -139,6 +140,7 @@ function publishInvoicePdf(payload) {
     sheetNames: printed.sheetNames,
     saveId: saved ? saved.saveId : '',
     savedAt: saved ? saved.savedAt : '',
+    overwritten: !!(saved && saved.overwritten),
     filename: blob.getName(),
     pdfBase64: Utilities.base64Encode(blob.getBytes())
   });
@@ -156,32 +158,112 @@ function saveInvoiceDraft_(payload, savedAtOpt) {
     return rowHasContent_(it);
   });
   const index = ensureInvoiceSaveIndexSheet_(true);
+  const overwriteId = payload.saveMode === 'new' ? '' : String(payload.saveId || '').trim();
+  if (overwriteId && findInvoiceIndexRow_(index, overwriteId)) {
+    return overwriteInvoiceDraft_(index, overwriteId, payload, items, kNo, savedAtOpt);
+  }
   const saveId = Utilities.getUuid();
+  const placed = writeInvoiceSaveDetails_(index.getParent(), saveId, items, savedAtOpt);
+  index.appendRow(invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items));
+  return {
+    saveId: saveId,
+    savedAt: formatInvoiceYmd_(placed.savedAt),
+    lineCount: items.length,
+    kNo: kNo,
+    overwritten: false
+  };
+}
+
+function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) {
+  const found = findInvoiceIndexRow_(index, saveId);
+  if (!found) {
+    throw new Error('上書きする保存データが見つかりません。');
+  }
+  const ss = index.getParent();
+  const oldSheet = String(found.row[16] || '');
+  if (oldSheet) {
+    const oldSh = ss.getSheetByName(oldSheet);
+    if (oldSh) {
+      clearInvoiceSaveLinesById_(oldSh, saveId);
+    }
+  }
+  const placed = writeInvoiceSaveDetails_(ss, saveId, items, savedAtOpt);
+  index.getRange(found.sheetRow, 1, 1, INVOICE_INDEX_HEADERS_.length)
+    .setValues([invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items)]);
+  return {
+    saveId: saveId,
+    savedAt: formatInvoiceYmd_(placed.savedAt),
+    lineCount: items.length,
+    kNo: kNo,
+    overwritten: true
+  };
+}
+
+function findInvoiceIndexRow_(index, saveId) {
+  const last = index.getLastRow();
+  if (last < 2) {
+    return null;
+  }
+  const vals = index.getRange(2, 1, last - 1, INVOICE_INDEX_HEADERS_.length).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0] || '').trim() === saveId) {
+      return { sheetRow: i + 2, row: vals[i] };
+    }
+  }
+  return null;
+}
+
+function writeInvoiceSaveDetails_(ss, saveId, items, savedAtOpt) {
   const savedAt = savedAtOpt || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   const year = invoiceSaveYear_(savedAt);
   const detail = ensureInvoiceSaveDetailSheet_(year);
-  const h = payload.header;
-  const sum = payload.summary || {};
-  const start = detail.getLastRow() + 1;
-  const firstMid = items.length ? invoiceFirstMid_(items[0].mid || items[0].name) : '';
+  let start = '';
   if (items.length) {
+    start = detail.getLastRow() + 1;
     const lines = items.map(function (it, i) {
       return invoiceSaveDetailRow_(saveId, i + 1, it);
     });
     detail.getRange(start, 1, lines.length, INVOICE_DETAIL_HEADERS_.length).setValues(lines);
   }
-  index.appendRow([
-    saveId, kNo, savedAt, year,
+  return { savedAt: savedAt, year: year, start: start, sheetName: detail.getName() };
+}
+
+function invoiceIndexRow_(saveId, kNo, placed, header, summary, items) {
+  const h = header || {};
+  const sum = summary || {};
+  const firstMid = items.length ? invoiceFirstMid_(items[0].mid || items[0].name) : '';
+  return [
+    saveId, kNo, placed.savedAt, placed.year,
     h.userName || '', h.plate || '', h.billDate || '', h.inDate || '', h.outDate || '',
     h.dept || '', h.serviceType || '', h.receptionist || h.staff || '',
     sum.techPct == null ? '' : sum.techPct,
     sum.partPct == null ? '' : sum.partPct,
     items.length,
-    items.length ? start : '',
-    detail.getName(),
+    items.length ? placed.start : '',
+    placed.sheetName,
     firstMid
-  ]);
-  return { saveId: saveId, savedAt: formatInvoiceYmd_(savedAt), lineCount: items.length, kNo: kNo };
+  ];
+}
+
+function clearInvoiceSaveLinesById_(sh, saveId) {
+  const last = sh.getLastRow();
+  if (last < 2) {
+    return;
+  }
+  const ids = sh.getRange(2, 1, last - 1, 1).getValues();
+  let i = 0;
+  while (i < ids.length) {
+    if (String(ids[i][0] || '').trim() !== saveId) {
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < ids.length && String(ids[j][0] || '').trim() === saveId) {
+      j += 1;
+    }
+    sh.getRange(i + 2, 1, j - i, INVOICE_DETAIL_HEADERS_.length).clearContent();
+    i = j;
+  }
 }
 
 function invoiceSaveDetailRow_(saveId, lineNo, it) {
