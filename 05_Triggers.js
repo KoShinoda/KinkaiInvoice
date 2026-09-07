@@ -23,12 +23,6 @@ function onOpen() {
     .addItem('編集トリガーを作成', 'createInstallableOnEditTrigger')
     .addToUi();
 
-  try {
-    ensureListMasterSheets_();
-  } catch (err) {
-    Logger.log('%s onOpen: リスト列の準備に失敗: %s', CONFIG.logPrefix, err);
-  }
-
   Logger.log('%s onOpen: メニューを追加しました', CONFIG.logPrefix);
 }
 

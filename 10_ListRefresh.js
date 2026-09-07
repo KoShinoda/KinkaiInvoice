@@ -49,9 +49,8 @@ function masterSheetsHaveEmptyOrders_() {
     const dataCol = lastDataHeaderCol_(headers);
     const orders = sheet.getRange(2, orderCol, height, 1).getValues();
     const data = sheet.getRange(2, 1, height, dataCol).getValues();
-    const formulas = sheet.getRange(2, 1, height, dataCol).getFormulas();
     for (let i = 0; i < orders.length; i++) {
-      if (listRowIsEmpty_(data[i], formulas[i])) {
+      if (listRowIsEmpty_(data[i], [])) {
         continue;
       }
       if (toOrderNumber_(orders[i][0]) === Number.POSITIVE_INFINITY) {
@@ -772,8 +771,9 @@ function writeListRefValues_(ref, workSheet) {
 function writeListRefColumn_(sheet, col, header, values) {
   sheet.getRange(1, col).setValue(header);
   const maxR = sheet.getMaxRows();
+  const height = Math.max(sheet.getLastRow() - 1, values.length, 1);
   if (maxR > 1) {
-    sheet.getRange(2, col, maxR - 1, 1).clearContent();
+    sheet.getRange(2, col, Math.min(maxR - 1, height), 1).clearContent();
   }
   if (values.length) {
     sheet.getRange(2, col, values.length, 1).setValues(values.map(function (v) {

@@ -21,12 +21,6 @@ function openInputApp() {
  * 画面初期データ（大項目・中項目・展開に使うマスタ）。
  */
 function getInvoiceMaster() {
-  const workSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.workList.sheetName);
-  if (workSheet) {
-    ensureWorkListWorkerCodeColumn_(workSheet);
-    fillWorkListWorkerCodesFromNames_(workSheet);
-    applyWorkListOpenDropdowns_(workSheet.getParent(), workSheet);
-  }
   invalidateContext_();
   const ctx = loadContext_();
   const majors = uniqueValues_(ctx.workRows.map(function (row) {
