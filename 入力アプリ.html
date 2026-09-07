@@ -804,6 +804,14 @@
       if (v === 0 || v === '0') return true;
       return String(v == null ? '' : v).replace(/\u3000/g, ' ').trim() !== '';
     }
+    function numericCell(v) {
+      if (v === '' || v == null) return false;
+      if (typeof v === 'number') return isFinite(v);
+      var s = String(v).replace(/,/g, '').replace(/\s/g, '').trim();
+      return s !== '' && isFinite(Number(s));
+    }
+    function measureQty(v) { return numericCell(v) ? v : ''; }
+    function measurePrice(v) { return numericCell(v) ? v : ''; }
     function num(v) {
       var n = Number(String(v == null ? '' : v).replace(/,/g, ''));
       return isFinite(n) ? n : 0;
@@ -1323,8 +1331,13 @@
         return true;
       }));
     }
+    function foldKey(s) {
+      return String(s == null ? '' : s).replace(/\u3000/g, ' ').trim()
+        .replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); })
+        .replace(/[−ー－–—]/g, '-');
+    }
     function linesForPartMid(major, mid) {
-      var m = String(mid || '');
+      var m = foldKey(mid);
       var seen = {};
       var out = [];
       function add(r) {
@@ -1335,21 +1348,17 @@
         out.push(r);
       }
       (master.partLines || []).forEach(function (r) {
-        if (String(r.mid || '') !== m) return;
-        if (major && r.major && r.major !== major) return;
+        if (foldKey(r.mid) !== m) return;
+        if (major && r.major && foldKey(r.major) !== foldKey(major)) return;
         add(r);
       });
       (master.workLines || []).forEach(function (r) {
-        var partHit = String(r.partMid || '') === m;
-        var midHit = String(r.mid || '') === m && (filled(r.content) || masterHasPart(r));
+        var partHit = foldKey(r.partMid) === m;
+        var midHit = foldKey(r.mid) === m;
         if (!partHit && !midHit) return;
-        if (major) {
-          if (partHit && r.partMajor && r.partMajor !== major) return;
-          if (midHit && !partHit && r.major && r.major !== major) return;
-        }
         add({
           major: r.partMajor || r.major || '',
-          mid: m,
+          mid: mid,
           content: r.content || '',
           partMajor: r.partMajor || '',
           partMid: r.partMid || '',
@@ -1364,10 +1373,12 @@
     function partLineName(w, setMid) {
       var c = String(w && w.content != null ? w.content : '').replace(/\u3000/g, ' ').trim();
       var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
+      var qn = String(w && w.qty != null ? w.qty : '').replace(/\u3000/g, ' ').trim();
       var set = String(setMid || '').trim();
-      if (c && c !== set) return c;
-      if (pm && pm !== set) return pm;
-      return c || pm;
+      if (c && foldKey(c) !== foldKey(set)) return c;
+      if (qn && !numericCell(qn) && foldKey(qn) !== foldKey(set)) return qn;
+      if (pm && foldKey(pm) !== foldKey(set)) return pm;
+      return c || (!numericCell(qn) ? qn : '') || pm;
     }
 
     var optHtml = { major: '', partMajor: '' };
@@ -1711,11 +1722,13 @@
 
     function copyWorkPart(target, w) {
       if (!w) return;
-      if (!w.partMajor && !w.partMid && !filled(w.qty) && !filled(w.unitPrice)) return;
+      var name = partLineName(w, w.mid || w.partMid || '');
+      if (!w.partMajor && !name && !w.partMid && !numericCell(w.qty) && !numericCell(w.unitPrice)) return;
       if (w.partMajor) target.partMajor = w.partMajor;
-      if (w.partMid) target.partMid = w.partMid;
-      if (filled(w.qty)) target.qty = w.qty;
-      if (filled(w.unitPrice)) target.unitPrice = w.unitPrice;
+      if (name) target.partMid = name;
+      else if (w.partMid) target.partMid = w.partMid;
+      target.qty = measureQty(w.qty);
+      target.unitPrice = measurePrice(w.unitPrice);
       calcFromQtyPrice(target);
     }
 
@@ -1813,16 +1826,19 @@
         renderGrid();
         return;
       }
-      if (alreadyExpanded('part:' + rowIndex + ':' + mid)) return;
-      var group = linesForPartMid(it.partMajor, mid);
-      if (!group.length) group = linesForPartMid('', mid);
-      var works = group.filter(function (r) { return filled(r.content) || (filled(r.partMid) && String(r.partMid) !== mid); });
+      if (alreadyExpanded('part:' + rowIndex + ':' + foldKey(mid))) return;
+      var group = linesForPartMid('', mid);
+      if (!group.length) group = linesForPartMid(it.partMajor, mid);
+      var works = group.filter(function (r) {
+        var name = partLineName(r, mid);
+        return filled(name) && foldKey(name) !== foldKey(mid);
+      });
       var named = [];
       var seenName = {};
       works.forEach(function (w) {
         var name = partLineName(w, mid);
-        if (!name || name === mid || seenName[name]) return;
-        seenName[name] = true;
+        if (!name || foldKey(name) === foldKey(mid) || seenName[foldKey(name)]) return;
+        seenName[foldKey(name)] = true;
         named.push(w);
       });
       if (!it.partMajor && group[0] && (group[0].partMajor || group[0].major)) {
@@ -1832,8 +1848,10 @@
       if (!named.length) {
         var only = group[0];
         if (only) {
-          if (filled(only.qty)) it.qty = only.qty;
-          if (filled(only.unitPrice)) it.unitPrice = only.unitPrice;
+          var oneName = partLineName(only, mid);
+          if (oneName && foldKey(oneName) !== foldKey(mid)) it.partMid = oneName;
+          it.qty = measureQty(only.qty);
+          it.unitPrice = measurePrice(only.unitPrice);
           it.discYen = 0;
           calcFromQtyPrice(it);
         }
@@ -1849,8 +1867,8 @@
         var row = emptyRow();
         row.partMajor = w.partMajor || it.partMajor || w.major || '';
         row.partMid = partLineName(w, mid);
-        row.qty = w.qty;
-        row.unitPrice = w.unitPrice;
+        row.qty = measureQty(w.qty);
+        row.unitPrice = measurePrice(w.unitPrice);
         row.kind = 'part';
         calcFromQtyPrice(row);
         return row;

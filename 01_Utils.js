@@ -16,6 +16,13 @@ function normalize_(value) {
   return String(value).replace(/\u3000/g, ' ').trim();
 }
 
+/** エンジン３ / エンジン3 を同じキーにする。 */
+function foldKey_(value) {
+  return normalize_(value).replace(/[０-９]/g, function (ch) {
+    return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+  }).replace(/[−ー－–—]/g, '-');
+}
+
 /**
  * 作業内容セルに中身があるか。空なら「中項目を明細名にする」判定に使う。
  *
@@ -37,6 +44,48 @@ function isFilled_(value) {
     return true;
   }
   return normalize_(value) !== '';
+}
+
+/** 数量・単価に入れてよい数値か（「部品３-1」は false）。 */
+function isNumericCell_(value) {
+  if (value === '' || value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === 'number') {
+    return isFinite(value);
+  }
+  const s = String(value).replace(/,/g, '').replace(/\s/g, '').trim();
+  if (!s) {
+    return false;
+  }
+  return isFinite(Number(s));
+}
+
+/**
+ * 非数の数量は部品名。単価も数値以外は捨てる。
+ * @param {object} rec
+ * @return {object}
+ */
+function coercePartMeasure_(rec) {
+  if (!rec) {
+    return rec;
+  }
+  const qtyRaw = rec.qty;
+  const priceRaw = rec.unitPrice;
+  let content = normalize_(rec.content);
+  if (isFilled_(qtyRaw) && !isNumericCell_(qtyRaw)) {
+    if (!content) {
+      content = normalize_(qtyRaw);
+    }
+    rec.qty = '';
+  } else if (!isNumericCell_(qtyRaw)) {
+    rec.qty = '';
+  }
+  if (!isNumericCell_(priceRaw)) {
+    rec.unitPrice = '';
+  }
+  rec.content = content;
+  return rec;
 }
 
 /**

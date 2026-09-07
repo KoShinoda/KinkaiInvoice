@@ -181,20 +181,32 @@ function loadWorkerCodes_() {
 function loadPartCatalog_(workRows) {
   const partLines = [];
   workRows.forEach(function (row) {
-    const major = normalize_(row.partMajor);
-    const mid = normalize_(row.partMid);
-    if (!major && !mid) {
-      return;
+    const partMajor = normalize_(row.partMajor);
+    const partMid = normalize_(row.partMid);
+    const workMid = normalize_(row.mid);
+    const content = normalize_(row.content);
+    if (partMid) {
+      partLines.push(coercePartMeasure_({
+        major: partMajor,
+        mid: partMid,
+        content: content,
+        order: row.order,
+        sourceIndex: row.sourceIndex,
+        qty: row.qty,
+        unitPrice: row.unitPrice
+      }));
     }
-    partLines.push({
-      major: major,
-      mid: mid,
-      content: normalize_(row.content),
-      order: row.order,
-      sourceIndex: row.sourceIndex,
-      qty: row.qty,
-      unitPrice: row.unitPrice
-    });
+    if (workMid && (content || partMid || partMajor || isFilled_(row.qty) || isFilled_(row.unitPrice))) {
+      partLines.push(coercePartMeasure_({
+        major: partMajor || normalize_(row.major),
+        mid: workMid,
+        content: content,
+        order: row.order,
+        sourceIndex: 'w' + (row.sourceIndex || ''),
+        qty: row.qty,
+        unitPrice: row.unitPrice
+      }));
+    }
   });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -209,28 +221,42 @@ function loadPartCatalog_(workRows) {
       }
     }
     const cols = start === 1 && vals.length ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
+    let carryMajor = '';
+    let carryMid = '';
     for (let i = start; i < vals.length; i++) {
-      const c0 = normalize_(vals[i][0]);
-      const c1 = vals[i].length > 1 ? normalize_(vals[i][1]) : '';
-      let major = cols.major ? normalize_(cell_(vals[i], cols.major)) : c0;
-      let mid = cols.mid ? normalize_(cell_(vals[i], cols.mid)) : c1;
+      const rawMajor = cols.major ? normalize_(cell_(vals[i], cols.major)) : normalize_(vals[i][0]);
+      const rawMid = cols.mid ? normalize_(cell_(vals[i], cols.mid)) : (vals[i].length > 1 ? normalize_(vals[i][1]) : '');
+      if (rawMajor) {
+        carryMajor = rawMajor;
+      }
+      if (rawMid) {
+        carryMid = rawMid;
+      }
+      const major = rawMajor || carryMajor;
+      const mid = rawMid || carryMid;
       if (!major && !mid) {
         continue;
       }
-      let content = '';
-      let qty = vals[i].length > 2 ? vals[i][2] : '';
-      let unitPrice = vals[i].length > 3 ? vals[i][3] : '';
-      if (!mid) {
-        major = major || c0;
-        mid = major;
-        qty = vals[i].length > 1 && isProbablyNumber_(vals[i][1]) ? vals[i][1] : '';
-        unitPrice = vals[i].length > 2 ? vals[i][2] : '';
-      } else if (!cols.major && vals[i].length > 2 && !isProbablyNumber_(vals[i][2])) {
-        content = normalize_(vals[i][2]);
-        qty = vals[i].length > 3 ? vals[i][3] : '';
-        unitPrice = vals[i].length > 4 ? vals[i][4] : '';
+      let content = cols.name ? normalize_(cell_(vals[i], cols.name)) : '';
+      let qty = cols.qty ? cell_(vals[i], cols.qty) : '';
+      let unitPrice = cols.unitPrice ? cell_(vals[i], cols.unitPrice) : '';
+      if (!content && cols.mid && cols.qty && cols.qty > cols.mid + 1) {
+        content = normalize_(cell_(vals[i], cols.mid + 1));
       }
-      partLines.push({
+      if (!cols.name && !cols.qty && !cols.unitPrice) {
+        if (!rawMid) {
+          qty = vals[i].length > 1 && isProbablyNumber_(vals[i][1]) ? vals[i][1] : '';
+          unitPrice = vals[i].length > 2 ? vals[i][2] : '';
+        } else if (vals[i].length > 2 && !isProbablyNumber_(vals[i][2])) {
+          content = content || normalize_(vals[i][2]);
+          qty = vals[i].length > 3 ? vals[i][3] : '';
+          unitPrice = vals[i].length > 4 ? vals[i][4] : '';
+        } else {
+          qty = qty !== '' && qty != null ? qty : (vals[i].length > 2 ? vals[i][2] : '');
+          unitPrice = unitPrice !== '' && unitPrice != null ? unitPrice : (vals[i].length > 3 ? vals[i][3] : '');
+        }
+      }
+      partLines.push(coercePartMeasure_({
         major: major,
         mid: mid,
         content: content,
@@ -238,7 +264,7 @@ function loadPartCatalog_(workRows) {
         unitPrice: unitPrice,
         order: cols.order ? cell_(vals[i], cols.order) : '',
         sourceIndex: i + 1
-      });
+      }));
     }
   }
 
@@ -281,14 +307,7 @@ function loadPartCatalog_(workRows) {
 }
 
 function isProbablyNumber_(value) {
-  if (value === '' || value === null || value === undefined) {
-    return false;
-  }
-  if (typeof value === 'number') {
-    return isFinite(value);
-  }
-  const n = Number(String(value).replace(/,/g, '').trim());
-  return String(value).replace(/,/g, '').trim() !== '' && isFinite(n);
+  return isNumericCell_(value);
 }
 
 /**
