@@ -845,11 +845,31 @@
         applyDateField(textId, calId, f);
         if (onSet) onSet(f, fromCal);
       }
+      function todayYmd() {
+        var d = new Date();
+        return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
+      }
+      function shiftYmd(ymd, days) {
+        var iso = ymdToIso(formatYmd(ymd));
+        if (!iso) return todayYmd();
+        var d = new Date(iso + 'T12:00:00');
+        d.setDate(d.getDate() + days);
+        return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
+      }
       text.addEventListener('blur', function () { commit(text.value, false); });
       text.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
           e.preventDefault();
           commit(text.value, false);
+          return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (!String(text.value || '').trim()) {
+            commit(todayYmd(), false);
+            return;
+          }
+          commit(shiftYmd(text.value, e.key === 'ArrowUp' ? 1 : -1), false);
         }
       });
       cal.addEventListener('change', function () {
@@ -1304,11 +1324,50 @@
       }));
     }
     function linesForPartMid(major, mid) {
-      return sortMasterLines((master.partLines || []).filter(function (r) {
-        if (String(r.mid || '') !== String(mid || '')) return false;
-        if (major && r.major !== major) return false;
-        return true;
-      }));
+      var m = String(mid || '');
+      var seen = {};
+      var out = [];
+      function add(r) {
+        if (!r) return;
+        var key = [r.sourceIndex || '', r.major || '', r.mid || '', r.partMid || '', r.content || '', r.qty || '', r.unitPrice || ''].join('\t');
+        if (seen[key]) return;
+        seen[key] = true;
+        out.push(r);
+      }
+      (master.partLines || []).forEach(function (r) {
+        if (String(r.mid || '') !== m) return;
+        if (major && r.major && r.major !== major) return;
+        add(r);
+      });
+      (master.workLines || []).forEach(function (r) {
+        var partHit = String(r.partMid || '') === m;
+        var midHit = String(r.mid || '') === m && (filled(r.content) || masterHasPart(r));
+        if (!partHit && !midHit) return;
+        if (major) {
+          if (partHit && r.partMajor && r.partMajor !== major) return;
+          if (midHit && !partHit && r.major && r.major !== major) return;
+        }
+        add({
+          major: r.partMajor || r.major || '',
+          mid: m,
+          content: r.content || '',
+          partMajor: r.partMajor || '',
+          partMid: r.partMid || '',
+          qty: r.qty,
+          unitPrice: r.unitPrice,
+          order: r.order,
+          sourceIndex: r.sourceIndex
+        });
+      });
+      return sortMasterLines(out);
+    }
+    function partLineName(w, setMid) {
+      var c = String(w && w.content != null ? w.content : '').replace(/\u3000/g, ' ').trim();
+      var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
+      var set = String(setMid || '').trim();
+      if (c && c !== set) return c;
+      if (pm && pm !== set) return pm;
+      return c || pm;
     }
 
     var optHtml = { major: '', partMajor: '' };
@@ -1574,17 +1633,20 @@
       return false;
     }
 
-    function firstFreePartRow(rowIndex) {
-      if (!items[rowIndex] || !hasPart(items[rowIndex])) return rowIndex;
-      var r = rowIndex + 1;
-      while (r < items.length && hasPart(items[r])) r++;
-      return r;
+    function firstAppendPartRow() {
+      var last = -1;
+      for (var i = 0; i < items.length; i++) {
+        if (hasPart(items[i])) last = i;
+      }
+      return last + 1;
     }
     function appendSide(start, side, details) {
       if (!details || !details.length) return;
+      padItems();
       if (start < 0) start = 0;
-      if (start >= items.length) return;
       var d = details.length;
+      while (start + d > items.length) items.push(emptyRow());
+      if (start >= items.length) return;
       var c;
       for (c = 0; c < d; c++) shiftSideDown(start, side);
       for (c = 0; c < d; c++) {
@@ -1602,15 +1664,14 @@
     }
     function writeSetParts(rowIndex, partSources) {
       if (!partSources || !partSources.length) return;
-      var start = firstFreePartRow(rowIndex);
-      var rows = partSources.map(partDetailFromMaster);
-      if (start === rowIndex) {
-        copyWorkPart(items[rowIndex], partSources[0]);
-        refreshKind(items[rowIndex]);
-        appendSide(rowIndex + 1, 'part', rows.slice(1));
-      } else {
-        appendSide(start, 'part', rows);
-      }
+      var skipName = items[rowIndex] ? String(items[rowIndex].mid || '').trim() : '';
+      var rows = partSources.map(partDetailFromMaster).filter(function (r) {
+        if (!hasPart(r)) return false;
+        if (skipName && String(r.partMid || '').trim() === skipName) return false;
+        return true;
+      });
+      if (!rows.length) return;
+      appendSide(firstAppendPartRow(), 'part', rows);
     }
     function writeBelow(rowIndex, kind, details) {
       var side = kind === 'part' ? 'part' : 'work';
@@ -1755,11 +1816,20 @@
       if (alreadyExpanded('part:' + rowIndex + ':' + mid)) return;
       var group = linesForPartMid(it.partMajor, mid);
       if (!group.length) group = linesForPartMid('', mid);
-      var works = group.filter(function (r) { return filled(r.content); });
-      var blanks = group.filter(function (r) { return !filled(r.content); });
-      if (!it.partMajor && group[0] && group[0].major) it.partMajor = group[0].major;
+      var works = group.filter(function (r) { return filled(r.content) || (filled(r.partMid) && String(r.partMid) !== mid); });
+      var named = [];
+      var seenName = {};
+      works.forEach(function (w) {
+        var name = partLineName(w, mid);
+        if (!name || name === mid || seenName[name]) return;
+        seenName[name] = true;
+        named.push(w);
+      });
+      if (!it.partMajor && group[0] && (group[0].partMajor || group[0].major)) {
+        it.partMajor = group[0].partMajor || group[0].major;
+      }
 
-      if (works.length === 0) {
+      if (!named.length) {
         var only = group[0];
         if (only) {
           if (filled(only.qty)) it.qty = only.qty;
@@ -1773,26 +1843,22 @@
         return;
       }
 
-      var parent = blanks[0];
-      if (parent) {
-        if (!it.partMajor && parent.major) it.partMajor = parent.major;
-        if (filled(parent.qty)) it.qty = parent.qty;
-        if (filled(parent.unitPrice)) it.unitPrice = parent.unitPrice;
-        calcFromQtyPrice(it);
-      }
-      var details = works.map(function (w) {
+      clearPartSide(it);
+      refreshKind(it);
+      var details = named.map(function (w) {
         var row = emptyRow();
-        row.partMajor = it.partMajor || w.major || '';
-        row.partMid = w.content;
+        row.partMajor = w.partMajor || it.partMajor || w.major || '';
+        row.partMid = partLineName(w, mid);
         row.qty = w.qty;
         row.unitPrice = w.unitPrice;
         row.kind = 'part';
         calcFromQtyPrice(row);
         return row;
       });
-      writeBelow(rowIndex, 'part', details);
+      appendSide(firstAppendPartRow(), 'part', details);
+      compactItems();
       renderGrid();
-      setStatus('部品中項目「' + mid + '」の作業内容 ' + works.length + ' 件を下行へ出力しました');
+      setStatus('部品中項目「' + mid + '」から部品 ' + details.length + ' 件を末尾へ出力しました');
     }
 
     function hideComboLists(keepInput) {
