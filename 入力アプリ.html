@@ -870,14 +870,21 @@
       });
       return acc;
     }
+    function mappedDept(dept) {
+      if (dept === '車検') return '大型';
+      if (dept === '一般整備') return '小型';
+      if (dept === '板金塗装') return 'BP板金';
+      return dept;
+    }
     function typesForDept(dept) {
+      var key = mappedDept(dept);
       var types = !dept
         ? allServiceTypes()
-        : ((master.typesByDept && master.typesByDept[dept]) || []).slice();
-      if (dept === '部品販売' && types.indexOf('部品販売') === -1) {
+        : ((master.typesByDept && master.typesByDept[key]) || []).slice();
+      if (key === '部品販売' && types.indexOf('部品販売') === -1) {
         types.push('部品販売');
       }
-      if ((dept === 'BP板金' || dept === '板金塗装') && types.indexOf('板金塗装') === -1) {
+      if (key === 'BP板金' && types.indexOf('板金塗装') === -1) {
         types.push('板金塗装');
       }
       return types;
@@ -886,8 +893,9 @@
       fillSelect(sel, values, selected);
     }
     function pickPreferredType(dept) {
-      if (dept === '部品販売') return '部品販売';
-      if (dept === 'BP板金' || dept === '板金塗装') return '板金塗装';
+      var key = mappedDept(dept);
+      if (key === '部品販売') return '部品販売';
+      if (key === 'BP板金') return '板金塗装';
       return '';
     }
     function applyDeptDefaults() {

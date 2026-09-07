@@ -113,6 +113,8 @@ function makePrintSamplePayload_() {
       userName: '近海請求書',
       kNo: 'K-9999',
       plate: '苫小牧888あ5555',
+      dept: '大型',
+      serviceType: '',
       receptionist: 'サンプル',
       inDate: '2026/09/01',
       outDate: '2026/09/05',
@@ -457,6 +459,10 @@ function printPageLayout_(showHeader, showFooter) {
     r++;
     L.metaV2 = r;
     r++;
+    L.metaL3 = r;
+    r++;
+    L.metaV3 = r;
+    r++;
     L.spacer = r;
     r++;
   }
@@ -475,7 +481,7 @@ function printPageLayout_(showHeader, showFooter) {
 }
 
 function printDataRowHeight_() {
-  const chrome = 28 + 16 + 22 + 16 + 22 + 2 + 20 + 18 * 5 + PRINT_PAGE_NO_H_;
+  const chrome = 28 + 16 + 22 + 16 + 22 + 16 + 22 + 2 + 20 + 18 * 5 + PRINT_PAGE_NO_H_;
   return Math.max(24, Math.floor((920 - chrome) / CONFIG.print.linesPerPage));
 }
 
@@ -711,6 +717,8 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
     sheet.setRowHeight(start + L.metaV1, metaVH);
     sheet.setRowHeight(start + L.metaL2, metaLH);
     sheet.setRowHeight(start + L.metaV2, metaVH);
+    sheet.setRowHeight(start + L.metaL3, metaLH);
+    sheet.setRowHeight(start + L.metaV3, metaVH);
     sheet.setRowHeight(start + L.spacer, spacerH);
   }
   sheet.setRowHeight(start + L.colHead, colHeadH);
@@ -724,7 +732,7 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
 function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
   sheet.getRange(start + L.title, 2, 1, 7).merge();
   if (showHeader) {
-    [L.metaL1, L.metaV1, L.metaL2, L.metaV2].forEach(function (off) {
+    [L.metaL1, L.metaV1, L.metaL2, L.metaV2, L.metaL3, L.metaV3].forEach(function (off) {
       sheet.getRange(start + off, 3, 1, 3).merge();
       sheet.getRange(start + off, 6, 1, 3).merge();
     });
@@ -750,31 +758,65 @@ function fillPrintHeader_(sheet, start, L, header) {
   const v1 = start + L.metaV1;
   const l2 = start + L.metaL2;
   const v2 = start + L.metaV2;
+  const l3 = start + L.metaL3;
+  const v3 = start + L.metaV3;
 
-  sheet.getRange(l1, 2).setValue('K-No').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(l1, 3).setValue('登録番号').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(l1, 6).setValue('受付').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(v1, 2).setValue(header.kNo || '').setFontSize(12);
-  sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(12);
-  sheet.getRange(v1, 6).setValue(header.receptionist || header.staff || '').setFontSize(12);
-  applyPrintReceptionistDropdown_(sheet.getRange(v1, 6), header.receptionist || header.staff || '');
+  sheet.getRange(l1, 2).setValue('ユーザー').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l1, 3).setValue('K-No').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l1, 6).setValue('登録番号').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v1, 2).setValue(header.userName || '').setFontSize(12);
+  sheet.getRange(v1, 3).setValue(header.kNo || '').setFontSize(12);
+  sheet.getRange(v1, 6).setValue(header.plate || '').setFontSize(12);
 
-  sheet.getRange(l2, 2).setValue('入庫日').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(l2, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(l2, 6).setValue('請求日').setFontSize(12).setFontWeight('bold');
-  sheet.getRange(v2, 2).setValue(header.inDate || '').setFontSize(12);
-  sheet.getRange(v2, 3).setValue(header.outDate || header.doneDate || '').setFontSize(12);
-  sheet.getRange(v2, 6).setValue(header.billDate || '').setFontSize(12);
+  sheet.getRange(l2, 2).setValue('整備部門').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l2, 3).setValue('整備種別').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l2, 6).setValue('受付').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v2, 2).setValue(header.dept || '').setFontSize(12);
+  sheet.getRange(v2, 3).setValue(header.serviceType || '').setFontSize(12);
+  sheet.getRange(v2, 6).setValue(header.receptionist || header.staff || '').setFontSize(12);
+  applyPrintDeptDropdown_(sheet.getRange(v2, 2), header.dept || '');
+  applyPrintServiceTypeDropdown_(sheet.getRange(v2, 3), header.dept || '', header.serviceType || '');
+  applyPrintReceptionistDropdown_(sheet.getRange(v2, 6), header.receptionist || header.staff || '');
 
-  sheet.getRange(l1, 2, 4, 1)
+  sheet.getRange(l3, 2).setValue('入庫日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l3, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(l3, 6).setValue('請求日').setFontSize(12).setFontWeight('bold');
+  sheet.getRange(v3, 2).setValue(header.inDate || '').setFontSize(12);
+  sheet.getRange(v3, 3).setValue(header.outDate || header.doneDate || '').setFontSize(12);
+  sheet.getRange(v3, 6).setValue(header.billDate || '').setFontSize(12);
+
+  sheet.getRange(l1, 2, 6, 1)
     .setHorizontalAlignment('left')
     .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(l1, 3, 4, 3)
+  sheet.getRange(l1, 3, 6, 3)
     .setHorizontalAlignment('left')
     .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(l1, 6, 4, 3)
+  sheet.getRange(l1, 6, 6, 3)
     .setHorizontalAlignment('left')
     .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+}
+
+function applyPrintDeptDropdown_(cell, current) {
+  let names = [];
+  try {
+    names = serviceDepartments_().slice();
+  } catch (err) {
+    names = ['大型', '小型', 'BP板金', '部品販売'];
+  }
+  applyPrintOpenDropdown_(cell, names, current);
+}
+
+function applyPrintServiceTypeDropdown_(cell, dept, current) {
+  let names = [];
+  try {
+    names = typesForServiceDept_(dept);
+    if (!dept) {
+      names = (loadServiceInfo_().allServiceTypes || []).slice();
+    }
+  } catch (err) {
+    Logger.log('%s applyPrintServiceTypeDropdown_: %s', CONFIG.logPrefix, err);
+  }
+  applyPrintOpenDropdown_(cell, names, current);
 }
 
 function applyPrintReceptionistDropdown_(cell, current) {
@@ -784,21 +826,68 @@ function applyPrintReceptionistDropdown_(cell, current) {
   } catch (err) {
     Logger.log('%s applyPrintReceptionistDropdown_: %s', CONFIG.logPrefix, err);
   }
+  applyPrintOpenDropdown_(cell, names, current);
+}
+
+function applyPrintOpenDropdown_(cell, names, current) {
+  const list = (names || []).slice();
   const cur = String(current == null ? '' : current).trim();
   if (cur) {
     const key = normalize_(cur);
     let found = false;
-    for (let i = 0; i < names.length; i++) {
-      if (normalize_(names[i]) === key) {
+    for (let i = 0; i < list.length; i++) {
+      if (normalize_(list[i]) === key) {
         found = true;
         break;
       }
     }
     if (!found) {
-      names.push(cur);
+      list.push(cur);
     }
   }
-  applyOpenListValidation_(cell, names);
+  applyOpenListValidation_(cell, list);
+}
+
+function handlePrintHeaderDeptEdit_(e) {
+  const sheet = e.range.getSheet();
+  if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) {
+    return;
+  }
+  const finder = sheet.createTextFinder('整備部門').matchEntireCell(true).matchCase(false);
+  const labels = finder.findAll();
+  if (!labels || !labels.length) {
+    return;
+  }
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i];
+    if (label.getColumn() !== 2) {
+      continue;
+    }
+    const valueRow = label.getRow() + 1;
+    if (e.range.getRow() !== valueRow || e.range.getColumn() !== 2) {
+      continue;
+    }
+    const dept = String(e.range.getValue() || '').trim();
+    const typeCell = sheet.getRange(valueRow, 3);
+    const cur = String(typeCell.getValue() || '').trim();
+    const types = typesForServiceDept_(dept);
+    let keep = '';
+    for (let t = 0; t < types.length; t++) {
+      if (normalize_(types[t]) === normalize_(cur)) {
+        keep = types[t];
+        break;
+      }
+    }
+    if (dept === '部品販売' && types.indexOf('部品販売') !== -1) {
+      keep = '部品販売';
+    }
+    if ((dept === 'BP板金' || dept === '板金塗装') && types.indexOf('板金塗装') !== -1 && !keep) {
+      keep = '板金塗装';
+    }
+    typeCell.setValue(keep);
+    applyPrintServiceTypeDropdown_(typeCell, dept, keep);
+    return;
+  }
 }
 
 function fillPrintFooterBlock_(sheet, f, summary) {

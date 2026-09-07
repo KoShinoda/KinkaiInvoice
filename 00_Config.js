@@ -179,6 +179,7 @@ const CONFIG = {
   },
 
   serviceInfo: {
+    /** A〜D＝整備種別1〜4（大型／小型／BP板金／部品販売）を縦並び。E＝受付担当。 */
     sheetName: '整備情報'
   },
 
@@ -245,10 +246,12 @@ const CONFIG = {
       metaV1: 2,
       metaL2: 3,
       metaV2: 4,
-      spacer: 5,
-      colHead: 6,
-      firstLine: 7,
-      footerStart: 37
+      metaL3: 5,
+      metaV3: 6,
+      spacer: 7,
+      colHead: 8,
+      firstLine: 9,
+      footerStart: 39
     }
   },
 
