@@ -569,7 +569,8 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
   sheet.getRange(first, 4, per, 1).setHorizontalAlignment('center').setWrap(false);
   sheet.getRange(first, 5, per, 1).setWrap(false);
   sheet.getRange(first, 6, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 7, per, 2).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(first, 7, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(first, 8, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right').setFontSize(PRINT_FONT_MAX_ - 1);
   fillPrintBodyFonts_(sheet, first, lines);
 }
 
