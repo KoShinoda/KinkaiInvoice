@@ -67,6 +67,12 @@
       flex: 0 0 auto;
     }
     button.ghost:hover { background: #fde8e8; }
+    button.sub {
+      background: #fff;
+      color: var(--accent);
+      border: 1px solid #1a6f4c;
+    }
+    button.sub:hover { background: #e8f0ec; }
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -133,6 +139,15 @@
       align-items: flex-start;
       gap: 8px;
       min-width: 0;
+    }
+    .foot-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .foot-actions button.ghost {
+      padding: 9px 14px;
+      font-size: 14px;
     }
     .foot-sum {
       margin-left: auto;
@@ -305,7 +320,34 @@
       flex-direction: column;
       overflow: visible;
     }
-    .worker-picker[hidden] { display: none !important; }
+    .invoice-picker {
+      position: fixed;
+      z-index: 85;
+      width: min(560px, calc(100vw - 24px));
+      max-height: min(70vh, 480px);
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(28, 36, 48, .16);
+      display: flex;
+      flex-direction: column;
+    }
+    .invoice-picker[hidden] { display: none !important; }
+    .invoice-picker-body {
+      overflow: auto;
+      padding: 0 0 8px;
+    }
+    .invoice-picker table { width: 100%; border-collapse: collapse; }
+    .invoice-picker th, .invoice-picker td {
+      padding: 8px 10px;
+      font-size: 12px;
+      text-align: left;
+      border-bottom: 1px solid #eef1f3;
+    }
+    .invoice-picker tbody tr { cursor: pointer; }
+    .invoice-picker tbody tr:hover { background: #e8f0ec; }
+    .invoice-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; }
     .worker-picker:not([hidden]) { display: flex; }
     .worker-picker-head {
       display: flex;
@@ -582,7 +624,11 @@
   <footer class="bar">
     <div class="foot-left">
       <div id="status">読み込み中…</div>
-      <button type="button" id="btnPrint">印刷用シートを作成</button>
+      <div class="foot-actions">
+        <button type="button" id="btnSave">保存</button>
+        <button type="button" id="btnLoad" class="sub">呼び出し</button>
+        <button type="button" id="btnPrint">PDFを作成</button>
+      </div>
     </div>
     <div class="foot-sum">
       <table>
@@ -632,6 +678,28 @@
     </div>
     <div id="workerPickerMeta" class="worker-picker-meta"></div>
     <div id="workerPickerBoards" class="worker-picker-boards"></div>
+  </div>
+  <div id="invoicePicker" class="invoice-picker" hidden>
+    <div class="worker-picker-head">
+      <span id="invoicePickerTitle">保存した請求書</span>
+      <button type="button" id="invoicePickerClose" class="worker-picker-x" title="閉じる">×</button>
+    </div>
+    <div id="invoicePickerMeta" class="worker-picker-meta"></div>
+    <div class="invoice-picker-body">
+      <div id="invoicePickerEmpty" class="invoice-empty" hidden>保存がありません</div>
+      <table hidden id="invoicePickerTable">
+        <thead>
+          <tr>
+            <th>保存日時</th>
+            <th>ユーザー</th>
+            <th>登録番号</th>
+            <th>請求日</th>
+            <th>明細</th>
+          </tr>
+        </thead>
+        <tbody id="invoicePickerBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <script>
@@ -809,8 +877,8 @@
         row.mid = src.mid || '';
         row.fee = src.fee == null ? '' : src.fee;
         row.workerCode = src.workerCode || '';
-        var tw = findWorker(row.workerCode);
-        row.workerName = tw ? (tw.name || '') : '';
+        var tw = findWorker(row.workerCode) || findWorker(src.workerName);
+        row.workerName = tw ? (tw.name || '') : (src.workerName || '');
         row.partMajor = src.partMajor || '';
         row.partMid = src.partMid || '';
         row.qty = src.qty == null ? '' : src.qty;
@@ -833,6 +901,74 @@
       padItems();
       renderGrid();
       setStatus('テンプレート「' + name + '」から明細 ' + next.length + ' 行を作成しました');
+    }
+    function collectPayload() {
+      var summary = recalc();
+      return {
+        header: {
+          userName: $('userName').value,
+          kNo: $('kNo').value,
+          plate: $('plate').value,
+          dept: $('dept').value,
+          serviceType: $('serviceType').value,
+          receptionist: $('receptionist').value,
+          staff: $('receptionist').value,
+          inDate: $('inDate').value,
+          outDate: $('outDate').value,
+          doneDate: $('outDate').value,
+          billDate: $('billDate').value
+        },
+        items: items,
+        summary: summary
+      };
+    }
+    function applySavedPayload(data) {
+      var h = data.header || {};
+      $('userName').value = h.userName || '';
+      $('kNo').value = h.kNo || '';
+      $('plate').value = h.plate || '';
+      fillHeaderSelect($('dept'), master.departments || [], h.dept || '');
+      applyDeptDefaults();
+      if (h.serviceType) {
+        fillHeaderSelect($('serviceType'), typesForDept($('dept').value), h.serviceType);
+        $('serviceType').value = h.serviceType;
+      }
+      fillHeaderSelect($('receptionist'), master.receptionists || [], h.receptionist || h.staff || '');
+      applyDateField('inDate', 'inDateCal', formatYmd(h.inDate || ''));
+      applyDateField('outDate', 'outDateCal', formatYmd(h.outDate || h.doneDate || ''));
+      applyDateField('billDate', 'billDateCal', formatYmd(h.billDate || ''));
+      if (data.summary) {
+        if (data.summary.techPct != null && data.summary.techPct !== '') $('techPct').value = data.summary.techPct;
+        if (data.summary.partPct != null && data.summary.partPct !== '') $('partPct').value = data.summary.partPct;
+      }
+      applyTemplateLines(data.items || [], h.kNo || '保存データ');
+    }
+    function downloadPdfAndPrint(base64, filename) {
+      var bin = atob(base64);
+      var bytes = new Uint8Array(bin.length);
+      var i;
+      for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename || '請求書.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      var opened = window.open(url, '_blank');
+      if (opened) {
+        setTimeout(function () {
+          try { opened.focus(); opened.print(); } catch (err) {}
+        }, 800);
+        return true;
+      }
+      return false;
+    }
+    function setBusy(busy) {
+      $('btnSave').disabled = busy;
+      $('btnLoad').disabled = busy;
+      $('btnPrint').disabled = busy;
     }
     function onTemplatePicked() {
       var name = $('invoiceTemplate').value;
@@ -2160,37 +2296,130 @@
       setStatus('明細を消去しました');
     });
 
-    $('btnPrint').addEventListener('click', function () {
-      var summary = recalc();
-      var payload = {
-        header: {
-          userName: $('userName').value,
-          kNo: $('kNo').value,
-          plate: $('plate').value,
-          dept: $('dept').value,
-          serviceType: $('serviceType').value,
-          receptionist: $('receptionist').value,
-          staff: $('receptionist').value,
-          inDate: $('inDate').value,
-          outDate: $('outDate').value,
-          doneDate: $('outDate').value,
-          billDate: $('billDate').value
-        },
-        items: items,
-        summary: summary
-      };
-      $('btnPrint').disabled = true;
-      setStatus('印刷用シートを作成しています…');
+    $('btnSave').addEventListener('click', function () {
+      var payload = collectPayload();
+      if (!String(payload.header.kNo || '').trim()) {
+        setStatus('保存するには K-No を入力してください。', true);
+        return;
+      }
+      setBusy(true);
+      setStatus('保存しています…');
       google.script.run
         .withSuccessHandler(function (res) {
-          $('btnPrint').disabled = false;
-          setStatus('完了: ' + res.sheetNames.join('、') + '（入力 ' + res.lineCount + ' 行 / ' + res.pageCount + ' 枚）');
+          setBusy(false);
+          setStatus('保存しました（K-No ' + payload.header.kNo + ' / ' + res.savedAt + ' / 明細 ' + res.lineCount + ' 行）');
         })
         .withFailureHandler(function (err) {
-          $('btnPrint').disabled = false;
+          setBusy(false);
           setStatus(err.message || String(err), true);
         })
-        .publishInvoices(payload);
+        .saveInvoiceDraft(payload);
+    });
+
+    function hideInvoicePicker() {
+      $('invoicePicker').hidden = true;
+    }
+    function positionInvoicePicker() {
+      var panel = $('invoicePicker');
+      panel.hidden = false;
+      var w = panel.offsetWidth;
+      var h = panel.offsetHeight;
+      panel.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
+      panel.style.top = Math.max(8, Math.round((window.innerHeight - h) / 2)) + 'px';
+    }
+    function showInvoicePicker(list, kNo) {
+      $('invoicePickerTitle').textContent = 'K-No ' + kNo;
+      var empty = $('invoicePickerEmpty');
+      var table = $('invoicePickerTable');
+      var body = $('invoicePickerBody');
+      body.innerHTML = '';
+      if (!list || !list.length) {
+        empty.hidden = false;
+        empty.textContent = 'K-No「' + kNo + '」の保存はありません';
+        table.hidden = true;
+        $('invoicePickerMeta').textContent = '';
+      } else {
+        empty.hidden = true;
+        table.hidden = false;
+        $('invoicePickerMeta').textContent = list.length + ' 件　／　行をクリックして復元';
+        list.forEach(function (row) {
+          var tr = document.createElement('tr');
+          tr.dataset.id = row.saveId;
+          tr.innerHTML = '<td>' + htmlEscape(row.savedAt || '') + '</td>' +
+            '<td>' + htmlEscape(row.userName || '') + '</td>' +
+            '<td>' + htmlEscape(row.plate || '') + '</td>' +
+            '<td>' + htmlEscape(row.billDate || '') + '</td>' +
+            '<td>' + htmlEscape(String(row.lineCount || 0)) + '行</td>';
+          body.appendChild(tr);
+        });
+      }
+      positionInvoicePicker();
+    }
+    function restoreInvoice(saveId) {
+      hideInvoicePicker();
+      setBusy(true);
+      setStatus('呼び出しています…');
+      google.script.run
+        .withSuccessHandler(function (data) {
+          applySavedPayload(data);
+          setBusy(false);
+          setStatus('呼び出しました（K-No ' + ((data.header && data.header.kNo) || '') + '）');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .loadInvoiceDraft(saveId);
+    }
+    $('btnLoad').addEventListener('click', function () {
+      var kNo = String($('kNo').value || '').trim();
+      if (!kNo) {
+        setStatus('呼び出す K-No を入力してください。', true);
+        return;
+      }
+      setBusy(true);
+      setStatus('保存一覧を読み込んでいます…');
+      google.script.run
+        .withSuccessHandler(function (list) {
+          setBusy(false);
+          showInvoicePicker(list || [], kNo);
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .listInvoiceDrafts(kNo);
+    });
+    $('invoicePickerClose').addEventListener('click', function (e) {
+      e.preventDefault();
+      hideInvoicePicker();
+    });
+    $('invoicePickerBody').addEventListener('click', function (e) {
+      var tr = e.target.closest('tr[data-id]');
+      if (!tr) return;
+      if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
+      restoreInvoice(tr.dataset.id);
+    });
+
+    $('btnPrint').addEventListener('click', function () {
+      var payload = collectPayload();
+      setBusy(true);
+      setStatus('印刷シートと PDF を作成しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          var printed = downloadPdfAndPrint(res.pdfBase64, res.filename);
+          var extra = res.savedAt ? '／保存 ' + res.savedAt : '／K-No が空のため保存なし';
+          setStatus(
+            (printed ? 'PDFを開き、印刷ダイアログを出します。' : 'PDFをダウンロードしました。ファイルを開いて印刷してください。') +
+            ' ' + res.filename + '（' + res.pageCount + ' 枚）' + extra
+          );
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .publishInvoicePdf(payload);
     });
 
     google.script.run

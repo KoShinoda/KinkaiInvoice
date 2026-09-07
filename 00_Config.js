@@ -15,7 +15,7 @@
  * 08_ServiceInfo.js       … 整備情報マスタ。
  * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
- * 11_PrintLayout.js       … A4 印刷原本（1シート・ページ区切り）。
+ * 12_InvoiceSave.js       … 請求書の保存・呼び出しと印刷PDF。
  *
  * 【中項目プルダウン】
  * 大項目を選ぶたびに GAS で候補を付け替えない。
@@ -213,6 +213,14 @@ const CONFIG = {
     partSub: 'H1',
     partDisc: 'H2',
     grand: 'H5'
+  },
+
+  /**
+   * 入力アプリの請求書保存。同じ K-No で複数件。行種別 HEAD / LINE。
+   */
+  invoiceSave: {
+    sheetName: '請求書保存',
+    headerRow: 1
   },
 
   /**

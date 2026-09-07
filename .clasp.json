@@ -23,7 +23,8 @@
     "08_ServiceInfo.js",
     "09_InvoiceTemplate.js",
     "10_ListRefresh.js",
-    "11_PrintLayout.js"
+    "11_PrintLayout.js",
+    "12_InvoiceSave.js"
   ],
   "skipSubdirectories": false
 }
