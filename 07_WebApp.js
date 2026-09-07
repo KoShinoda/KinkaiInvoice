@@ -12,7 +12,7 @@ function doGet() {
 function openInputApp() {
   notifyPendingListOrders_();
   const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
-    .setWidth(1640)
+    .setWidth(1900)
     .setHeight(860);
   SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
 }

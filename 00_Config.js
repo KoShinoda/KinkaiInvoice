@@ -216,10 +216,12 @@ const CONFIG = {
   },
 
   /**
-   * 入力アプリの請求書保存。同じ K-No で複数件。行種別 HEAD / LINE。
+   * 請求書保存。一覧は 1 件 1 行、明細は年ごとの別シート（年間2000件想定）。
+   * K-No は 4 桁（K- は付けない）。
    */
   invoiceSave: {
     sheetName: '請求書保存',
+    detailPrefix: '請求書保存明細_',
     headerRow: 1
   },
 

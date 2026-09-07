@@ -100,19 +100,19 @@
       border-collapse: collapse;
       table-layout: fixed;
     }
-    col.col-no { width: 36px; }
-    col.col-ins { width: 36px; }
-    col.col-fee { width: calc(96px - 1ch); }
-    col.col-staff { width: 108px; }
-    col.col-n { width: calc(52px + 2ch); }
-    col.col-qty { width: 42px; }
-    col.col-amt { width: calc(96px - 1ch); }
-    col.col-disc { width: 56px; }
-    col.col-del { width: 28px; }
-    col.col-major { width: 15%; }
-    col.col-mid { width: 25%; }
-    col.col-part-major { width: 15%; }
-    col.col-part-mid { width: 25%; }
+    col.col-no { width: 28px; }
+    col.col-ins { width: 28px; }
+    col.col-fee { width: 72px; }
+    col.col-staff { width: 88px; }
+    col.col-n { width: 48px; }
+    col.col-qty { width: 36px; }
+    col.col-amt { width: 72px; }
+    col.col-disc { width: 48px; }
+    col.col-del { width: 22px; }
+    col.col-major { width: 9%; }
+    col.col-mid { width: 34%; }
+    col.col-part-major { width: 9%; }
+    col.col-part-mid { width: 24%; }
     th {
       position: sticky; top: 0;
       z-index: 2;
@@ -212,7 +212,7 @@
       padding-top: 8px;
       color: var(--text);
     }
-    td { padding: 3px 3px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
+    td { padding: 2px 2px; border-bottom: 1px solid #eef1f4; vertical-align: middle; }
     td.no,
     td.ins {
       color: var(--muted);
@@ -272,6 +272,17 @@
       cursor: default;
       background: #fff;
     }
+    td.major select,
+    td.part-major select,
+    td.staff input,
+    td.part-mid input,
+    td.num input,
+    td.fee input {
+      height: 28px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     td.num input,
     td.fee input { padding: 4px 2px; text-align: right; }
     td.staff input {
@@ -323,7 +334,7 @@
     .invoice-picker {
       position: fixed;
       z-index: 85;
-      width: min(560px, calc(100vw - 24px));
+      width: min(1100px, calc(100vw - 16px));
       max-height: min(70vh, 480px);
       overflow: hidden;
       background: #fff;
@@ -338,13 +349,22 @@
       overflow: auto;
       padding: 0 0 8px;
     }
-    .invoice-picker table { width: 100%; border-collapse: collapse; }
+    .invoice-picker table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .invoice-picker th, .invoice-picker td {
       padding: 8px 10px;
       font-size: 12px;
       text-align: left;
       border-bottom: 1px solid #eef1f3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+    .invoice-picker col.c-date { width: 92px; }
+    .invoice-picker col.c-user { width: 100px; }
+    .invoice-picker col.c-plate { width: 120px; }
+    .invoice-picker col.c-bill { width: 92px; }
+    .invoice-picker col.c-mid { width: auto; }
+    .invoice-picker col.c-n { width: 44px; }
     .invoice-picker tbody tr { cursor: pointer; }
     .invoice-picker tbody tr:hover { background: #e8f0ec; }
     .invoice-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; }
@@ -478,15 +498,28 @@
       width: 100%;
       resize: none;
       overflow: hidden;
+      height: 28px;
       min-height: 28px;
       line-height: 1.35;
-      padding: 6px 8px;
+      padding: 4px 8px;
       font: inherit;
       border: 1px solid var(--line);
       border-radius: 7px;
       box-sizing: border-box;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
-    td.mid { vertical-align: top; }
+    .combo textarea:focus {
+      white-space: pre-wrap;
+      overflow: auto;
+      text-overflow: clip;
+    }
+    td.mid { vertical-align: middle; }
+    td.part-mid input {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .combo-list {
       position: absolute;
       left: 0; right: 0; top: 100%;
@@ -688,12 +721,21 @@
     <div class="invoice-picker-body">
       <div id="invoicePickerEmpty" class="invoice-empty" hidden>保存がありません</div>
       <table hidden id="invoicePickerTable">
+        <colgroup>
+          <col class="c-date">
+          <col class="c-user">
+          <col class="c-plate">
+          <col class="c-bill">
+          <col class="c-mid">
+          <col class="c-n">
+        </colgroup>
         <thead>
           <tr>
-            <th>保存日時</th>
+            <th>保存日</th>
             <th>ユーザー</th>
             <th>登録番号</th>
             <th>請求日</th>
+            <th>中項目</th>
             <th>明細</th>
           </tr>
         </thead>
@@ -750,7 +792,7 @@
     function formatYmd(raw) {
       var s = String(raw == null ? '' : raw).trim();
       if (!s) return '';
-      var iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      var iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
       if (iso) {
         return iso[1] + '/' + pad2(Number(iso[2])) + '/' + pad2(Number(iso[3]));
       }
@@ -902,12 +944,22 @@
       renderGrid();
       setStatus('テンプレート「' + name + '」から明細 ' + next.length + ' 行を作成しました');
     }
+    function normalizeKNo(v) {
+      var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
+      var d = s.replace(/\D/g, '');
+      if (!d) return '';
+      if (d.length >= 4) return d;
+      while (d.length < 4) d = '0' + d;
+      return d;
+    }
     function collectPayload() {
       var summary = recalc();
+      var kNo = normalizeKNo($('kNo').value);
+      $('kNo').value = kNo;
       return {
         header: {
           userName: $('userName').value,
-          kNo: $('kNo').value,
+          kNo: kNo,
           plate: $('plate').value,
           dept: $('dept').value,
           serviceType: $('serviceType').value,
@@ -1282,7 +1334,7 @@
       if (c.mid) {
         c.mid.value = it.mid || '';
         c.mid.dataset.options = midsJson(it.major);
-        fitMidHeight(c.mid);
+        fitMidHeight(c.mid, false);
       }
       if (c.partMid) {
         c.partMid.value = it.partMid || '';
@@ -1678,8 +1730,16 @@
     function comboKeepInput() {
       return isComboField(document.activeElement) ? document.activeElement : null;
     }
-    function fitMidHeight(el) {
+    function fitMidHeight(el, expand) {
       if (!el || el.dataset.k !== 'mid') return;
+      var on = expand === true || document.activeElement === el;
+      if (!on) {
+        el.style.height = '28px';
+        el.style.overflow = 'hidden';
+        el.style.whiteSpace = 'nowrap';
+        return;
+      }
+      el.style.whiteSpace = 'pre-wrap';
       el.style.height = 'auto';
       var minH = 28;
       var maxH = 160;
@@ -2137,6 +2197,7 @@
         hideComboLists();
         hideWorkerPicker();
         showComboList(e.target);
+        if (e.target.dataset.k === 'mid') fitMidHeight(e.target, true);
       }
     });
     $('tbody').addEventListener('keydown', function (e) {
@@ -2184,6 +2245,7 @@
         if (!items[Number(input.dataset.i)]) return;
         if (document.activeElement === input) return;
         commitCombo(input);
+        if (input.dataset.k === 'mid') fitMidHeight(input, false);
       }, 120);
     });
     $('tbody').addEventListener('change', function (e) {
@@ -2307,7 +2369,7 @@
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
-          setStatus('保存しました（K-No ' + payload.header.kNo + ' / ' + res.savedAt + ' / 明細 ' + res.lineCount + ' 行）');
+          setStatus('保存しました（K-No ' + payload.header.kNo + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -2344,11 +2406,12 @@
         $('invoicePickerMeta').textContent = list.length + ' 件　／　行をクリックして復元';
         list.forEach(function (row) {
           var tr = document.createElement('tr');
-          tr.dataset.id = row.saveId;
-          tr.innerHTML = '<td>' + htmlEscape(row.savedAt || '') + '</td>' +
+          tr.setAttribute('data-save-id', row.saveId || '');
+          tr.innerHTML = '<td>' + htmlEscape(formatYmd(row.savedAt) || '') + '</td>' +
             '<td>' + htmlEscape(row.userName || '') + '</td>' +
             '<td>' + htmlEscape(row.plate || '') + '</td>' +
-            '<td>' + htmlEscape(row.billDate || '') + '</td>' +
+            '<td>' + htmlEscape(formatYmd(row.billDate) || '') + '</td>' +
+            '<td title="' + htmlEscape(row.firstMid || '') + '">' + htmlEscape(row.firstMid || '') + '</td>' +
             '<td>' + htmlEscape(String(row.lineCount || 0)) + '行</td>';
           body.appendChild(tr);
         });
@@ -2361,9 +2424,14 @@
       setStatus('呼び出しています…');
       google.script.run
         .withSuccessHandler(function (data) {
-          applySavedPayload(data);
-          setBusy(false);
-          setStatus('呼び出しました（K-No ' + ((data.header && data.header.kNo) || '') + '）');
+          try {
+            applySavedPayload(data);
+            setBusy(false);
+            setStatus('呼び出しました（K-No ' + ((data && data.header && data.header.kNo) || '') + '）');
+          } catch (err) {
+            setBusy(false);
+            setStatus('呼び出し後の画面反映に失敗しました: ' + (err.message || err), true);
+          }
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -2372,7 +2440,8 @@
         .loadInvoiceDraft(saveId);
     }
     $('btnLoad').addEventListener('click', function () {
-      var kNo = String($('kNo').value || '').trim();
+      var kNo = normalizeKNo($('kNo').value);
+      $('kNo').value = kNo;
       if (!kNo) {
         setStatus('呼び出す K-No を入力してください。', true);
         return;
@@ -2395,10 +2464,10 @@
       hideInvoicePicker();
     });
     $('invoicePickerBody').addEventListener('click', function (e) {
-      var tr = e.target.closest('tr[data-id]');
+      var tr = e.target.closest('tr[data-save-id]');
       if (!tr) return;
       if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
-      restoreInvoice(tr.dataset.id);
+      restoreInvoice(tr.getAttribute('data-save-id'));
     });
 
     $('btnPrint').addEventListener('click', function () {
@@ -2409,7 +2478,7 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           var printed = downloadPdfAndPrint(res.pdfBase64, res.filename);
-          var extra = res.savedAt ? '／保存 ' + res.savedAt : '／K-No が空のため保存なし';
+          var extra = res.savedAt ? '／保存 ' + formatYmd(res.savedAt) : '／K-No が空のため保存なし';
           setStatus(
             (printed ? 'PDFを開き、印刷ダイアログを出します。' : 'PDFをダウンロードしました。ファイルを開いて印刷してください。') +
             ' ' + res.filename + '（' + res.pageCount + ' 枚）' + extra
@@ -2434,6 +2503,10 @@
           if (f) applyDateField('billDate', 'billDateCal', f);
         });
         bindDateField('billDate', 'billDateCal');
+        $('kNo').addEventListener('blur', function () {
+          var n = normalizeKNo($('kNo').value);
+          if (n || !$('kNo').value.trim()) $('kNo').value = n;
+        });
         $('dept').addEventListener('change', applyDeptDefaults);
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
         if (master.ordersPending) {

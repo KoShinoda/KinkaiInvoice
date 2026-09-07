@@ -15,6 +15,7 @@ function onOpen() {
     .addItem('初期設定（候補マスタとプルダウン）', 'setupInputDropdowns')
     .addItem('整備情報シートを整理', 'tidyServiceInfoSheet')
     .addItem('明細テンプレート（サンプル）を用意', 'ensureInvoiceTemplateSheet')
+    .addItem('請求書保存（サンプル3件）を用意', 'ensureInvoiceSaveSamples')
     .addItem('選択内容を再出力', 'refreshOutputFromSelection')
     .addItem('リストを更新（順番・選択肢）', 'refreshAllMasterLists')
     .addItem('印刷原本（A4・1シート）を作成', 'createPrintOriginalSample')
