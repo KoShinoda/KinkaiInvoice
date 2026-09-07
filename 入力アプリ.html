@@ -503,13 +503,7 @@
         <div><label>登録番号</label><input id="plate"></div>
         <div><label>整備部門</label><select id="dept"></select></div>
         <div><label>整備種別</label><select id="serviceType"></select></div>
-        <div>
-          <label>受付担当</label>
-          <div class="combo">
-            <input id="receptionist" data-k="receptionist" autocomplete="off">
-            <div class="combo-list" hidden></div>
-          </div>
-        </div>
+        <div><label>受付担当</label><select id="receptionist"></select></div>
         <div>
           <label>入庫日</label>
           <div class="date-wrap">
@@ -776,61 +770,9 @@
       fillHeaderSelect($('serviceType'), types, next);
       if (next) $('serviceType').value = next;
     }
-    function bindReceptionistCombo() {
-      var input = $('receptionist');
-      if (!input || input.dataset.bound === '1') return;
-      input.dataset.bound = '1';
-      input.addEventListener('focus', function () {
-        hideWorkerPicker();
-        hideComboLists(input);
-        showComboList(input);
-      });
-      input.addEventListener('input', function () {
-        showComboList(input);
-      });
-      input.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          moveComboHighlight(input, 1);
-          return;
-        }
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          moveComboHighlight(input, -1);
-          return;
-        }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          var list = comboListEl(input);
-          if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
-            input.value = list.children[comboActiveIndex].dataset.value;
-          }
-          hideComboLists();
-          return;
-        }
-        if (e.key === 'Escape') hideComboLists();
-      });
-      input.addEventListener('blur', function () {
-        setTimeout(function () {
-          if (document.activeElement === input) return;
-          hideComboLists();
-        }, 120);
-      });
-      var list = comboListEl(input);
-      if (list) {
-        list.addEventListener('mousedown', function (e) {
-          var opt = e.target.closest('div[data-value]');
-          if (!opt) return;
-          e.preventDefault();
-          input.value = opt.dataset.value;
-          hideComboLists();
-          comboIgnoreBlur = true;
-        });
-      }
-    }
+    function initHeaderMasters() {
       fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
-      var rec = $('receptionist');
-      if (rec) rec.dataset.options = JSON.stringify(master.receptionists || []);
+      fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
       if (master.templateNames && master.templateNames.length) {
         fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
       }
@@ -1595,7 +1537,7 @@
       if (!keepList) comboActiveIndex = -1;
     }
     function isComboField(el) {
-      return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid' || el.dataset.k === 'workerCode' || el.dataset.k === 'receptionist'));
+      return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid' || el.dataset.k === 'workerCode'));
     }
     function comboKeepInput() {
       return isComboField(document.activeElement) ? document.activeElement : null;
@@ -2258,7 +2200,6 @@
         fillWorkerPicker();
         renderGrid();
         initHeaderMasters();
-        bindReceptionistCombo();
         bindDateField('inDate', 'inDateCal');
         bindDateField('outDate', 'outDateCal', function (f) {
           if (f) applyDateField('billDate', 'billDateCal', f);

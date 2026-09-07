@@ -712,6 +712,7 @@ function fillPrintHeader_(sheet, start, L, header) {
   sheet.getRange(v1, 2).setValue(header.kNo || '').setFontSize(12);
   sheet.getRange(v1, 3).setValue(header.plate || '').setFontSize(12);
   sheet.getRange(v1, 6).setValue(header.receptionist || header.staff || '').setFontSize(12);
+  applyPrintReceptionistDropdown_(sheet.getRange(v1, 6), header.receptionist || header.staff || '');
 
   sheet.getRange(l2, 2).setValue('入庫日').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l2, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');
@@ -729,6 +730,30 @@ function fillPrintHeader_(sheet, start, L, header) {
   sheet.getRange(l1, 6, 4, 3)
     .setHorizontalAlignment('left')
     .setBorder(true, true, true, true, false, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+}
+
+function applyPrintReceptionistDropdown_(cell, current) {
+  let names = [];
+  try {
+    names = (loadServiceInfo_().receptionists || []).slice();
+  } catch (err) {
+    Logger.log('%s applyPrintReceptionistDropdown_: %s', CONFIG.logPrefix, err);
+  }
+  const cur = String(current == null ? '' : current).trim();
+  if (cur) {
+    const key = normalize_(cur);
+    let found = false;
+    for (let i = 0; i < names.length; i++) {
+      if (normalize_(names[i]) === key) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      names.push(cur);
+    }
+  }
+  applyOpenListValidation_(cell, names);
 }
 
 function fillPrintFooterBlock_(sheet, f, summary) {
