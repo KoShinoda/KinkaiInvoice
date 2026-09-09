@@ -678,6 +678,8 @@ function exportPrintSheetPdf_(ss, sheet, filename) {
     + '&bottom_margin=0.75'
     + '&left_margin=0.7'
     + '&right_margin=0.7'
+    + '&header_margin=0'
+    + '&footer_margin=0'
     + '&gridlines=false'
     + '&printnotes=false'
     + '&printtitle=false'

@@ -16,13 +16,22 @@ var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
 /** A4 縦。余白は印刷ダイアログの「標準」に合わせる（インチ）。 */
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
+/** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
+var PRINT_HF_MARGIN_IN_ = 0;
 /** 明細と No. のあいだの最小空行。余りは半分だけ使う（全部使うと No. が次ページへ落ちる）。 */
 var PRINT_PAD_MIN_ = 8;
 var PRINT_PAD_FILL_ = 0.5;
 var PRINT_PX_PER_IN_ = 96;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
-var PRINT_PAGE_NO_H_ = 18;
+var PRINT_PAGE_NO_H_ = 16;
+/** 明細列見出し（印刷シート 9 行目）。折返し禁止で高さを固定する。 */
+var PRINT_COL_HEAD_H_ = 14;
+var PRINT_TITLE_H_ = 26;
+var PRINT_META_LABEL_H_ = 16;
+var PRINT_META_VALUE_H_ = 22;
+var PRINT_SPACER_H_ = 2;
+var PRINT_FOOTER_H_ = 18;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -432,8 +441,8 @@ function applyA4PageSetup_(sheet, pageCount) {
       ps.setRightMargin(m.right);
     }
     if (typeof ps.setHeaderMargin === 'function') {
-      ps.setHeaderMargin(0.3);
-      ps.setFooterMargin(0.3);
+      ps.setHeaderMargin(PRINT_HF_MARGIN_IN_);
+      ps.setFooterMargin(PRINT_HF_MARGIN_IN_);
     }
     ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
   } catch (err) {
@@ -493,13 +502,13 @@ function printPageLayout_(showHeader, showFooter) {
 
 function printInnerWidthPx_() {
   const m = PRINT_MARGIN_IN_;
-  return Math.max(480, Math.floor((210 / 25.4 - m.left - m.right) * PRINT_PX_PER_IN_));
+  return Math.max(480, Math.floor((210 / 25.4 - m.left - m.right) * PRINT_PX_PER_IN_) - 12);
 }
 
 function printTargetInnerPx_() {
   const m = PRINT_MARGIN_IN_;
   const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
-  return Math.max(600, Math.floor(raw) - 36);
+  return Math.max(600, Math.floor(raw) - 48);
 }
 
 function applyPrintColumnWidths_(sheet) {
@@ -525,21 +534,15 @@ function printScaledColWidth_(i) {
 }
 
 function printChromePx_(showHeader, showFooter, includeMinPad) {
-  const titleH = 28;
-  const metaLH = 16;
-  const metaVH = 22;
-  const spacerH = 2;
-  const colHeadH = 20;
-  const footerH = 18;
-  let h = colHeadH + PRINT_PAGE_NO_H_;
+  let h = PRINT_COL_HEAD_H_ + PRINT_PAGE_NO_H_;
   if (includeMinPad) {
     h += PRINT_PAD_MIN_;
   }
   if (showHeader) {
-    h += titleH + (metaLH + metaVH) * 3 + spacerH;
+    h += PRINT_TITLE_H_ + (PRINT_META_LABEL_H_ + PRINT_META_VALUE_H_) * 3 + PRINT_SPACER_H_;
   }
   if (showFooter) {
-    h += footerH * 5;
+    h += PRINT_FOOTER_H_ * 5;
   }
   return h;
 }
@@ -589,9 +592,10 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   sheet.getRange(headRow, 1, 1, cols)
     .setValues([PRINT_COL_HEADERS_])
     .setFontWeight('bold')
-    .setFontSize(11)
+    .setFontSize(9)
     .setHorizontalAlignment('center')
-    .setWrap(true)
+    .setVerticalAlignment('middle')
+    .setWrap(false)
     .setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
 
   const first = start + L.firstLine;
@@ -776,27 +780,21 @@ function fitPrintFont_(text, colWidth) {
 }
 
 function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) {
-  const titleH = 28;
-  const metaLH = 16;
-  const metaVH = 22;
-  const spacerH = 2;
-  const colHeadH = 20;
-  const footerH = 18;
   const padH = printPadHeight_(showHeader, showFooter, slotH);
   if (showHeader && L.title != null) {
-    sheet.setRowHeight(start + L.title, titleH);
-    sheet.setRowHeight(start + L.metaL1, metaLH);
-    sheet.setRowHeight(start + L.metaV1, metaVH);
-    sheet.setRowHeight(start + L.metaL2, metaLH);
-    sheet.setRowHeight(start + L.metaV2, metaVH);
-    sheet.setRowHeight(start + L.metaL3, metaLH);
-    sheet.setRowHeight(start + L.metaV3, metaVH);
-    sheet.setRowHeight(start + L.spacer, spacerH);
+    sheet.setRowHeight(start + L.title, PRINT_TITLE_H_);
+    sheet.setRowHeight(start + L.metaL1, PRINT_META_LABEL_H_);
+    sheet.setRowHeight(start + L.metaV1, PRINT_META_VALUE_H_);
+    sheet.setRowHeight(start + L.metaL2, PRINT_META_LABEL_H_);
+    sheet.setRowHeight(start + L.metaV2, PRINT_META_VALUE_H_);
+    sheet.setRowHeight(start + L.metaL3, PRINT_META_LABEL_H_);
+    sheet.setRowHeight(start + L.metaV3, PRINT_META_VALUE_H_);
+    sheet.setRowHeight(start + L.spacer, PRINT_SPACER_H_);
   }
-  sheet.setRowHeight(start + L.colHead, colHeadH);
+  sheet.setRowHeight(start + L.colHead, PRINT_COL_HEAD_H_);
   sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, slotH);
   if (showFooter) {
-    sheet.setRowHeights(start + L.footerStart, 5, footerH);
+    sheet.setRowHeights(start + L.footerStart, 5, PRINT_FOOTER_H_);
   }
   sheet.setRowHeight(start + L.pad, padH);
   sheet.setRowHeight(start + L.pageNo, PRINT_PAGE_NO_H_);
