@@ -513,25 +513,15 @@ function applyA4PageSetup_(sheet, pageCount, breakRows) {
  * 1 枚なら Fit to page。複数枚なら「幅1 × 高さ枚数」が使えればそれを使い、無ければ縮小率。
  */
 function applyPrintFitScale_(ps, sheet, pageCount, breakRows) {
-  if (pageCount <= 1 && typeof ps.setFitToPage === 'function') {
-    ps.setFitToPage(true);
-    return;
-  }
-  if (typeof ps.setFitToWidth === 'function' && typeof ps.setFitToHeight === 'function') {
-    if (typeof ps.setFitToPage === 'function') {
-      ps.setFitToPage(false);
-    }
-    ps.setFitToWidth(1);
-    ps.setFitToHeight(pageCount);
-    return;
-  }
   if (typeof ps.setFitToPage === 'function') {
-    ps.setFitToPage(false);
+    ps.setFitToPage(pageCount <= 1);
   }
-  if (typeof ps.setScale !== 'function') {
+  if (pageCount <= 1) {
     return;
   }
-  ps.setScale(printMeasuredFitScale_(sheet, pageCount, breakRows));
+  if (typeof ps.setScale === 'function') {
+    ps.setScale(100);
+  }
 }
 
 function printSheetPrintableHeightPx_() {
@@ -665,7 +655,9 @@ function printInnerWidthPx_() {
 }
 
 function printTargetInnerPx_() {
-  return printSheetPrintableHeightPx_();
+  const m = PRINT_MARGIN_IN_;
+  const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
+  return Math.max(600, Math.floor(raw) - 12);
 }
 
 function applyPrintColumnWidths_(sheet) {
