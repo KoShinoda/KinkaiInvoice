@@ -16,8 +16,9 @@ var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
 /** A4 縦。余白は印刷ダイアログの「標準」に合わせる（インチ）。 */
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
-/** 明細と No. のあいだの最小空行。足りないときはここを増やす。 */
-var PRINT_PAD_MIN_ = 12;
+/** 明細と No. のあいだの最小空行。余りは半分だけ使う（全部使うと No. が次ページへ落ちる）。 */
+var PRINT_PAD_MIN_ = 8;
+var PRINT_PAD_FILL_ = 0.5;
 var PRINT_PX_PER_IN_ = 96;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
@@ -552,7 +553,8 @@ function printDataRowHeight_() {
 function printPadHeight_(showHeader, showFooter, slotH) {
   const inner = printTargetInnerPx_();
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
-  return Math.max(PRINT_PAD_MIN_, inner - used);
+  const leftover = inner - used;
+  return Math.max(PRINT_PAD_MIN_, Math.floor(leftover * PRINT_PAD_FILL_));
 }
 
 function fillPrintPage_(sheet, start, header, lines, opts) {
