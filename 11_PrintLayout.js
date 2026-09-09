@@ -1,7 +1,6 @@
 /**
  * A4 印刷原本。1 シートにページを縦積みする。
- * 1 枚目だけヘッダー、最終枚だけフッター、各ページ右下に No.。
- * 明細と No. の間の空行でページ高さを合わせる（余白は標準）。
+ * 1 枚目だけヘッダー、最終枚だけフッター。明細の直下に No.、その下の空行で高さを合わせる。
  * 大量印刷向けに色は使わない。
  */
 
@@ -18,7 +17,7 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** 明細と No. のあいだの最小空行。余りは半分だけ使う（全部使うと No. が次ページへ落ちる）。 */
+/** No. の下の調整空行。余りは半分だけ使う（全部使うと次ページへ落ちる）。 */
 var PRINT_PAD_MIN_ = 8;
 var PRINT_PAD_FILL_ = 0.5;
 var PRINT_PX_PER_IN_ = 96;
@@ -492,9 +491,9 @@ function printPageLayout_(showHeader, showFooter) {
     L.footerStart = r;
     r += 5;
   }
-  L.pad = r;
-  r++;
   L.pageNo = r;
+  r++;
+  L.pad = r;
   r++;
   L.pageRows = r;
   return L;
