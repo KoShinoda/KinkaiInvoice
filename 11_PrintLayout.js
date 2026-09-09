@@ -1,7 +1,7 @@
 /**
  * A4 印刷原本。1 シートにページを縦積みする。
  * 1 枚目だけヘッダー、最終枚だけフッター。明細の直下に No.、その下の空行で高さを合わせる。
- * 中項目が複数行のときは行数ぶん枠を使い、入りきらない明細は次ページへ送る。
+ * 印刷シートは行高さを実測し、A4 縦に収まる倍率へ自動縮小する（PDF は 100%）。
  * 大量印刷向けに色は使わない。
  */
 
@@ -330,7 +330,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   }
 
   trimPrintSheet_(sheet, cursor - 1);
-  applyA4PageSetup_(sheet, pageCount);
+  applyA4PageSetup_(sheet, pageCount, breakRows);
   applyPrintPageBreaksAt_(sheet, breakRows);
   ss.setActiveSheet(sheet);
   hideHelperSheet_(ss, ss.getSheetByName('_印刷A4縦'));
@@ -477,18 +477,14 @@ function trimPrintSheet_(sheet, lastRow) {
   }
 }
 
-function applyA4PageSetup_(sheet, pageCount) {
+function applyA4PageSetup_(sheet, pageCount, breakRows) {
+  const pages = Math.max(1, pageCount || 1);
   try {
     const ps = sheet.getPageSetup();
     const m = PRINT_MARGIN_IN_;
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
     ps.setPrintGridlines(false);
-    if (typeof ps.setFitToPage === 'function') {
-      ps.setFitToPage(false);
-    }
-    if (typeof ps.setScale === 'function') {
-      ps.setScale(100);
-    }
+    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
     if (typeof ps.setTopMargin === 'function') {
       ps.setTopMargin(m.top);
       ps.setBottomMargin(m.bottom);
@@ -499,11 +495,101 @@ function applyA4PageSetup_(sheet, pageCount) {
       ps.setHeaderMargin(PRINT_HF_MARGIN_IN_);
       ps.setFooterMargin(PRINT_HF_MARGIN_IN_);
     }
-    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
+    applyPrintFitScale_(ps, sheet, pages, breakRows || []);
   } catch (err) {
     Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
   }
   SpreadsheetApp.flush();
+}
+
+/**
+ * 印刷プレビューは PDF より少し狭い。各ページの実高さを測り、A4 に収まる倍率にする。
+ * 1 枚なら Fit to page。複数枚なら「幅1 × 高さ枚数」が使えればそれを使い、無ければ縮小率。
+ */
+function applyPrintFitScale_(ps, sheet, pageCount, breakRows) {
+  if (pageCount <= 1 && typeof ps.setFitToPage === 'function') {
+    ps.setFitToPage(true);
+    return;
+  }
+  if (typeof ps.setFitToWidth === 'function' && typeof ps.setFitToHeight === 'function') {
+    if (typeof ps.setFitToPage === 'function') {
+      ps.setFitToPage(false);
+    }
+    ps.setFitToWidth(1);
+    ps.setFitToHeight(pageCount);
+    return;
+  }
+  if (typeof ps.setFitToPage === 'function') {
+    ps.setFitToPage(false);
+  }
+  if (typeof ps.setScale !== 'function') {
+    return;
+  }
+  ps.setScale(printMeasuredFitScale_(sheet, pageCount, breakRows));
+}
+
+function printSheetPrintableHeightPx_() {
+  const m = PRINT_MARGIN_IN_;
+  const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
+  return Math.max(480, Math.floor(raw * 0.88));
+}
+
+function printSheetPrintableWidthPx_() {
+  const m = PRINT_MARGIN_IN_;
+  const raw = (210 / 25.4 - m.left - m.right) * PRINT_PX_PER_IN_;
+  return Math.max(400, Math.floor(raw * 0.96));
+}
+
+function printPageRowRanges_(lastRow, breakRows) {
+  const starts = [1];
+  (breakRows || []).forEach(function (r) {
+    const n = Number(r);
+    if (n > 1 && n <= lastRow && starts.indexOf(n) === -1) {
+      starts.push(n);
+    }
+  });
+  starts.sort(function (a, b) { return a - b; });
+  const ranges = [];
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i];
+    const to = i + 1 < starts.length ? starts[i + 1] - 1 : lastRow;
+    if (to >= from) {
+      ranges.push({ from: from, to: to });
+    }
+  }
+  return ranges.length ? ranges : [{ from: 1, to: lastRow }];
+}
+
+function sumSheetRowHeights_(sheet, from, to) {
+  let h = 0;
+  for (let r = from; r <= to; r++) {
+    h += sheet.getRowHeight(r);
+  }
+  return h;
+}
+
+function sumSheetColWidths_(sheet) {
+  const n = CONFIG.print.colCount;
+  let w = 0;
+  for (let c = 1; c <= n; c++) {
+    w += sheet.getColumnWidth(c);
+  }
+  return w;
+}
+
+function printMeasuredFitScale_(sheet, pageCount, breakRows) {
+  const lastRow = Math.max(1, sheet.getLastRow());
+  const ranges = printPageRowRanges_(lastRow, breakRows);
+  let maxH = 0;
+  for (let i = 0; i < ranges.length; i++) {
+    maxH = Math.max(maxH, sumSheetRowHeights_(sheet, ranges[i].from, ranges[i].to));
+  }
+  const hAvail = printSheetPrintableHeightPx_();
+  const wAvail = printSheetPrintableWidthPx_();
+  const w = sumSheetColWidths_(sheet);
+  const sH = maxH > 0 ? hAvail / maxH : 1;
+  const sW = w > 0 ? wAvail / w : 1;
+  return Math.max(10, Math.min(100, Math.floor(Math.min(sH, sW) * 100)));
 }
 
 /**
