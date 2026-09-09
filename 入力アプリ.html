@@ -1042,7 +1042,7 @@
     function applySavedPayload(data) {
       var h = data.header || {};
       $('userName').value = h.userName || '';
-      $('kNo').value = h.kNo || '';
+      $('kNo').value = normalizeKNo(h.kNo);
       $('plate').value = h.plate || '';
       fillHeaderSelect($('dept'), master.departments || [], h.dept || '');
       applyDeptDefaults();
@@ -1131,7 +1131,7 @@
           setBusy(false);
           bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
           var kind = res.overwritten ? '上書き保存' : '新規保存';
-          setStatus(kind + 'しました（K-No ' + payload.header.kNo + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
+          setStatus(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -2624,7 +2624,7 @@
             applySavedPayload(data);
             bindCurrentSave((data && data.saveId) || saveId, (data && data.header && data.header.kNo) || '');
             setBusy(false);
-            setStatus('呼び出しました（K-No ' + ((data && data.header && data.header.kNo) || '') + '）');
+            setStatus('呼び出しました（K-No ' + (normalizeKNo((data && data.header && data.header.kNo) || '') || '') + '）');
           } catch (err) {
             setBusy(false);
             setStatus('呼び出し後の画面反映に失敗しました: ' + (err.message || err), true);

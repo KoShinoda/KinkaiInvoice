@@ -93,7 +93,7 @@ function loadInvoiceDraft(saveId) {
     throw new Error('保存データが見つかりません。');
   }
   const header = {
-    kNo: invoicePlain_(meta[1]),
+    kNo: normalizeInvoiceKNo_(meta[1]),
     userName: invoicePlain_(meta[4]),
     plate: invoicePlain_(meta[5]),
     billDate: formatInvoiceYmd_(meta[6]),

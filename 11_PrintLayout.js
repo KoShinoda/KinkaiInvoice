@@ -18,9 +18,9 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** No. の下の隙間。余りを埋めない（中ページの空行が伸びて最終ページが落ちる）。 */
+/** No. の下の空行。各ページの高さを印刷可能高さに揃える（余りを埋める）。 */
 var PRINT_PAD_MIN_ = 12;
-var PRINT_PAD_FILL_ = 0;
+var PRINT_PAD_FILL_ = 1;
 var PRINT_PX_PER_IN_ = 96;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
@@ -665,9 +665,7 @@ function printInnerWidthPx_() {
 }
 
 function printTargetInnerPx_() {
-  const m = PRINT_MARGIN_IN_;
-  const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
-  return Math.max(600, Math.floor(raw) - 12);
+  return printSheetPrintableHeightPx_();
 }
 
 function applyPrintColumnWidths_(sheet) {
@@ -713,7 +711,13 @@ function printDataRowHeight_() {
 }
 
 function printPadHeight_(showHeader, showFooter, slotH) {
-  return PRINT_PAD_MIN_;
+  const inner = printTargetInnerPx_();
+  const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
+  const leftover = inner - used;
+  if (leftover <= 0) {
+    return PRINT_PAD_MIN_;
+  }
+  return Math.max(PRINT_PAD_MIN_, Math.floor(leftover * PRINT_PAD_FILL_));
 }
 
 function fillPrintPage_(sheet, start, header, lines, opts) {
