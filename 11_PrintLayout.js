@@ -18,9 +18,9 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** No. の下の調整空行。余りは半分だけ使う（全部使うと次ページへ落ちる）。 */
+/** No. の下の調整空行。余りを埋めて次ページの明細が前ページに食い込まないようにする。 */
 var PRINT_PAD_MIN_ = 8;
-var PRINT_PAD_FILL_ = 0.5;
+var PRINT_PAD_FILL_ = 1;
 var PRINT_PX_PER_IN_ = 96;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
@@ -324,16 +324,15 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
     serial += slice.length;
     const end = cursor + used - 1;
     if (p < pageCount - 1) {
-      breakRows.push(end);
+      breakRows.push(end + 1);
     }
     cursor = end + 1;
   }
 
   trimPrintSheet_(sheet, cursor - 1);
+  applyA4PageSetup_(sheet, pageCount);
   applyPrintPageBreaksAt_(sheet, breakRows);
-  applyA4PageSetup_(sheet, pageCount);
   ss.setActiveSheet(sheet);
-  applyA4PageSetup_(sheet, pageCount);
   hideHelperSheet_(ss, ss.getSheetByName('_印刷A4縦'));
   ss.setActiveSheet(sheet);
   return { sheet: sheet, pageCount: pageCount };
@@ -514,9 +513,21 @@ function applyPrintPageBreaksAt_(sheet, breakRows) {
   if (typeof sheet.setRowPageBreak !== 'function') {
     return;
   }
-  for (let i = 0; i < breakRows.length; i++) {
-    sheet.setRowPageBreak(breakRows[i], true);
+  const maxR = sheet.getMaxRows();
+  if (typeof sheet.isRowPageBreak === 'function') {
+    for (let r = 1; r <= maxR; r++) {
+      if (sheet.isRowPageBreak(r)) {
+        sheet.setRowPageBreak(r, false);
+      }
+    }
   }
+  for (let i = 0; i < breakRows.length; i++) {
+    const row = breakRows[i];
+    if (row >= 1 && row <= maxR) {
+      sheet.setRowPageBreak(row, true);
+    }
+  }
+  SpreadsheetApp.flush();
 }
 
 function printPageLayout_(showHeader, showFooter, bodyRowCount) {
@@ -564,7 +575,7 @@ function printInnerWidthPx_() {
 function printTargetInnerPx_() {
   const m = PRINT_MARGIN_IN_;
   const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
-  return Math.max(600, Math.floor(raw) - 48);
+  return Math.max(600, Math.floor(raw) - 12);
 }
 
 function applyPrintColumnWidths_(sheet) {
@@ -613,6 +624,9 @@ function printPadHeight_(showHeader, showFooter, slotH) {
   const inner = printTargetInnerPx_();
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
   const leftover = inner - used;
+  if (leftover <= 0) {
+    return PRINT_PAD_MIN_;
+  }
   return Math.max(PRINT_PAD_MIN_, Math.floor(leftover * PRINT_PAD_FILL_));
 }
 
