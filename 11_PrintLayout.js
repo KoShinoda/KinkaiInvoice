@@ -42,7 +42,9 @@ var PRINT_FOOTER_H_ = 18;
  * @return {{pageCount: number, sheetNames: string[]}}
  */
 function writePrintSheets_(ss, payload, sheetName) {
-  const name = sheetName || CONFIG.print.sheetName;
+  const name = sheetName
+    ? sanitizeSheetName_(sheetName)
+    : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
   cleanupPrintSheets_(ss, name);
   const built = buildInvoicePrintSheet_(ss, name, payload);
   ss.setActiveSheet(built.sheet);
@@ -270,6 +272,10 @@ function cleanupPrintSheets_(ss, keepName) {
   for (let i = 0; i < sheets.length; i++) {
     const n = sheets[i].getName();
     if (n === keepName) {
+      continue;
+    }
+    if (n === CONFIG.print.sheetName) {
+      toDelete.push(sheets[i]);
       continue;
     }
     for (let p = 0; p < prefixes.length; p++) {

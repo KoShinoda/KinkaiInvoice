@@ -499,6 +499,17 @@
       padding: 4px 2px;
       flex: 0 0 34px;
     }
+    .kno-wrap {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .kno-wrap input { flex: 1; min-width: 0; }
+    .kno-wrap button {
+      flex: 0 0 auto;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
     .combo { position: relative; }
     .combo input { width: 100%; }
     .combo textarea {
@@ -571,7 +582,13 @@
       </div>
       <div class="grid header-grid">
         <div><label>ユーザー</label><input id="userName"></div>
-        <div><label>K-No</label><input id="kNo"></div>
+        <div>
+          <label>K-No</label>
+          <div class="kno-wrap">
+            <input id="kNo">
+            <button type="button" id="btnLoad" class="sub">検索</button>
+          </div>
+        </div>
         <div><label>登録番号</label><input id="plate"></div>
         <div><label>整備部門</label><select id="dept"></select></div>
         <div><label>整備種別</label><select id="serviceType"></select></div>
@@ -656,7 +673,6 @@
       <div id="status">読み込み中…</div>
       <div class="foot-actions">
         <button type="button" id="btnSave">保存</button>
-        <button type="button" id="btnLoad" class="sub">呼び出し</button>
         <button type="button" id="btnPrintSheet">印刷シートを作成</button>
         <button type="button" id="btnPrint" class="sub">PDFを作成</button>
       </div>
@@ -743,7 +759,7 @@
   </div>
   <div id="saveModePicker" class="invoice-picker save-mode-picker" hidden>
     <div class="worker-picker-head">
-      <span>保存</span>
+      <span id="saveModeTitle">保存</span>
       <button type="button" id="saveModeClose" class="worker-picker-x" title="閉じる">×</button>
     </div>
     <div class="save-mode-msg">呼び出した内容を上書きしますか？別バージョン（例: 3カ月／12カ月）にする場合は新規です。</div>
@@ -1082,10 +1098,13 @@
       if (!k || k !== boundKNo) return '';
       return currentSaveId;
     }
+    var saveModeKind = 'save';
     function hideSaveModePicker() {
       $('saveModePicker').hidden = true;
     }
-    function showSaveModePicker() {
+    function showSaveModePicker(kind) {
+      saveModeKind = kind === 'printSheet' ? 'printSheet' : 'save';
+      $('saveModeTitle').textContent = saveModeKind === 'printSheet' ? '印刷シートを作成' : '保存';
       var panel = $('saveModePicker');
       panel.hidden = false;
       var w = panel.offsetWidth;
@@ -1119,6 +1138,36 @@
           setStatus(err.message || String(err), true);
         })
         .saveInvoiceDraft(payload);
+    }
+    function runPrintSheet(mode) {
+      hideSaveModePicker();
+      var payload = collectPayload();
+      if (!String(payload.header.kNo || '').trim()) {
+        setStatus('印刷シートを作成するには K-No を入力してください。', true);
+        return;
+      }
+      payload.saveMode = mode === 'overwrite' ? 'overwrite' : 'new';
+      payload.saveId = mode === 'overwrite' ? boundSaveId() : '';
+      if (mode === 'overwrite' && !payload.saveId) {
+        payload.saveMode = 'new';
+      }
+      setBusy(true);
+      setStatus(payload.saveMode === 'overwrite' ? '上書き保存して印刷シートを作成しています…' : '保存して印刷シートを作成しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          if (res.saveId) bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
+          var kind = res.overwritten ? '上書き保存' : '新規保存';
+          setStatus(
+            kind + 'し、印刷シート「' + ((res.sheetNames && res.sheetNames[0]) || '') + '」を作成しました（' +
+            res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）'
+          );
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .publishPrintSheet(payload);
     }
     function onTemplatePicked() {
       var name = $('invoiceTemplate').value;
@@ -2519,7 +2568,7 @@
         return;
       }
       if (boundSaveId()) {
-        showSaveModePicker();
+        showSaveModePicker('save');
         return;
       }
       runSave('new');
@@ -2591,7 +2640,7 @@
       var kNo = normalizeKNo($('kNo').value);
       $('kNo').value = kNo;
       if (!kNo) {
-        setStatus('呼び出す K-No を入力してください。', true);
+        setStatus('検索する K-No を入力してください。', true);
         return;
       }
       setBusy(true);
@@ -2617,8 +2666,14 @@
       if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
       restoreInvoice(tr.getAttribute('data-save-id'));
     });
-    $('saveModeOverwrite').addEventListener('click', function () { runSave('overwrite'); });
-    $('saveModeNew').addEventListener('click', function () { runSave('new'); });
+    $('saveModeOverwrite').addEventListener('click', function () {
+      if (saveModeKind === 'printSheet') runPrintSheet('overwrite');
+      else runSave('overwrite');
+    });
+    $('saveModeNew').addEventListener('click', function () {
+      if (saveModeKind === 'printSheet') runPrintSheet('new');
+      else runSave('new');
+    });
     $('saveModeCancel').addEventListener('click', function () { hideSaveModePicker(); });
     $('saveModeClose').addEventListener('click', function (e) {
       e.preventDefault();
@@ -2627,18 +2682,15 @@
 
     $('btnPrintSheet').addEventListener('click', function () {
       var payload = collectPayload();
-      setBusy(true);
-      setStatus('印刷シートを作成しています…');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setBusy(false);
-          setStatus('印刷シート「' + ((res.sheetNames && res.sheetNames[0]) || '印刷') + '」を作成しました（' + res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）');
-        })
-        .withFailureHandler(function (err) {
-          setBusy(false);
-          setStatus(err.message || String(err), true);
-        })
-        .publishPrintSheet(payload);
+      if (!String(payload.header.kNo || '').trim()) {
+        setStatus('印刷シートを作成するには K-No を入力してください。', true);
+        return;
+      }
+      if (boundSaveId()) {
+        showSaveModePicker('printSheet');
+        return;
+      }
+      runPrintSheet('new');
     });
 
     $('btnPrint').addEventListener('click', function () {

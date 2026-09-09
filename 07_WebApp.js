@@ -387,7 +387,25 @@ function pickPartDisplay_(row) {
 }
 
 function publishPrintSheet(payload) {
-  return invoiceJsonSafe_(publishInvoices(payload));
+  if (!payload || !payload.header || !normalizeInvoiceKNo_(payload.header.kNo)) {
+    throw new Error('K-No を入力してください。');
+  }
+  const saved = saveInvoiceDraft_(payload);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const reuse = saved.overwritten ? String(saved.printSheetName || '').trim() : '';
+  const reuseOk = !!(reuse && ss.getSheetByName(reuse));
+  const sheetName = reuseOk ? reuse : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
+  const printed = publishInvoices(payload, sheetName);
+  setInvoicePrintSheetName_(saved.saveId, (printed.sheetNames && printed.sheetNames[0]) || sheetName);
+  return invoiceJsonSafe_({
+    pageCount: printed.pageCount,
+    lineCount: printed.lineCount,
+    sheetNames: printed.sheetNames,
+    saveId: saved.saveId,
+    savedAt: saved.savedAt,
+    overwritten: !!saved.overwritten,
+    kNo: saved.kNo
+  });
 }
 
 /**
@@ -396,7 +414,7 @@ function publishPrintSheet(payload) {
  * @param {object} payload
  * @return {{pageCount: number, lineCount: number, sheetNames: string[]}}
  */
-function publishInvoices(payload) {
+function publishInvoices(payload, sheetName) {
   if (!payload || !payload.items || !payload.items.length) {
     throw new Error('明細がありません。');
   }
@@ -416,7 +434,7 @@ function publishInvoices(payload) {
 
   writeInputSheetFromApp_(inputSheet, payload);
   writeSummaryToInput_(inputSheet, payload.summary);
-  const printed = writePrintSheets_(ss, payload);
+  const printed = writePrintSheets_(ss, payload, sheetName);
 
   return {
     pageCount: printed.pageCount,
