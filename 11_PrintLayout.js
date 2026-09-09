@@ -31,7 +31,7 @@ var PRINT_TITLE_H_ = 26;
 var PRINT_META_LABEL_H_ = 16;
 var PRINT_META_VALUE_H_ = 22;
 var PRINT_SPACER_H_ = 2;
-var PRINT_FOOTER_H_ = 18;
+var PRINT_FOOTER_H_ = 22;
 
 /**
  * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
@@ -706,6 +706,9 @@ function printPadHeight_(showHeader, showFooter, slotH) {
   const inner = printTargetInnerPx_();
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
   const leftover = inner - used;
+  if (showFooter) {
+    return PRINT_PAD_MIN_;
+  }
   if (leftover <= 0) {
     return PRINT_PAD_MIN_;
   }
@@ -1163,7 +1166,9 @@ function fillPrintFooterBlock_(sheet, f, summary) {
     .setHorizontalAlignment('right');
 
   sheet.getRange(f, 1, 5, 8)
-    .setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
+    .setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID)
+    .setWrap(false)
+    .setVerticalAlignment('middle');
 }
 
 function printPct_(sub, disc, given) {
