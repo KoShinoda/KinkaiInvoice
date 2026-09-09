@@ -682,9 +682,20 @@ function invoicePayloadFromTemplate_(templateName, header, techPct, partPct) {
 }
 
 function pdfFileName_(payload) {
-  const kNo = normalizeInvoiceKNo_(payload && payload.header && payload.header.kNo) || '請求書';
-  const when = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyyMMdd_HHmmss');
-  return '請求書_' + kNo + '_' + when + '.pdf';
+  const header = payload && payload.header ? payload.header : {};
+  const digits = String(normalizeInvoiceKNo_(header.kNo) || '').replace(/\D/g, '');
+  const k4 = ('0000' + digits).slice(-4);
+  return pdfDateStamp_(header) + '_K-' + k4 + '.pdf';
+}
+
+function pdfDateStamp_(header) {
+  const raw = header && (header.inDate || header.outDate || header.billDate);
+  const ymd = formatInvoiceYmd_(raw);
+  const m = String(ymd || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (m) {
+    return m[1] + ('0' + m[2]).slice(-2) + ('0' + m[3]).slice(-2);
+  }
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyyMMdd');
 }
 
 function exportPrintSheetPdf_(ss, sheet, filename) {

@@ -18,9 +18,9 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** No. の下の調整空行。余りを埋めて次ページの明細が前ページに食い込まないようにする。 */
-var PRINT_PAD_MIN_ = 8;
-var PRINT_PAD_FILL_ = 1;
+/** No. の下の隙間。余りを埋めない（中ページの空行が伸びて最終ページが落ちる）。 */
+var PRINT_PAD_MIN_ = 12;
+var PRINT_PAD_FILL_ = 0;
 var PRINT_PX_PER_IN_ = 96;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
@@ -707,13 +707,7 @@ function printDataRowHeight_() {
 }
 
 function printPadHeight_(showHeader, showFooter, slotH) {
-  const inner = printTargetInnerPx_();
-  const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
-  const leftover = inner - used;
-  if (leftover <= 0) {
-    return PRINT_PAD_MIN_;
-  }
-  return Math.max(PRINT_PAD_MIN_, Math.floor(leftover * PRINT_PAD_FILL_));
+  return PRINT_PAD_MIN_;
 }
 
 function fillPrintPage_(sheet, start, header, lines, opts) {
@@ -991,6 +985,14 @@ function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
   sheet.getRange(start + L.pageNo, 5, 1, 4).merge();
 }
 
+function formatPrintKNo_(value) {
+  const k = normalizeInvoiceKNo_(value);
+  if (!k) {
+    return '';
+  }
+  return ('0000' + String(k).replace(/\D/g, '')).slice(-4);
+}
+
 function fillPrintHeader_(sheet, start, L, header) {
   const l1 = start + L.metaL1;
   const v1 = start + L.metaV1;
@@ -1003,7 +1005,7 @@ function fillPrintHeader_(sheet, start, L, header) {
   sheet.getRange(l1, 3).setValue('K-No').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l1, 6).setValue('登録番号').setFontSize(12).setFontWeight('bold');
   sheet.getRange(v1, 2).setValue(header.userName || '').setFontSize(12);
-  sheet.getRange(v1, 3).setValue(header.kNo || '').setFontSize(12);
+  sheet.getRange(v1, 3).setValue(formatPrintKNo_(header.kNo)).setFontSize(12);
   sheet.getRange(v1, 6).setValue(header.plate || '').setFontSize(12);
 
   sheet.getRange(l2, 2).setValue('整備部門').setFontSize(12).setFontWeight('bold');
