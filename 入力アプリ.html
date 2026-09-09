@@ -2361,7 +2361,7 @@
         moveRight(e.target, e.shiftKey ? -1 : 1);
         return;
       }
-      if (e.key === 'Enter' && isMidTextarea(e.target) && (e.shiftKey || e.ctrlKey || e.altKey)) {
+      if (e.key === 'Enter' && isMidTextarea(e.target) && (e.ctrlKey || e.altKey)) {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
         insertMidNewline(e.target);
@@ -2370,7 +2370,7 @@
       if (e.key === 'Enter') {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
-        moveDown(e.target, 1);
+        moveDown(e.target, e.shiftKey ? -1 : 1);
         return;
       }
       if (k === 'workerCode' || k === 'mid' || k === 'partMid') {
