@@ -125,25 +125,48 @@ function loadInvoiceDraft(saveId) {
 }
 
 function publishInvoicePdf(payload) {
-  const printed = publishInvoices(payload);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const name = (CONFIG.print && CONFIG.print.sheetName) || '印刷';
+  let sh = ss.getSheetByName(name);
+  let printed = null;
+  if (!sh) {
+    printed = publishInvoices(payload);
+    sh = ss.getSheetByName((printed.sheetNames && printed.sheetNames[0]) || name);
+  }
   let saved = null;
   if (payload && payload.header && normalizeInvoiceKNo_(payload.header.kNo)) {
     saved = saveInvoiceDraft_(payload);
   }
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = printed.sheetNames && printed.sheetNames[0];
-  const sh = sheetName ? ss.getSheetByName(sheetName) : ss.getActiveSheet();
+  if (!sh) {
+    throw new Error('印刷シートがありません。先に「印刷シートを作成」してください。');
+  }
   const blob = exportPrintSheetPdf_(ss, sh, pdfFileName_(payload));
   return invoiceJsonSafe_({
-    pageCount: printed.pageCount,
-    lineCount: printed.lineCount,
-    sheetNames: printed.sheetNames,
+    pageCount: printed ? printed.pageCount : countPrintSheetPages_(sh),
+    lineCount: printed ? printed.lineCount : '',
+    sheetNames: printed ? printed.sheetNames : [sh.getName()],
+    rebuiltSheet: !!printed,
     saveId: saved ? saved.saveId : '',
     savedAt: saved ? saved.savedAt : '',
     overwritten: !!(saved && saved.overwritten),
     filename: blob.getName(),
     pdfBase64: Utilities.base64Encode(blob.getBytes())
   });
+}
+
+function countPrintSheetPages_(sheet) {
+  const last = sheet.getLastRow();
+  if (last < 1) {
+    return 1;
+  }
+  const vals = sheet.getRange(1, 5, last, 1).getDisplayValues();
+  let n = 0;
+  for (let i = 0; i < vals.length; i++) {
+    if (/^No\.\d+／\d+$/.test(String(vals[i][0] || '').trim())) {
+      n += 1;
+    }
+  }
+  return Math.max(1, n);
 }
 
 function saveInvoiceDraft_(payload, savedAtOpt) {

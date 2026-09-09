@@ -657,7 +657,8 @@
       <div class="foot-actions">
         <button type="button" id="btnSave">保存</button>
         <button type="button" id="btnLoad" class="sub">呼び出し</button>
-        <button type="button" id="btnPrint">PDFを作成</button>
+        <button type="button" id="btnPrintSheet">印刷シートを作成</button>
+        <button type="button" id="btnPrint" class="sub">PDFを作成</button>
       </div>
     </div>
     <div class="foot-sum">
@@ -1068,6 +1069,7 @@
     function setBusy(busy) {
       $('btnSave').disabled = busy;
       $('btnLoad').disabled = busy;
+      $('btnPrintSheet').disabled = busy;
       $('btnPrint').disabled = busy;
     }
     function bindCurrentSave(saveId, kNo) {
@@ -2624,13 +2626,29 @@
       hideSaveModePicker();
     });
 
+    $('btnPrintSheet').addEventListener('click', function () {
+      var payload = collectPayload();
+      setBusy(true);
+      setStatus('印刷シートを作成しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          setStatus('印刷シート「' + ((res.sheetNames && res.sheetNames[0]) || '印刷') + '」を作成しました（' + res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .publishPrintSheet(payload);
+    });
+
     $('btnPrint').addEventListener('click', function () {
       var payload = collectPayload();
       var sid = boundSaveId();
       payload.saveId = sid;
       payload.saveMode = sid ? 'overwrite' : 'new';
       setBusy(true);
-      setStatus('印刷シートと PDF を作成しています…');
+      setStatus('PDF を作成しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
@@ -2639,9 +2657,12 @@
           var extra = !res.saveId
             ? '／K-No が空のため保存なし'
             : (res.overwritten ? '／既存を上書き保存しました' : '／新規保存しました');
+          var sheetNote = res.rebuiltSheet
+            ? '／印刷シートが無かったので作成してから PDF にしました'
+            : '／既存の印刷シートから PDF';
           setStatus(
             (printed ? 'PDFを開き、印刷ダイアログを出します。' : 'PDFをダウンロードしました。ファイルを開いて印刷してください。') +
-            ' ' + res.filename + '（' + res.pageCount + ' 枚）' + extra
+            ' ' + res.filename + '（' + res.pageCount + ' 枚）' + extra + sheetNote
           );
         })
         .withFailureHandler(function (err) {

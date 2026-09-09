@@ -1,6 +1,7 @@
 /**
  * A4 印刷原本。1 シートにページを縦積みする。
  * 1 枚目だけヘッダー、最終枚だけフッター。明細の直下に No.、その下の空行で高さを合わせる。
+ * 中項目が複数行のときは行数ぶん枠を使い、入りきらない明細は次ページへ送る。
  * 大量印刷向けに色は使わない。
  */
 
@@ -296,8 +297,8 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   const items = (payload.items || []).filter(function (it) {
     return rowHasContent_(it);
   });
-  const per = CONFIG.print.linesPerPage;
-  const pageCount = Math.max(1, Math.ceil(items.length / per) || 1);
+  const pages = paginatePrintItems_(items);
+  const pageCount = Math.max(1, pages.length);
   printWorkerValue_.maps_ = null;
   const sheet = replacePrintSheet_(ss, sheetName);
   const slotH = printDataRowHeight_();
@@ -307,18 +308,20 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   applyPrintColumnWidths_(sheet);
 
   let cursor = 1;
+  let serial = 0;
   const breakRows = [];
   for (let p = 0; p < pageCount; p++) {
-    const slice = items.slice(p * per, p * per + per);
+    const slice = pages[p] || [];
     const used = fillPrintPage_(sheet, cursor, payload.header || {}, slice, {
       page: p + 1,
       pageCount: pageCount,
-      serialOffset: p * per,
+      serialOffset: serial,
       showHeader: p === 0,
       showFooter: p === pageCount - 1,
       summary: payload.summary || {},
       slotH: slotH
     });
+    serial += slice.length;
     const end = cursor + used - 1;
     if (p < pageCount - 1) {
       breakRows.push(end);
@@ -334,6 +337,60 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   hideHelperSheet_(ss, ss.getSheetByName('_印刷A4縦'));
   ss.setActiveSheet(sheet);
   return { sheet: sheet, pageCount: pageCount };
+}
+
+/** 1 ページの枠数（既定 30）。複数行の明細はその行数を消費し、余りは次ページ。 */
+function printItemUnits_(it) {
+  const per = CONFIG.print.linesPerPage;
+  if (!it) {
+    return 1;
+  }
+  const work = it.mid || it.name || '';
+  const part = it.partMid || it.part || '';
+  const n = Math.max(newlineCount_(work), newlineCount_(part));
+  return Math.max(1, Math.min(per, n));
+}
+
+function paginatePrintItems_(items) {
+  const per = CONFIG.print.linesPerPage;
+  const pages = [];
+  let cur = [];
+  let used = 0;
+  (items || []).forEach(function (it) {
+    const u = printItemUnits_(it);
+    if (cur.length && used + u > per) {
+      pages.push(cur);
+      cur = [];
+      used = 0;
+    }
+    cur.push(it);
+    used += u;
+  });
+  if (cur.length) {
+    pages.push(cur);
+  }
+  if (!pages.length) {
+    pages.push([]);
+  }
+  return pages;
+}
+
+function printBodyPlan_(lines) {
+  const per = CONFIG.print.linesPerPage;
+  const itemUnits = [];
+  let units = 0;
+  (lines || []).forEach(function (it) {
+    const u = printItemUnits_(it);
+    itemUnits.push(u);
+    units += u;
+  });
+  const blanks = Math.max(0, per - units);
+  return {
+    itemUnits: itemUnits,
+    units: units,
+    blanks: blanks,
+    bodyRowCount: Math.max(1, (lines || []).length + blanks)
+  };
 }
 
 function replacePrintSheet_(ss, name) {
@@ -462,7 +519,7 @@ function applyPrintPageBreaksAt_(sheet, breakRows) {
   }
 }
 
-function printPageLayout_(showHeader, showFooter) {
+function printPageLayout_(showHeader, showFooter, bodyRowCount) {
   let r = 0;
   const L = {};
   if (showHeader) {
@@ -486,7 +543,7 @@ function printPageLayout_(showHeader, showFooter) {
   L.colHead = r;
   r++;
   L.firstLine = r;
-  r += CONFIG.print.linesPerPage;
+  r += bodyRowCount || CONFIG.print.linesPerPage;
   if (showFooter) {
     L.footerStart = r;
     r += 5;
@@ -562,7 +619,8 @@ function printPadHeight_(showHeader, showFooter, slotH) {
 function fillPrintPage_(sheet, start, header, lines, opts) {
   const showHeader = !!opts.showHeader;
   const showFooter = !!opts.showFooter;
-  const L = printPageLayout_(showHeader, showFooter);
+  const plan = printBodyPlan_(lines);
+  const L = printPageLayout_(showHeader, showFooter, plan.bodyRowCount);
   const cols = CONFIG.print.colCount;
   const slotH = opts.slotH || printDataRowHeight_();
 
@@ -573,7 +631,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
     .setVerticalAlignment('middle')
     .setWrap(false);
 
-  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH);
+  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan);
   mergePrintPage_(sheet, start, L, showHeader, showFooter);
 
   if (showHeader && L.title != null) {
@@ -598,7 +656,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
     .setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
 
   const first = start + L.firstLine;
-  fillPrintBody_(sheet, first, lines, opts.serialOffset || 0);
+  fillPrintBody_(sheet, first, lines, opts.serialOffset || 0, plan.bodyRowCount);
 
   if (showFooter) {
     fillPrintFooterBlock_(sheet, start + L.footerStart, opts.summary || {});
@@ -659,12 +717,12 @@ function workerPrintMaps_() {
   return maps;
 }
 
-function fillPrintBody_(sheet, first, lines, serialOffset) {
-  const per = CONFIG.print.linesPerPage;
+function fillPrintBody_(sheet, first, lines, serialOffset, bodyRowCount) {
+  const n = bodyRowCount || CONFIG.print.linesPerPage;
   const cols = CONFIG.print.colCount;
   const empty = ['', '', '', '', '', '', '', ''];
   const body = [];
-  for (let i = 0; i < per; i++) {
+  for (let i = 0; i < n; i++) {
     const it = lines[i];
     if (!it) {
       body.push(empty.slice());
@@ -685,23 +743,22 @@ function fillPrintBody_(sheet, first, lines, serialOffset) {
     ]);
   }
 
-  const bodyRange = sheet.getRange(first, 1, per, cols);
+  const bodyRange = sheet.getRange(first, 1, n, cols);
   bodyRange.setValues(body);
   bodyRange.setBorder(true, true, true, true, true, true, PRINT_BLACK_, SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(first, 1, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 2, per, 1).setWrap(false);
-  sheet.getRange(first, 3, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
-  sheet.getRange(first, 4, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 5, per, 1).setWrap(false);
-  sheet.getRange(first, 6, per, 1).setHorizontalAlignment('center').setWrap(false);
-  sheet.getRange(first, 7, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
-  sheet.getRange(first, 8, per, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right').setFontSize(PRINT_FONT_MAX_ - 1);
+  sheet.getRange(first, 1, n, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 2, n, 1).setWrap(false);
+  sheet.getRange(first, 3, n, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(first, 4, n, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 5, n, 1).setWrap(false);
+  sheet.getRange(first, 6, n, 1).setHorizontalAlignment('center').setWrap(false);
+  sheet.getRange(first, 7, n, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right');
+  sheet.getRange(first, 8, n, 1).setNumberFormat(PRINT_YEN_FORMAT_).setHorizontalAlignment('right').setFontSize(PRINT_FONT_MAX_ - 1);
   fillPrintBodyFonts_(sheet, first, lines);
 }
 
 function fillPrintBodyFonts_(sheet, first, lines) {
-  const per = CONFIG.print.linesPerPage;
-  for (let i = 0; i < per; i++) {
+  for (let i = 0; i < (lines || []).length; i++) {
     const it = lines[i];
     if (!it) {
       continue;
@@ -778,7 +835,7 @@ function fitPrintFont_(text, colWidth) {
   return PRINT_FONT_MIN_;
 }
 
-function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) {
+function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan) {
   const padH = printPadHeight_(showHeader, showFooter, slotH);
   if (showHeader && L.title != null) {
     sheet.setRowHeight(start + L.title, PRINT_TITLE_H_);
@@ -791,7 +848,16 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH) 
     sheet.setRowHeight(start + L.spacer, PRINT_SPACER_H_);
   }
   sheet.setRowHeight(start + L.colHead, PRINT_COL_HEAD_H_);
-  sheet.setRowHeights(start + L.firstLine, CONFIG.print.linesPerPage, slotH);
+  let r = start + L.firstLine;
+  const units = (plan && plan.itemUnits) || [];
+  for (let i = 0; i < units.length; i++) {
+    sheet.setRowHeight(r, slotH * units[i]);
+    r++;
+  }
+  const blanks = plan && plan.blanks != null ? plan.blanks : CONFIG.print.linesPerPage;
+  if (blanks > 0) {
+    sheet.setRowHeights(r, blanks, slotH);
+  }
   if (showFooter) {
     sheet.setRowHeights(start + L.footerStart, 5, PRINT_FOOTER_H_);
   }

@@ -386,6 +386,10 @@ function pickPartDisplay_(row) {
   return row.partMajor || '';
 }
 
+function publishPrintSheet(payload) {
+  return invoiceJsonSafe_(publishInvoices(payload));
+}
+
 /**
  * 車検_入力へ保存し、A4 印刷シートを 1 枚作る。
  *
