@@ -280,30 +280,78 @@ function loadPartCatalog_(workRows) {
     uniquePartLines.push(r);
   });
 
-  const partMajors = uniqueValues_(uniquePartLines.map(function (r) {
-    return r.major;
-  }));
-  const allPartMids = uniqueValues_(uniquePartLines.map(function (r) {
-    return r.mid;
-  }));
-  const partMidsByMajor = {};
-  uniquePartLines.forEach(function (r) {
-    if (!r.major || !r.mid) {
-      return;
-    }
-    if (!partMidsByMajor[r.major]) {
-      partMidsByMajor[r.major] = [];
-    }
-    if (partMidsByMajor[r.major].indexOf(r.mid) === -1) {
-      partMidsByMajor[r.major].push(r.mid);
-    }
-  });
+  const drop = loadPartListDropdowns_();
   return {
     partLines: uniquePartLines,
-    partMajors: partMajors,
-    allPartMids: allPartMids,
-    partMidsByMajor: partMidsByMajor
+    partMajors: drop.partMajors,
+    allPartMids: drop.allPartMids,
+    partMidsByMajor: drop.partMidsByMajor
   };
+}
+
+/** 入力の部品大項目・中項目は部品リストのみ（作業リストは展開用 partLines に残す）。 */
+function loadPartListDropdowns_() {
+  const majors = [];
+  const allMids = [];
+  const byMajor = {};
+  function addMajor(v) {
+    if (!v || majors.indexOf(v) !== -1) {
+      return;
+    }
+    majors.push(v);
+  }
+  function addMid(major, mid) {
+    if (!mid) {
+      return;
+    }
+    if (allMids.indexOf(mid) === -1) {
+      allMids.push(mid);
+    }
+    if (!major) {
+      return;
+    }
+    if (!byMajor[major]) {
+      byMajor[major] = [];
+    }
+    if (byMajor[major].indexOf(mid) === -1) {
+      byMajor[major].push(mid);
+    }
+  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.parts.sheetName);
+  if (!sh) {
+    return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
+  }
+  const vals = sh.getDataRange().getValues();
+  if (!vals.length) {
+    return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
+  }
+  let start = 0;
+  const h = normalize_(vals[0][0]) + (vals[0].length > 1 ? normalize_(vals[0][1]) : '');
+  if (h.indexOf('大項目') !== -1 || h.indexOf('部品') !== -1 || h.indexOf('中項目') !== -1) {
+    start = 1;
+  }
+  const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
+  let carryMajor = '';
+  let carryMid = '';
+  for (let i = start; i < vals.length; i++) {
+    const rawMajor = cols.major ? normalize_(cell_(vals[i], cols.major)) : normalize_(vals[i][0]);
+    const rawMid = cols.mid ? normalize_(cell_(vals[i], cols.mid)) : (vals[i].length > 1 ? normalize_(vals[i][1]) : '');
+    if (rawMajor) {
+      carryMajor = rawMajor;
+    }
+    if (rawMid) {
+      carryMid = rawMid;
+    }
+    const major = rawMajor || carryMajor;
+    const mid = rawMid || carryMid;
+    if (!major && !mid) {
+      continue;
+    }
+    addMajor(major);
+    addMid(major, mid);
+  }
+  return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
 }
 
 function isProbablyNumber_(value) {

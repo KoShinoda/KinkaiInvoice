@@ -275,7 +275,6 @@
     td.major select,
     td.part-major select,
     td.staff input,
-    td.part-mid input,
     td.num input,
     td.fee input {
       height: 28px;
@@ -514,20 +513,10 @@
       border: 1px solid var(--line);
       border-radius: 7px;
       box-sizing: border-box;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-    .combo textarea:focus {
       white-space: pre-wrap;
-      overflow: auto;
-      text-overflow: clip;
+      word-break: break-word;
     }
-    td.mid { vertical-align: middle; }
-    td.part-mid input {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    td.mid, td.part-mid { vertical-align: top; }
     .combo-list {
       position: absolute;
       left: 0; right: 0; top: 100%;
@@ -1441,7 +1430,7 @@
         fee: tr.querySelector('[data-k="fee"]'),
         workerCode: tr.querySelector('input[data-k="workerCode"]'),
         partMajor: tr.querySelector('select[data-k="partMajor"]'),
-        partMid: tr.querySelector('input[data-k="partMid"]'),
+        partMid: tr.querySelector('[data-k="partMid"]'),
         unitPrice: tr.querySelector('[data-k="unitPrice"]'),
         qty: tr.querySelector('[data-k="qty"]'),
         amount: tr.querySelector('[data-k="amount"]'),
@@ -1483,11 +1472,12 @@
       if (c.mid) {
         c.mid.value = it.mid || '';
         c.mid.dataset.options = midsJson(it.major);
-        fitMidHeight(c.mid, false);
+        fitMidHeight(c.mid);
       }
       if (c.partMid) {
         c.partMid.value = it.partMid || '';
         c.partMid.dataset.options = partMidsJson(it.partMajor);
+        fitMidHeight(c.partMid);
       }
       c.fee.value = it.fee == null ? '' : it.fee;
       c.qty.value = it.qty == null ? '' : it.qty;
@@ -1525,7 +1515,10 @@
           (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="part-major side-part"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
-        '<td class="part-mid side-part"><div class="combo"><input data-i="' + i + '" data-k="partMid" autocomplete="off"><div class="combo-list" hidden></div></div></td>' +
+        '<td class="part-mid side-part"><div class="combo">' +
+          '<textarea data-i="' + i + '" data-k="partMid" rows="1" autocomplete="off"></textarea>' +
+          '<div class="combo-list" hidden></div>' +
+        '</div></td>' +
         '<td class="num side-part"><input data-i="' + i + '" data-k="unitPrice"></td>' +
         '<td class="num side-part"><input data-i="' + i + '" data-k="qty"></td>' +
         '<td class="num side-part"><input data-i="' + i + '" data-k="amount"></td>' +
@@ -1893,15 +1886,11 @@
     function comboKeepInput() {
       return isComboField(document.activeElement) ? document.activeElement : null;
     }
-    function fitMidHeight(el, expand) {
-      if (!el || el.dataset.k !== 'mid') return;
-      var on = expand === true || document.activeElement === el;
-      if (!on) {
-        el.style.height = '28px';
-        el.style.overflow = 'hidden';
-        el.style.whiteSpace = 'nowrap';
-        return;
-      }
+    function isMidTextarea(el) {
+      return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid'));
+    }
+    function fitMidHeight(el) {
+      if (!isMidTextarea(el)) return;
       el.style.whiteSpace = 'pre-wrap';
       el.style.height = 'auto';
       var minH = 28;
@@ -1913,7 +1902,7 @@
       el.style.overflow = el.scrollHeight > maxH ? 'auto' : 'hidden';
     }
     function insertMidNewline(el) {
-      if (!el || el.dataset.k !== 'mid') return;
+      if (!isMidTextarea(el)) return;
       var i = Number(el.dataset.i);
       var start = el.selectionStart;
       var end = el.selectionEnd;
@@ -1922,7 +1911,7 @@
       var v = String(el.value || '');
       el.value = v.slice(0, start) + '\n' + v.slice(end);
       el.selectionStart = el.selectionEnd = start + 1;
-      if (items[i]) items[i].mid = el.value;
+      if (items[i]) items[i][el.dataset.k] = el.value;
       fitMidHeight(el);
     }
     function comboOptionLabel(v) {
@@ -2348,6 +2337,7 @@
         onMidChosen(i);
       } else if (input.dataset.k === 'partMid') {
         items[i].partMid = opt.dataset.value;
+        fitMidHeight(input);
         onPartMidChosen(i);
       } else if (input.dataset.k === 'workerCode') {
         commitWorkerAt(i, opt.dataset.value, { fillDown: true });
@@ -2360,7 +2350,7 @@
         hideComboLists();
         hideWorkerPicker();
         showComboList(e.target);
-        if (e.target.dataset.k === 'mid') fitMidHeight(e.target, true);
+        if (isMidTextarea(e.target)) fitMidHeight(e.target);
       }
     });
     $('tbody').addEventListener('keydown', function (e) {
@@ -2371,7 +2361,7 @@
         moveRight(e.target, e.shiftKey ? -1 : 1);
         return;
       }
-      if (e.key === 'Enter' && (e.ctrlKey || e.altKey) && k === 'mid') {
+      if (e.key === 'Enter' && isMidTextarea(e.target) && (e.shiftKey || e.ctrlKey || e.altKey)) {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
         insertMidNewline(e.target);
@@ -2380,7 +2370,7 @@
       if (e.key === 'Enter') {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
-        moveDown(e.target, e.shiftKey ? -1 : 1);
+        moveDown(e.target, 1);
         return;
       }
       if (k === 'workerCode' || k === 'mid' || k === 'partMid') {
@@ -2408,7 +2398,7 @@
         if (!items[Number(input.dataset.i)]) return;
         if (document.activeElement === input) return;
         commitCombo(input);
-        if (input.dataset.k === 'mid') fitMidHeight(input, false);
+        if (isMidTextarea(input)) fitMidHeight(input);
       }, 120);
     });
     $('tbody').addEventListener('change', function (e) {
@@ -2435,7 +2425,7 @@
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') {
         showComboList(t);
-        if (k === 'mid') fitMidHeight(t);
+        if (isMidTextarea(t)) fitMidHeight(t);
         return;
       }
       items[i][k] = t.value;
