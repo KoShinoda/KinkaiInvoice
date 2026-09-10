@@ -510,6 +510,16 @@
       padding: 6px 12px;
       font-size: 13px;
     }
+    .plate-wrap {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .plate-wrap select {
+      flex: 0 0 7.5em;
+      min-width: 0;
+    }
+    .plate-wrap input { flex: 1; min-width: 0; }
     .combo { position: relative; }
     .combo input { width: 100%; }
     .combo textarea {
@@ -589,7 +599,13 @@
             <button type="button" id="btnLoad" class="sub">検索</button>
           </div>
         </div>
-        <div><label>登録番号</label><input id="plate"></div>
+        <div>
+          <label>登録番号</label>
+          <div class="plate-wrap">
+            <select id="plateArea"></select>
+            <input id="plateNo" placeholder="130あ1111" autocomplete="off">
+          </div>
+        </div>
         <div><label>整備部門</label><select id="dept"></select></div>
         <div><label>整備種別</label><select id="serviceType"></select></div>
         <div><label>受付担当</label><select id="receptionist"></select></div>
@@ -948,15 +964,36 @@
     function initHeaderMasters() {
       fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
       fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
+      fillHeaderSelect($('plateArea'), PLATE_AREAS, $('plateArea').value);
       if (master.templateNames && master.templateNames.length) {
         fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
       }
       applyDeptDefaults();
     }
+    var PLATE_AREAS = ['苫小牧', '室蘭', '北九州'];
+    function joinPlate() {
+      return String($('plateArea').value || '').trim() + String($('plateNo').value || '').trim();
+    }
+    function splitPlate(raw) {
+      var s = String(raw == null ? '' : raw).replace(/\u3000/g, ' ').trim();
+      var i;
+      var area = '';
+      for (i = 0; i < PLATE_AREAS.length; i++) {
+        if (s.indexOf(PLATE_AREAS[i]) === 0 && PLATE_AREAS[i].length > area.length) {
+          area = PLATE_AREAS[i];
+        }
+      }
+      return { area: area, no: area ? s.slice(area.length).trim() : s };
+    }
+    function setPlateFields(raw) {
+      var p = splitPlate(raw);
+      fillHeaderSelect($('plateArea'), PLATE_AREAS, p.area);
+      $('plateNo').value = p.no;
+    }
     function clearHeaderFields() {
       $('userName').value = '';
       $('kNo').value = '';
-      $('plate').value = '';
+      setPlateFields('');
       $('dept').value = '';
       applyDeptDefaults();
       $('serviceType').value = '';
@@ -1026,7 +1063,7 @@
         header: {
           userName: $('userName').value,
           kNo: kNo,
-          plate: $('plate').value,
+          plate: joinPlate(),
           dept: $('dept').value,
           serviceType: $('serviceType').value,
           receptionist: $('receptionist').value,
@@ -1044,7 +1081,7 @@
       var h = data.header || {};
       $('userName').value = h.userName || '';
       $('kNo').value = normalizeKNo(h.kNo);
-      $('plate').value = h.plate || '';
+      setPlateFields(h.plate || '');
       fillHeaderSelect($('dept'), master.departments || [], h.dept || '');
       applyDeptDefaults();
       if (h.serviceType) {
