@@ -654,8 +654,7 @@ function printInnerWidthPx_() {
 function printTargetInnerPx_() {
   const m = PRINT_MARGIN_IN_;
   const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
-  const footerBlock = PRINT_FOOTER_H_ * 5 + PRINT_PAGE_NO_H_;
-  return Math.max(600, Math.floor(raw) - 12 - footerBlock);
+  return Math.max(600, Math.floor(raw) - 12);
 }
 
 function applyPrintColumnWidths_(sheet) {
