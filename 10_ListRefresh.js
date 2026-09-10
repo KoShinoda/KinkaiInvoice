@@ -357,7 +357,6 @@ function refreshMasterListSheet_(sheet) {
   sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers);
   invalidateContext_();
   if (sheet.getName() === CONFIG.workList.sheetName) {
-    rebuildMidCandidateSheet_();
     fillWorkListWorkerCodesFromNames_(sheet);
   }
   const work = sheet.getParent().getSheetByName(CONFIG.workList.sheetName);

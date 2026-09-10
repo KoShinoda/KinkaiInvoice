@@ -781,6 +781,46 @@ function parsePrintSheetSortKey_(name) {
   };
 }
 
+function cmpPrintSheetKey_(a, b) {
+  if (a.date !== b.date) {
+    return a.date > b.date ? -1 : 1;
+  }
+  if (a.kNo !== b.kNo) {
+    return a.kNo < b.kNo ? -1 : 1;
+  }
+  return a.serial - b.serial;
+}
+
+/** 新規タブだけ正しい位置へ1回移動（全タブ並べ替えより速い）。 */
+function placePrintSheetInOrder_(ss, sheet) {
+  if (!ss || !sheet) {
+    return;
+  }
+  const key = parsePrintSheetSortKey_(sheet.getName());
+  if (!key) {
+    return;
+  }
+  const sheets = ss.getSheets();
+  let pos = sheets.length;
+  for (let i = 0; i < sheets.length; i++) {
+    const other = sheets[i];
+    if (other.getSheetId() === sheet.getSheetId()) {
+      continue;
+    }
+    const ok = parsePrintSheetSortKey_(other.getName());
+    if (!ok) {
+      continue;
+    }
+    if (cmpPrintSheetKey_(key, ok) < 0) {
+      pos = i + 1;
+      break;
+    }
+    pos = i + 2;
+  }
+  ss.setActiveSheet(sheet);
+  ss.moveActiveSheet(pos);
+}
+
 function uniquePrintSheetName_(ss, base) {
   const root = sanitizeSheetName_(base);
   if (!ss.getSheetByName(root)) {
@@ -818,7 +858,20 @@ function findLatestPrintSheet_(ss, base) {
 }
 
 function printSheetForSave_(ss, payload) {
-  return ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
+  const sid = payload && payload.saveMode !== 'new' ? String(payload.saveId || '').trim() : '';
+  if (sid) {
+    const found = findInvoiceIndexRow_(ensureInvoiceSaveIndexSheet_(true), sid);
+    const n = found ? invoicePrintSheetName_(found.row) : '';
+    if (n) {
+      const bound = ss.getSheetByName(n);
+      if (bound) {
+        return bound;
+      }
+    }
+  }
+  return findLatestPrintSheet_(ss, printSheetNameFromPayload_(payload))
+    || ss.getSheetByName((CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示')
+    || ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
 }
 
 /** シート名に使えない : \ / ? * [ ] と先頭の ' を除く。 */

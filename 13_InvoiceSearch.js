@@ -1,6 +1,6 @@
 /**
- * シート「請求書検索」。K-No 検索 → 一覧から選択 → 印刷シートを表示。
- * 入力シート（車検_入力）は書き換えない。印刷シートが無ければ保存内容から作る。
+ * シート「請求書検索」。K-No 検索 → 一覧から選択 → 印刷_表示へ描画。
+ * 入力アプリの画面は書き換えない。
  */
 
 var INVOICE_SEARCH_KNO_ = 'B3';
@@ -201,7 +201,6 @@ function showSavedInvoicePrint_(saveId) {
   };
   const viewName = (CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示';
   ss.toast('保存データから表示しています…', '請求書検索', 5);
-  cleanupPrintSheets_(ss, viewName);
   const built = buildInvoicePrintSheet_(ss, viewName, payload);
   setInvoicePrintSheetName_(id, built.sheet.getName());
   ss.setActiveSheet(built.sheet);

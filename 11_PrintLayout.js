@@ -35,7 +35,7 @@ var PRINT_SPACER_H_ = 2;
 var PRINT_FOOTER_H_ = 22;
 
 /**
- * 車検_入力保存後の印刷シート。常に「印刷」1 枚。
+ * 印刷シート。A4 縦 1 シートにページを縦積みする。
  *
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
  * @param {object} payload
@@ -45,9 +45,9 @@ var PRINT_FOOTER_H_ = 22;
 function writePrintSheets_(ss, payload, sheetName) {
   const name = sheetName
     ? sanitizeSheetName_(sheetName)
-    : ((CONFIG.print && CONFIG.print.sheetName) || '印刷');
-  cleanupPrintSheets_(ss, name);
+    : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
   const built = buildInvoicePrintSheet_(ss, name, payload);
+  placePrintSheetInOrder_(ss, built.sheet);
   ss.setActiveSheet(built.sheet);
   return {
     pageCount: built.pageCount,
@@ -282,7 +282,6 @@ function cleanupPrintSheets_(ss, keepName) {
       continue;
     }
     if (typeof parsePrintSheetSortKey_ === 'function' && parsePrintSheetSortKey_(n)) {
-      toDelete.push(sheets[i]);
       continue;
     }
     for (let p = 0; p < prefixes.length; p++) {
@@ -356,8 +355,6 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   applyA4PageSetup_(sheet, pageCount, breakRows);
   applyPrintPageBreaksAt_(sheet, breakRows);
   ss.setActiveSheet(sheet);
-  hideHelperSheet_(ss, ss.getSheetByName('_印刷A4縦'));
-  ss.setActiveSheet(sheet);
   return { sheet: sheet, pageCount: pageCount };
 }
 
@@ -416,20 +413,24 @@ function printBodyPlan_(lines) {
 }
 
 function replacePrintSheet_(ss, name) {
-  const tpl = ensurePrintSetupSheet_(ss);
-  const copy = tpl.copyTo(ss);
-  try {
-    copy.showSheet();
-  } catch (err) {}
-  hideHelperSheet_(ss, tpl);
-  const old = ss.getSheetByName(name);
-  if (old && old.getSheetId() !== copy.getSheetId() && ss.getSheets().length > 1) {
-    ss.deleteSheet(old);
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    return sh;
   }
-  copy.setName(name);
-  copy.clear();
-  applyA4PageSetup_(copy, 1);
-  return copy;
+  const maxR = sh.getMaxRows();
+  const maxC = Math.max(1, sh.getMaxColumns());
+  try {
+    sh.showRows(1, maxR);
+  } catch (err) {}
+  try {
+    sh.showColumns(1, maxC);
+  } catch (err2) {}
+  try {
+    sh.getRange(1, 1, maxR, maxC).breakApart();
+  } catch (err3) {}
+  sh.clear();
+  return sh;
 }
 
 function ensurePrintSetupSheet_(ss) {
@@ -491,12 +492,10 @@ function hideHelperSheet_(ss, sh) {
 function trimPrintSheet_(sheet, lastRow) {
   const maxR = sheet.getMaxRows();
   if (maxR > lastRow) {
-    sheet.deleteRows(lastRow + 1, maxR - lastRow);
-  }
-  const maxC = sheet.getMaxColumns();
-  const cols = CONFIG.print.colCount;
-  if (maxC > cols) {
-    sheet.deleteColumns(cols + 1, maxC - cols);
+    sheet.getRange(lastRow + 1, 1, maxR - lastRow, Math.max(1, sheet.getMaxColumns())).clearContent();
+    try {
+      sheet.hideRows(lastRow + 1, maxR - lastRow);
+    } catch (err) {}
   }
 }
 
@@ -522,7 +521,6 @@ function applyA4PageSetup_(sheet, pageCount, breakRows) {
   } catch (err) {
     Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
   }
-  SpreadsheetApp.flush();
 }
 
 /**
@@ -609,9 +607,9 @@ function applyPrintPageBreaksAt_(sheet, breakRows) {
   if (typeof sheet.setRowPageBreak !== 'function') {
     return;
   }
-  const maxR = sheet.getMaxRows();
+  const last = Math.max(1, sheet.getLastRow());
   if (typeof sheet.isRowPageBreak === 'function') {
-    for (let r = 1; r <= maxR; r++) {
+    for (let r = 1; r <= last; r++) {
       if (sheet.isRowPageBreak(r)) {
         sheet.setRowPageBreak(r, false);
       }
@@ -619,11 +617,10 @@ function applyPrintPageBreaksAt_(sheet, breakRows) {
   }
   for (let i = 0; i < breakRows.length; i++) {
     const row = breakRows[i];
-    if (row >= 1 && row <= maxR) {
+    if (row >= 1 && row <= last) {
       sheet.setRowPageBreak(row, true);
     }
   }
-  SpreadsheetApp.flush();
 }
 
 function printPageLayout_(showHeader, showFooter, bodyRowCount) {
@@ -1214,4 +1211,65 @@ function blankIfEmpty_(value) {
     return '';
   }
   return value;
+}
+
+/**
+ * 図形ボタンに割り当て可。Sheets の印刷ダイアログはスクリプトから開けないので、
+ * 同じ A4 縦設定の PDF プレビューを開く。
+ */
+function openA4PrintPreview() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = printSheetForPreview_(ss);
+  if (!sh) {
+    SpreadsheetApp.getUi().alert('印刷するシートがありません。先に印刷シートを作成するか、検索から表示してください。');
+    return;
+  }
+  ss.setActiveSheet(sh);
+  applyA4PageSetup_(sh, Math.max(1, countPrintSheetPages_(sh)), []);
+  const url = printPreviewPdfUrl_(ss, sh);
+  const html = HtmlService.createHtmlOutput(
+    '<p style="font-family:sans-serif;font-size:13px">A4縦のプレビューを開きます。</p>'
+    + '<script>window.open(' + JSON.stringify(url) + ');setTimeout(function(){google.script.host.close();},400);</script>'
+  ).setWidth(280).setHeight(80);
+  SpreadsheetApp.getUi().showModalDialog(html, '印刷プレビュー');
+}
+
+function printSheetForPreview_(ss) {
+  const sh = ss.getActiveSheet();
+  const n = sh.getName();
+  if (parsePrintSheetSortKey_(n)
+    || n === ((CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示')
+    || n === ((CONFIG.print && CONFIG.print.sheetName) || '印刷')
+    || n === ((CONFIG.print && CONFIG.print.sampleSheetName) || '印刷原本')) {
+    return sh;
+  }
+  return ss.getSheetByName((CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示')
+    || findLatestNamedPrintSheet_(ss)
+    || ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
+}
+
+function findLatestNamedPrintSheet_(ss) {
+  const sheets = ss.getSheets();
+  let best = null;
+  let bestKey = null;
+  for (let i = 0; i < sheets.length; i++) {
+    const key = parsePrintSheetSortKey_(sheets[i].getName());
+    if (!key) {
+      continue;
+    }
+    if (!bestKey || cmpPrintSheetKey_(key, bestKey) < 0) {
+      best = sheets[i];
+      bestKey = key;
+    }
+  }
+  return best;
+}
+
+function printPreviewPdfUrl_(ss, sheet) {
+  return 'https://docs.google.com/spreadsheets/d/' + ss.getId()
+    + '/export?exportFormat=pdf&format=pdf&gid=' + sheet.getSheetId()
+    + '&size=A4&portrait=true&scale=1'
+    + '&top_margin=0.75&bottom_margin=0.75&left_margin=0.7&right_margin=0.7'
+    + '&header_margin=0&footer_margin=0&gridlines=false&printnotes=false'
+    + '&printtitle=false&sheetnames=false&pagenumbers=false&fzr=false';
 }

@@ -66,7 +66,7 @@ function getInvoiceMaster() {
     typeSlotsByDept: service.typeSlotsByDept || {},
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
-    lineCount: CONFIG.input.appRows || 120,
+    lineCount: CONFIG.app.lineCount || 120,
     linesPerPage: CONFIG.print.linesPerPage,
     ordersPending: !!ctx.ordersPending
   };
@@ -392,7 +392,9 @@ function publishPrintSheet(payload) {
   }
   const saved = saveInvoiceDraft_(payload);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = (CONFIG.print && CONFIG.print.sheetName) || '印刷';
+  const reuse = saved.overwritten ? String(saved.printSheetName || '').trim() : '';
+  const reuseOk = !!(reuse && parsePrintSheetSortKey_(reuse) && ss.getSheetByName(reuse));
+  const sheetName = reuseOk ? reuse : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
   const printed = publishInvoices(payload, sheetName);
   const printedName = (printed.sheetNames && printed.sheetNames[0]) || sheetName;
   setInvoicePrintSheetName_(saved.saveId, printedName);
@@ -413,9 +415,8 @@ function publishPrintSheet(payload) {
 }
 
 /**
- * 車検_入力へ保存し、A4 印刷シートを 1 枚作る。
- *
  * @param {object} payload
+ * @param {string=} sheetName
  * @return {{pageCount: number, lineCount: number, sheetNames: string[]}}
  */
 function publishInvoices(payload, sheetName) {
@@ -429,15 +430,7 @@ function publishInvoices(payload, sheetName) {
     throw new Error('1行以上入力してください。');
   }
 
-  invalidateContext_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const inputSheet = ss.getSheetByName(CONFIG.input.sheetName);
-  if (!inputSheet) {
-    throw new Error('入力シートがありません: ' + CONFIG.input.sheetName);
-  }
-
-  writeInputSheetFromApp_(inputSheet, payload);
-  writeSummaryToInput_(inputSheet, payload.summary);
   const printed = writePrintSheets_(ss, payload, sheetName);
 
   return {
@@ -454,58 +447,6 @@ function rowHasContent_(it) {
   return isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
     isFilled_(it.partMajor) || isFilled_(it.partMid) || isFilled_(it.part) ||
     isFilled_(it.qty) || isFilled_(it.unitPrice) || isFilled_(it.amount) || isFilled_(it.workerCode);
-}
-
-/**
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
- * @param {object} payload
- */
-function writeInputSheetFromApp_(sheet, payload) {
-  const start = CONFIG.input.dataStartRow;
-  const maxRows = CONFIG.input.maxSelectRows;
-  const items = payload.items;
-  const width = 10;
-  const values = [];
-  for (let i = 0; i < Math.max(items.length, maxRows); i++) {
-    values.push(['', '', '', '', '', '', '', '', '', '']);
-  }
-  for (let i = 0; i < items.length && i < maxRows; i++) {
-    const it = items[i];
-    const qty = toNumberOrBlank_(it.qty);
-    const price = toNumberOrBlank_(it.unitPrice);
-    const amount = lineAmount_(it, qty, price);
-    values[i][0] = i + 1;
-    values[i][1] = it.major || '';
-    values[i][2] = it.mid || it.name || '';
-    values[i][3] = it.fee === undefined || it.fee === null ? '' : it.fee;
-    values[i][4] = it.workerCode || (payload.header && payload.header.staff) || '';
-    values[i][5] = it.partMajor || '';
-    values[i][6] = it.partMid || it.part || '';
-    values[i][7] = qty;
-    values[i][8] = price;
-    values[i][9] = amount;
-  }
-  sheet.getRange(start, 1, values.length, width).setValues(values);
-}
-
-function writeSummaryToInput_(sheet, summary) {
-  if (!summary || !CONFIG.summary) {
-    return;
-  }
-  const map = CONFIG.summary;
-  setIfMapped_(sheet, map.techSub, summary.techSub);
-  setIfMapped_(sheet, map.techDisc, summary.techDisc);
-  setIfMapped_(sheet, map.techTotal, summary.techTotal);
-  setIfMapped_(sheet, map.partSub, summary.partSub);
-  setIfMapped_(sheet, map.partDisc, summary.partDisc);
-  setIfMapped_(sheet, map.grand, summary.grand);
-}
-
-function setIfMapped_(sheet, a1, value) {
-  if (!a1 || value === undefined || value === null || value === '') {
-    return;
-  }
-  sheet.getRange(a1).setValue(value);
 }
 
 function lineAmount_(it, qty, price) {

@@ -1,16 +1,18 @@
 /**
- * 作業リスト／入力シートの読み取り。
+ * 作業リストの読み取り。
  * 「どの列が何か」はヘッダー名で解決し、以降は名前付きレコードだけを扱う。
  */
 
+function invalidateContext_() {
+  loadContext_.memo_ = null;
+}
+
 /**
- * 作業リストと入力シートの列マップ・レコード配列を一度に作る。
+ * 作業リストの列マップ・レコード配列を一度に作る。
  *
  * @return {{
  *   workSheet: GoogleAppsScript.Spreadsheet.Sheet,
- *   inputSheet: GoogleAppsScript.Spreadsheet.Sheet,
  *   workCols: Object<string, number>,
- *   inputCols: Object<string, number>,
  *   workRows: object[]
  * }}
  */
@@ -21,13 +23,9 @@ function loadContext_() {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const workSheet = ss.getSheetByName(CONFIG.workList.sheetName);
-  const inputSheet = ss.getSheetByName(CONFIG.input.sheetName);
 
   if (!workSheet) {
     throw new Error('シートが見つかりません: ' + CONFIG.workList.sheetName);
-  }
-  if (!inputSheet) {
-    throw new Error('シートが見つかりません: ' + CONFIG.input.sheetName);
   }
 
   const workValues = workSheet.getDataRange().getValues();
@@ -37,7 +35,6 @@ function loadContext_() {
     throw new Error('作業リストに「大項目」「中項目」ヘッダーが見つかりません。1行目を確認してください。');
   }
 
-  const inputCols = resolveInputCols_(inputSheet);
   const parsed = parseWorkList_(workValues, workCols);
   const ordersPending = rowsHaveEmptyOrder_(parsed);
   assignEmptyOrdersInGroups_(parsed);
@@ -53,9 +50,7 @@ function loadContext_() {
 
   const ctx = {
     workSheet: workSheet,
-    inputSheet: inputSheet,
     workCols: workCols,
-    inputCols: inputCols,
     workRows: workRows,
     ordersPending: ordersPending,
     midsByMajor: index.midsByMajor,
@@ -63,37 +58,6 @@ function loadContext_() {
   };
   loadContext_.memo_ = ctx;
   return ctx;
-}
-
-/**
- * 入力シートの列。fixedCols があれば見出しを読まない。
- *
- * @param {GoogleAppsScript.Spreadsheet.Sheet} inputSheet
- * @return {Object<string, number>}
- */
-function resolveInputCols_(inputSheet) {
-  if (CONFIG.input.fixedCols) {
-    return {
-      major: CONFIG.input.fixedCols.major,
-      mid: CONFIG.input.fixedCols.mid,
-      fee: CONFIG.input.fixedCols.fee
-    };
-  }
-
-  const inputHeaderRow = inputSheet
-    .getRange(CONFIG.input.headerRow, 1, 1, Math.max(inputSheet.getLastColumn(), 1))
-    .getValues()[0];
-  const inputCols = resolveColumns_(inputHeaderRow, CONFIG.input.headers);
-  if (!inputCols.major) {
-    inputCols.major = 2;
-  }
-  if (!inputCols.mid) {
-    inputCols.mid = 3;
-  }
-  if (!inputCols.fee) {
-    inputCols.fee = 4;
-  }
-  return inputCols;
 }
 
 /**
@@ -214,4 +178,60 @@ function parseWorkList_(values, cols) {
   }
 
   return rows;
+}
+
+function getRecordsForSelection_(ctx, major, mid) {
+  if (major) {
+    return ctx.recordsByMajorMid[major + '\t' + mid] || [];
+  }
+  const rows = [];
+  const suffix = '\t' + mid;
+  const keys = Object.keys(ctx.recordsByMajorMid);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key.length >= suffix.length && key.substring(key.length - suffix.length) === suffix) {
+      const group = ctx.recordsByMajorMid[key];
+      for (let j = 0; j < group.length; j++) {
+        rows.push(group[j]);
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * 中項目に対する技術料・作業内容（入力アプリの展開用。シートへは書かない）。
+ */
+function resolveMidOutput_(ctx, major, mid) {
+  const records = getRecordsForSelection_(ctx, major, mid);
+  tagMidGroups_(records);
+  const sorted = records.slice().sort(compareMidGroupRows_);
+  const workRows = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (hasWorkContent_(sorted[i])) {
+      workRows.push(sorted[i]);
+    }
+  }
+  return {
+    midFee: pickMidFee_(sorted),
+    workRows: workRows
+  };
+}
+
+function pickMidFee_(sortedRows) {
+  const anchor = pickMidAnchorRow_(sortedRows);
+  if (anchor && isFilled_(anchor.fee)) {
+    return anchor.fee;
+  }
+  for (let i = 0; i < sortedRows.length; i++) {
+    if (!hasWorkContent_(sortedRows[i]) && isFilled_(sortedRows[i].fee)) {
+      return sortedRows[i].fee;
+    }
+  }
+  for (let i = 0; i < sortedRows.length; i++) {
+    if (isFilled_(sortedRows[i].fee)) {
+      return sortedRows[i].fee;
+    }
+  }
+  return '';
 }

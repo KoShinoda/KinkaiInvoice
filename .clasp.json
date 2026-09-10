@@ -15,16 +15,14 @@
     "00_Config.js",
     "01_Utils.js",
     "02_WorkListRepository.js",
-    "03_InputSheetWriter.js",
-    "04_SelectionService.js",
     "05_Triggers.js",
-    "06_CandidateSheet.js",
     "07_WebApp.js",
     "08_ServiceInfo.js",
     "09_InvoiceTemplate.js",
     "10_ListRefresh.js",
     "11_PrintLayout.js",
-    "12_InvoiceSave.js"
+    "12_InvoiceSave.js",
+    "13_InvoiceSearch.js"
   ],
   "skipSubdirectories": false
 }
