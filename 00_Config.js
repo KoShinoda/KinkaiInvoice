@@ -16,6 +16,7 @@
  * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
  * 12_InvoiceSave.js       … 請求書の保存・呼び出しと印刷PDF。
+ * 13_InvoiceSearch.js     … シート「請求書検索」（K-No・一覧・表示）。
  *
  * 【中項目プルダウン】
  * 大項目を選ぶたびに GAS で候補を付け替えない。
@@ -227,6 +228,13 @@ const CONFIG = {
     sheetName: '請求書保存',
     detailPrefix: '請求書保存明細_',
     headerRow: 1
+  },
+
+  /**
+   * K-No で保存済み請求書を探し、一覧から選んで印刷シートを表示する。
+   */
+  invoiceSearch: {
+    sheetName: '請求書検索'
   },
 
   /**

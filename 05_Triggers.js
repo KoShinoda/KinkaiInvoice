@@ -11,6 +11,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('請求書入力')
     .addItem('入力アプリを開く', 'openInputApp')
+    .addItem('請求書を検索', 'openInvoiceSearchSheet')
     .addSeparator()
     .addItem('初期設定（候補マスタとプルダウン）', 'setupInputDropdowns')
     .addItem('整備情報シートを整理', 'tidyServiceInfoSheet')
@@ -126,6 +127,11 @@ function handleEdit_(e) {
 
   const sheet = e.range.getSheet();
   const sheetName = sheet.getName();
+
+  if (sheetName === CONFIG.invoiceSearch.sheetName) {
+    handleInvoiceSearchEdit_(e);
+    return;
+  }
 
   if (sheetName === CONFIG.print.sheetName || sheetName === CONFIG.print.sampleSheetName) {
     handlePrintHeaderDeptEdit_(e);

@@ -43,6 +43,7 @@ function listInvoiceDrafts(kNo) {
       billDate: formatInvoiceYmd_(vals[i][6]),
       lineCount: Number(vals[i][14]) || 0,
       firstMid: invoiceFirstMid_(vals[i][17]),
+      printSheet: invoicePlain_(vals[i][18]),
       detailStart: Number(vals[i][15]) || 0,
       detailSheet: String(vals[i][16] || '')
     });
