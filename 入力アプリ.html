@@ -2071,7 +2071,7 @@
         el.value = list.children[comboActiveIndex].dataset.value;
       }
       var changed = k === 'workerCode'
-        ? workerInputValue(items[i]) !== el.value
+        ? workerEditValue(items[i]) !== String(el.value || '').trim()
         : items[i][k] !== el.value;
       hideComboLists(comboKeepInput());
       if (k === 'workerCode') {
@@ -2172,7 +2172,8 @@
         if (String(w.code || '') === s) return w;
         if (workerLabel(w) === s) return w;
       }
-      var sp = s.indexOf(' ');
+      var sp = s.indexOf(':');
+      if (sp < 0) sp = s.indexOf(' ');
       var codePart = (sp >= 0 ? s.slice(0, sp) : s).trim();
       if (codePart) {
         for (i = 0; i < all.length; i++) {
@@ -2188,7 +2189,7 @@
       if (!w) return '';
       var code = String(w.code || '').trim();
       var name = String(w.name || '').trim();
-      if (code && name) return code + ' ' + name;
+      if (code && name) return code + ':' + name;
       return name || code;
     }
     function assignWorker(it, w, fallback) {
@@ -2203,6 +2204,9 @@
     }
     function workerInputValue(it) {
       return workerLabel({ code: it && it.workerCode, name: it && it.workerName });
+    }
+    function workerEditValue(it) {
+      return String(it && it.workerCode || '').trim();
     }
     function syncWorkerInput(rowIndex) {
       var row = $('tbody').rows[rowIndex];
@@ -2312,10 +2316,8 @@
     function showWorkerPicker(anchor) {
       var row = Number(anchor.dataset.i);
       workerPickerRow = row;
-      var input = $('tbody').rows[row] && $('tbody').rows[row]._cells && $('tbody').rows[row]._cells.workerCode;
-      var q = input ? input.value : '';
-      $('workerPickerFilter').value = q;
-      fillWorkerPicker(q);
+      $('workerPickerFilter').value = '';
+      fillWorkerPicker('');
       positionWorkerPicker();
     }
     function applyWorkerCode(code) {
@@ -2399,6 +2401,9 @@
       if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid' || e.target.dataset.k === 'workerCode') {
         hideComboLists();
         hideWorkerPicker();
+        if (e.target.dataset.k === 'workerCode') {
+          e.target.value = workerEditValue(items[Number(e.target.dataset.i)]);
+        }
         showComboList(e.target);
         if (isMidTextarea(e.target)) fitMidHeight(e.target);
       }
@@ -2456,7 +2461,7 @@
       if (!t.dataset || t.dataset.i == null) return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
-      if (k === 'mid' || k === 'partMid') return;
+      if (k === 'mid' || k === 'partMid' || k === 'workerCode') return;
       items[i][k] = t.value;
       if (k === 'major') {
         items[i].mid = '';

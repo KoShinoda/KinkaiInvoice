@@ -19,7 +19,7 @@ var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
 /** No. の下の空行。各ページの高さを印刷可能高さに揃える（余りを埋める）。
- * 最終ページ直前はフッター分短くし、最終ページは最小にしてフッターが次用紙へ落ちないようにする。 */
+ * 最終ページ直前はフッター＋明細3行分短くし、最終ページは最小にしてフッター／No.が次用紙へ落ちないようにする。 */
 var PRINT_PAD_MIN_ = 12;
 var PRINT_PAD_FILL_ = 1;
 var PRINT_PX_PER_IN_ = 96;
@@ -706,7 +706,7 @@ function printPadHeight_(showHeader, showFooter, slotH, padBeforeFooterPage) {
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
   let leftover = inner - used;
   if (padBeforeFooterPage) {
-    leftover -= PRINT_FOOTER_H_ * 5;
+    leftover -= PRINT_FOOTER_H_ * 5 + slotH * 3;
   }
   if (showFooter || leftover <= 0) {
     return PRINT_PAD_MIN_;
