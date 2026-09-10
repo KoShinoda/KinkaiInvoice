@@ -427,6 +427,7 @@ function ensureInvoiceSaveIndexSheet_(skipSeed) {
   }
   migrateInvoiceSaveLegacy_(sh);
   sh = ss.getSheetByName(name) || sh;
+  importInvoiceSaveFromLegacyIfEmpty_(sh);
   ensureInvoiceIndexPrintCol_(sh);
   sh.getRange('B:B').setNumberFormat('@');
   if (!skipSeed && (created || sh.getLastRow() < 2)) {
@@ -498,12 +499,48 @@ function normalizeInvoiceKNo_(value) {
 }
 
 function migrateInvoiceSaveLegacy_(sh) {
-  if (!sh || sh.getLastRow() < 1) {
+  const parsed = parseLegacyInvoiceSaveSheet_(sh);
+  if (!parsed) {
     return;
+  }
+  const ss = sh.getParent();
+  const oldName = sh.getName();
+  let n = 1;
+  let archived = oldName + '_旧形式';
+  while (ss.getSheetByName(archived)) {
+    n += 1;
+    archived = oldName + '_旧形式' + n;
+  }
+  sh.setName(archived);
+  const index = ss.insertSheet(oldName);
+  writeInvoiceIndexHeader_(index);
+  writeLegacyInvoicePacksToIndex_(index, parsed);
+  try {
+    sh.hideSheet();
+  } catch (err) {}
+}
+
+/** 請求書保存が空で、請求書保存_旧形式だけ残っているときは取り込む。 */
+function importInvoiceSaveFromLegacyIfEmpty_(index) {
+  if (!index || index.getLastRow() >= 2) {
+    return;
+  }
+  const ss = index.getParent();
+  const archived = ss.getSheetByName((CONFIG.invoiceSave.sheetName || '請求書保存') + '_旧形式');
+  const parsed = parseLegacyInvoiceSaveSheet_(archived);
+  if (!parsed || !parsed.order.length) {
+    return;
+  }
+  writeLegacyInvoicePacksToIndex_(index, parsed);
+}
+
+function parseLegacyInvoiceSaveSheet_(sh) {
+  if (!sh || sh.getLastRow() < 1) {
+    return null;
   }
   const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
   if (normalize_(header[1]) !== '行種別') {
-    return;
+    return null;
   }
   const last = sh.getLastRow();
   const width = Math.max(sh.getLastColumn(), 1);
@@ -525,19 +562,12 @@ function migrateInvoiceSaveLegacy_(sh) {
       byId[saveId].lines.push(vals[i]);
     }
   }
-  const ss = sh.getParent();
-  const oldName = sh.getName();
-  let n = 1;
-  let archived = oldName + '_旧形式';
-  while (ss.getSheetByName(archived)) {
-    n += 1;
-    archived = oldName + '_旧形式' + n;
-  }
-  sh.setName(archived);
-  const index = ss.insertSheet(oldName);
-  writeInvoiceIndexHeader_(index);
-  order.forEach(function (saveId) {
-    const pack = byId[saveId];
+  return { byId: byId, order: order };
+}
+
+function writeLegacyInvoicePacksToIndex_(index, parsed) {
+  (parsed.order || []).forEach(function (saveId) {
+    const pack = parsed.byId[saveId];
     const head = pack.head || pack.lines[0];
     if (!head) {
       return;
@@ -569,9 +599,6 @@ function migrateInvoiceSaveLegacy_(sh) {
       detail.getName()
     ]);
   });
-  try {
-    sh.hideSheet();
-  } catch (err) {}
 }
 
 function ensureInvoiceSaveSamples() {

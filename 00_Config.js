@@ -110,16 +110,6 @@ const CONFIG = {
     orderStep: 10
   },
 
-  /**
-   * 作業リストの入力可能なプルダウン用（非表示）。
-   * A=作業者コード、B=部品リストの中項目。既存セルは消さない。
-   */
-  listRef: {
-    sheetName: '_リスト参照',
-    workerCodeCol: 1,
-    partMidCol: 2
-  },
-
   serviceInfo: {
     /** A＝全て（未選択時の種別順）。B〜E＝種別1〜4（大型／小型／BP板金／部品販売）。F＝受付担当。 */
     sheetName: '整備情報'

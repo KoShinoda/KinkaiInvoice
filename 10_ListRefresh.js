@@ -727,8 +727,6 @@ function workerCodeByNameMap_() {
  * @param {GoogleAppsScript.Spreadsheet.Sheet} workSheet
  */
 function applyWorkListOpenDropdowns_(ss, workSheet) {
-  const ref = ensureListRefSheet_(ss);
-  writeListRefValues_(ref, workSheet);
   const lastCol = Math.max(workSheet.getLastColumn(), 1);
   const headers = workSheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const cols = resolveColumns_(headers, CONFIG.workList.headers);
@@ -745,39 +743,6 @@ function applyWorkListOpenDropdowns_(ss, workSheet) {
       workSheet.getRange(2, cols.partMid, rows, 1),
       partMidsForDropdown_(workSheet)
     );
-  }
-}
-
-function ensureListRefSheet_(ss) {
-  const name = CONFIG.listRef.sheetName;
-  let sh = ss.getSheetByName(name);
-  if (!sh) {
-    sh = ss.insertSheet(name);
-    sh.hideSheet();
-  }
-  try {
-    sh.hideSheet();
-  } catch (err) {}
-  return sh;
-}
-
-function writeListRefValues_(ref, workSheet) {
-  const cfg = CONFIG.listRef;
-  writeListRefColumn_(ref, cfg.workerCodeCol, '作業者コード', workerCodesForDropdown_());
-  writeListRefColumn_(ref, cfg.partMidCol, '部品_中項目', partMidsForDropdown_(workSheet));
-}
-
-function writeListRefColumn_(sheet, col, header, values) {
-  sheet.getRange(1, col).setValue(header);
-  const maxR = sheet.getMaxRows();
-  const height = Math.max(sheet.getLastRow() - 1, values.length, 1);
-  if (maxR > 1) {
-    sheet.getRange(2, col, Math.min(maxR - 1, height), 1).clearContent();
-  }
-  if (values.length) {
-    sheet.getRange(2, col, values.length, 1).setValues(values.map(function (v) {
-      return [v];
-    }));
   }
 }
 

@@ -16,7 +16,23 @@ function openInvoiceSearchSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ensureInvoiceSearchSheet_(ss);
   ss.setActiveSheet(sh);
-  ss.toast('K-No を入れて Enter。一覧から選んで「表示」をオン。', '請求書検索', 6);
+  ss.toast('K-No を入れて「検索」。一覧から選んで「表示」。', '請求書検索', 6);
+}
+
+/** 図形ボタン用。B3 の K-No で保存を検索する。 */
+function searchInvoicesByKNo() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ensureInvoiceSearchSheet_(ss);
+  ss.setActiveSheet(sh);
+  runInvoiceSearchOnSheet_(sh);
+}
+
+/** 図形ボタン用。B4 で選んだ請求書を印刷_表示へ出す。 */
+function showSelectedInvoice() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.invoiceSearch.sheetName) || ensureInvoiceSearchSheet_(ss);
+  ss.setActiveSheet(sh);
+  showInvoiceFromSearchPick_(sh);
 }
 
 function handleInvoiceSearchEdit_(e) {
