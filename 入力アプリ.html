@@ -789,6 +789,7 @@
     var pendingFocus = null;
     var comboActiveIndex = -1;
     var comboIgnoreBlur = false;
+    var workerSelectOnMouseUp = null;
     var currentSaveId = '';
     var boundKNo = '';
 
@@ -1980,10 +1981,10 @@
       }
       if (idx >= 0 && nodes[idx]) nodes[idx].scrollIntoView({ block: 'nearest' });
     }
-    function showComboList(input, keepActive) {
+    function showComboList(input, keepActive, unfiltered) {
       var list = comboListEl(input);
       if (!list) return;
-      var q = String(input.value || '').toLowerCase();
+      var q = unfiltered ? '' : String(input.value || '').toLowerCase();
       list.innerHTML = '';
       var opts = [];
       if (input.dataset.k === 'workerCode') {
@@ -2403,11 +2404,27 @@
         hideWorkerPicker();
         if (e.target.dataset.k === 'workerCode') {
           e.target.value = workerEditValue(items[Number(e.target.dataset.i)]);
+          showComboList(e.target, false, true);
+          e.target.select();
+        } else {
+          showComboList(e.target);
         }
-        showComboList(e.target);
         if (isMidTextarea(e.target)) fitMidHeight(e.target);
       }
     });
+    $('tbody').addEventListener('mousedown', function (e) {
+      if (e.target.dataset && e.target.dataset.k === 'workerCode' && document.activeElement !== e.target) {
+        workerSelectOnMouseUp = e.target;
+      }
+    }, true);
+    $('tbody').addEventListener('mouseup', function (e) {
+      if (!workerSelectOnMouseUp) return;
+      var el = workerSelectOnMouseUp;
+      workerSelectOnMouseUp = null;
+      if (e.target !== el) return;
+      e.preventDefault();
+      el.select();
+    }, true);
     $('tbody').addEventListener('keydown', function (e) {
       if (!e.target.dataset || e.target.dataset.i == null) return;
       var k = e.target.dataset.k;
