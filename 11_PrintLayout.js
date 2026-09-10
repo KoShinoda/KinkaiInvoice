@@ -18,7 +18,8 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** No. の下の空行。各ページの高さを印刷可能高さに揃える（余りを埋める）。 */
+/** No. の下の空行。各ページの高さを印刷可能高さに揃える（余りを埋める）。
+ * 最終ページ直前はフッター分短くし、最終ページは最小にしてフッターが次用紙へ落ちないようにする。 */
 var PRINT_PAD_MIN_ = 12;
 var PRINT_PAD_FILL_ = 1;
 var PRINT_PX_PER_IN_ = 96;
@@ -324,6 +325,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
       serialOffset: serial,
       showHeader: p === 0,
       showFooter: p === pageCount - 1,
+      padBeforeFooterPage: pageCount > 1 && p === pageCount - 2,
       summary: payload.summary || {},
       slotH: slotH
     });
@@ -699,11 +701,14 @@ function printDataRowHeight_() {
   return Math.max(21, Math.floor((inner - chrome) / CONFIG.print.linesPerPage));
 }
 
-function printPadHeight_(showHeader, showFooter, slotH) {
+function printPadHeight_(showHeader, showFooter, slotH, padBeforeFooterPage) {
   const inner = printTargetInnerPx_();
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
-  const leftover = inner - used;
-  if (leftover <= 0) {
+  let leftover = inner - used;
+  if (padBeforeFooterPage) {
+    leftover -= PRINT_FOOTER_H_ * 5;
+  }
+  if (showFooter || leftover <= 0) {
     return PRINT_PAD_MIN_;
   }
   return Math.max(PRINT_PAD_MIN_, Math.floor(leftover * PRINT_PAD_FILL_));
@@ -724,7 +729,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
     .setVerticalAlignment('middle')
     .setWrap(false);
 
-  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan);
+  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan, !!opts.padBeforeFooterPage);
   mergePrintPage_(sheet, start, L, showHeader, showFooter);
 
   if (showHeader && L.title != null) {
@@ -928,8 +933,8 @@ function fitPrintFont_(text, colWidth) {
   return PRINT_FONT_MIN_;
 }
 
-function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan) {
-  const padH = printPadHeight_(showHeader, showFooter, slotH);
+function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan, padBeforeFooterPage) {
+  const padH = printPadHeight_(showHeader, showFooter, slotH, padBeforeFooterPage);
   if (showHeader && L.title != null) {
     sheet.setRowHeight(start + L.title, PRINT_TITLE_H_);
     sheet.setRowHeight(start + L.metaL1, PRINT_META_LABEL_H_);
