@@ -514,10 +514,7 @@ function applyA4PageSetup_(sheet, pageCount, breakRows) {
  */
 function applyPrintFitScale_(ps, sheet, pageCount, breakRows) {
   if (typeof ps.setFitToPage === 'function') {
-    ps.setFitToPage(pageCount <= 1);
-  }
-  if (pageCount <= 1) {
-    return;
+    ps.setFitToPage(false);
   }
   if (typeof ps.setScale === 'function') {
     ps.setScale(100);
@@ -657,7 +654,8 @@ function printInnerWidthPx_() {
 function printTargetInnerPx_() {
   const m = PRINT_MARGIN_IN_;
   const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
-  return Math.max(600, Math.floor(raw) - 12);
+  const footerBlock = PRINT_FOOTER_H_ * 5 + PRINT_PAGE_NO_H_;
+  return Math.max(600, Math.floor(raw) - 12 - footerBlock);
 }
 
 function applyPrintColumnWidths_(sheet) {
@@ -706,9 +704,6 @@ function printPadHeight_(showHeader, showFooter, slotH) {
   const inner = printTargetInnerPx_();
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
   const leftover = inner - used;
-  if (showFooter) {
-    return PRINT_PAD_MIN_;
-  }
   if (leftover <= 0) {
     return PRINT_PAD_MIN_;
   }
