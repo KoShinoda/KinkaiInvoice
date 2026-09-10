@@ -189,17 +189,6 @@ function showSavedInvoicePrint_(saveId) {
     throw new Error('保存データが指定されていません。');
   }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const index = ensureInvoiceSaveIndexSheet_(true);
-  const found = findInvoiceIndexRow_(index, id);
-  const printName = found ? invoicePrintSheetName_(found.row) : '';
-  if (printName) {
-    const existing = ss.getSheetByName(printName);
-    if (existing) {
-      ss.setActiveSheet(existing);
-      ss.toast(printName + ' を表示しました', '請求書検索', 5);
-      return;
-    }
-  }
   const draft = loadInvoiceDraft(id);
   if (!draft || !draft.items || !draft.items.filter(rowHasContent_).length) {
     throw new Error('この保存には表示できる明細がありません。');
@@ -210,12 +199,13 @@ function showSavedInvoicePrint_(saveId) {
     summary: draft.summary || {},
     saveId: id
   };
-  const name = printName || uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
-  ss.toast('印刷シートを作成しています…', '請求書検索', 5);
-  const built = buildInvoicePrintSheet_(ss, name, payload);
+  const viewName = (CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示';
+  ss.toast('保存データから表示しています…', '請求書検索', 5);
+  cleanupPrintSheets_(ss, viewName);
+  const built = buildInvoicePrintSheet_(ss, viewName, payload);
   setInvoicePrintSheetName_(id, built.sheet.getName());
   ss.setActiveSheet(built.sheet);
-  ss.toast(built.sheet.getName() + ' を表示しました', '請求書検索', 6);
+  ss.toast(built.sheet.getName() + ' に表示しました（K-No ' + formatPrintKNo_(payload.header.kNo) + '）', '請求書検索', 6);
 }
 
 function ensureInvoiceSearchSheet_(ss) {

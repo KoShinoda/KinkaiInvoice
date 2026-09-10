@@ -36,7 +36,7 @@ function listInvoiceDrafts(kNo) {
     }
     list.push({
       saveId: String(vals[i][0] || '').trim(),
-      kNo: String(vals[i][1] || ''),
+      kNo: normalizeInvoiceKNo_(vals[i][1]),
       savedAt: formatInvoiceYmd_(vals[i][2]),
       userName: invoicePlain_(vals[i][4]),
       plate: invoicePlain_(vals[i][5]),
@@ -428,6 +428,7 @@ function ensureInvoiceSaveIndexSheet_(skipSeed) {
   migrateInvoiceSaveLegacy_(sh);
   sh = ss.getSheetByName(name) || sh;
   ensureInvoiceIndexPrintCol_(sh);
+  sh.getRange('B:B').setNumberFormat('@');
   if (!skipSeed && (created || sh.getLastRow() < 2)) {
     writeInvoiceSaveSamples_();
     sh = ss.getSheetByName(name) || sh;
@@ -438,6 +439,7 @@ function ensureInvoiceSaveIndexSheet_(skipSeed) {
 function writeInvoiceIndexHeader_(sh) {
   sh.getRange(1, 1, 1, INVOICE_INDEX_HEADERS_.length).setValues([INVOICE_INDEX_HEADERS_]);
   sh.getRange(1, 1, 1, INVOICE_INDEX_HEADERS_.length).setFontWeight('bold').setBackground('#e8f0ec');
+  sh.getRange('B:B').setNumberFormat('@');
   sh.setFrozenRows(1);
   sh.setColumnWidth(1, 80);
   sh.setColumnWidth(2, 70);
@@ -720,6 +722,65 @@ function printSheetNameFromPayload_(payload) {
   return sanitizeSheetName_(pdfDateStamp_(header) + '_K-' + k4);
 }
 
+/**
+ * 印刷タブを 日付降順（新しいほど左）→ K-No 昇順 → 連番昇順。
+ * 印刷以外のシート（マスタ・検索・保存）は今の相対位置のまま左に残す。
+ */
+function sortPrintInvoiceSheets_(ss) {
+  if (!ss) {
+    return;
+  }
+  const current = ss.getActiveSheet();
+  const sheets = ss.getSheets();
+  const keep = [];
+  const prints = [];
+  for (let i = 0; i < sheets.length; i++) {
+    const sh = sheets[i];
+    const key = parsePrintSheetSortKey_(sh.getName());
+    if (key) {
+      prints.push({ sh: sh, key: key });
+    } else {
+      keep.push(sh);
+    }
+  }
+  if (prints.length < 2) {
+    return;
+  }
+  prints.sort(function (a, b) {
+    if (a.key.date !== b.key.date) {
+      return a.key.date > b.key.date ? -1 : 1;
+    }
+    if (a.key.kNo !== b.key.kNo) {
+      return a.key.kNo < b.key.kNo ? -1 : 1;
+    }
+    return a.key.serial - b.key.serial;
+  });
+  const ordered = keep.concat(prints.map(function (p) {
+    return p.sh;
+  }));
+  for (let p = 0; p < ordered.length; p++) {
+    ss.setActiveSheet(ordered[p]);
+    ss.moveActiveSheet(p + 1);
+  }
+  if (current) {
+    ss.setActiveSheet(current);
+  }
+}
+
+function parsePrintSheetSortKey_(name) {
+  const m = String(name || '').match(/^(\d{8})_K-(\d+)(?:_(\d+))?$/i);
+  if (!m) {
+    return null;
+  }
+  const digits = String(m[2] || '').replace(/\D/g, '');
+  const kNo = digits.length >= 4 ? digits : ('0000' + digits).slice(-4);
+  return {
+    date: m[1],
+    kNo: kNo,
+    serial: m[3] ? Number(m[3]) : 1
+  };
+}
+
 function uniquePrintSheetName_(ss, base) {
   const root = sanitizeSheetName_(base);
   if (!ss.getSheetByName(root)) {
@@ -757,19 +818,7 @@ function findLatestPrintSheet_(ss, base) {
 }
 
 function printSheetForSave_(ss, payload) {
-  const sid = payload && payload.saveMode !== 'new' ? String(payload.saveId || '').trim() : '';
-  if (sid) {
-    const found = findInvoiceIndexRow_(ensureInvoiceSaveIndexSheet_(true), sid);
-    const n = found ? invoicePrintSheetName_(found.row) : '';
-    if (n) {
-      const bound = ss.getSheetByName(n);
-      if (bound) {
-        return bound;
-      }
-    }
-  }
-  return findLatestPrintSheet_(ss, printSheetNameFromPayload_(payload))
-    || ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
+  return ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
 }
 
 /** シート名に使えない : \ / ? * [ ] と先頭の ' を除く。 */

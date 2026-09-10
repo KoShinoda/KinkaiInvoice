@@ -392,11 +392,15 @@ function publishPrintSheet(payload) {
   }
   const saved = saveInvoiceDraft_(payload);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const reuse = saved.overwritten ? String(saved.printSheetName || '').trim() : '';
-  const reuseOk = !!(reuse && ss.getSheetByName(reuse));
-  const sheetName = reuseOk ? reuse : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
+  const sheetName = (CONFIG.print && CONFIG.print.sheetName) || '印刷';
   const printed = publishInvoices(payload, sheetName);
-  setInvoicePrintSheetName_(saved.saveId, (printed.sheetNames && printed.sheetNames[0]) || sheetName);
+  const printedName = (printed.sheetNames && printed.sheetNames[0]) || sheetName;
+  setInvoicePrintSheetName_(saved.saveId, printedName);
+  const out = ss.getSheetByName(printedName);
+  if (out) {
+    ss.setActiveSheet(out);
+    SpreadsheetApp.flush();
+  }
   return invoiceJsonSafe_({
     pageCount: printed.pageCount,
     lineCount: printed.lineCount,

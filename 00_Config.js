@@ -231,18 +231,19 @@ const CONFIG = {
   },
 
   /**
-   * K-No で保存済み請求書を探し、一覧から選んで印刷シートを表示する。
+   * K-No で保存（CSV相当）を探し、印刷_表示へ描画する。
    */
   invoiceSearch: {
     sheetName: '請求書検索'
   },
 
   /**
-   * 印刷用。車検原紙は使わず、A4 縦 1 シートにページを縦積みする。
-   * 印刷シートは実測して A4 縦に収まるよう縮小。PDF は 100%。
+   * 印刷は固定2シート。正本は請求書保存（CSV相当）。タブは増やさない。
+   * sheetName＝作成ボタン。viewSheetName＝検索からの表示。
    */
   print: {
     sheetName: '印刷',
+    viewSheetName: '印刷_表示',
     sampleSheetName: '印刷原本',
     sheetNamePrefix: '印刷_',
     samplePrefix: '印刷原本_',

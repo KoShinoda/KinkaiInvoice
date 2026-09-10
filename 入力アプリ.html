@@ -1093,6 +1093,11 @@
       currentSaveId = String(saveId || '').trim();
       boundKNo = normalizeKNo(kNo || '');
     }
+    function closeInputDialogIfPossible_() {
+      try {
+        google.script.host.close();
+      } catch (err) {}
+    }
     function boundSaveId() {
       if (!currentSaveId) return '';
       var k = normalizeKNo($('kNo').value);
@@ -1159,10 +1164,12 @@
           setBusy(false);
           if (res.saveId) bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
           var kind = res.overwritten ? '上書き保存' : '新規保存';
+          var sheetName = (res.sheetNames && res.sheetNames[0]) || '';
           setStatus(
-            kind + 'し、印刷シート「' + ((res.sheetNames && res.sheetNames[0]) || '') + '」を作成しました（' +
+            kind + 'し、印刷シート「' + sheetName + '」を作成しました（' +
             res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）'
           );
+          closeInputDialogIfPossible_();
         })
         .withFailureHandler(function (err) {
           setBusy(false);

@@ -45,7 +45,7 @@ var PRINT_FOOTER_H_ = 22;
 function writePrintSheets_(ss, payload, sheetName) {
   const name = sheetName
     ? sanitizeSheetName_(sheetName)
-    : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
+    : ((CONFIG.print && CONFIG.print.sheetName) || '印刷');
   cleanupPrintSheets_(ss, name);
   const built = buildInvoicePrintSheet_(ss, name, payload);
   ss.setActiveSheet(built.sheet);
@@ -263,19 +263,25 @@ var PRINT_SAMPLE_PARTS_ = [
 ];
 
 /**
+ * 印刷／印刷_表示以外の旧印刷タブ（日付_K-No など）を消す。
+ *
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
  * @param {string} keepName
  */
 function cleanupPrintSheets_(ss, keepName) {
+  const keep = reservedPrintSheetNames_();
+  if (keepName) {
+    keep[keepName] = true;
+  }
   const prefixes = [CONFIG.print.sheetNamePrefix, CONFIG.print.samplePrefix];
   const sheets = ss.getSheets();
   const toDelete = [];
   for (let i = 0; i < sheets.length; i++) {
     const n = sheets[i].getName();
-    if (n === keepName) {
+    if (keep[n]) {
       continue;
     }
-    if (n === CONFIG.print.sheetName) {
+    if (typeof parsePrintSheetSortKey_ === 'function' && parsePrintSheetSortKey_(n)) {
       toDelete.push(sheets[i]);
       continue;
     }
@@ -292,6 +298,15 @@ function cleanupPrintSheets_(ss, keepName) {
     }
     ss.deleteSheet(toDelete[i]);
   }
+}
+
+function reservedPrintSheetNames_() {
+  const names = {};
+  names[(CONFIG.print && CONFIG.print.sheetName) || '印刷'] = true;
+  names[(CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示'] = true;
+  names[(CONFIG.print && CONFIG.print.sampleSheetName) || '印刷原本'] = true;
+  names['_印刷A4縦'] = true;
+  return names;
 }
 
 /**
@@ -994,7 +1009,11 @@ function formatPrintKNo_(value) {
   if (!k) {
     return '';
   }
-  return ('0000' + String(k).replace(/\D/g, '')).slice(-4);
+  const d = String(k).replace(/\D/g, '');
+  if (d.length >= 4) {
+    return d;
+  }
+  return ('0000' + d).slice(-4);
 }
 
 function fillPrintHeader_(sheet, start, L, header) {
@@ -1009,7 +1028,7 @@ function fillPrintHeader_(sheet, start, L, header) {
   sheet.getRange(l1, 3).setValue('K-No').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l1, 6).setValue('登録番号').setFontSize(12).setFontWeight('bold');
   sheet.getRange(v1, 2).setValue(header.userName || '').setFontSize(12);
-  sheet.getRange(v1, 3).setValue(formatPrintKNo_(header.kNo)).setFontSize(12);
+  sheet.getRange(v1, 3).setNumberFormat('@').setValue(formatPrintKNo_(header.kNo)).setFontSize(12);
   sheet.getRange(v1, 6).setValue(header.plate || '').setFontSize(12);
 
   sheet.getRange(l2, 2).setValue('整備部門').setFontSize(12).setFontWeight('bold');
