@@ -1218,11 +1218,6 @@
       if (!currentSaveId) boundSavedAt = '';
       updateSaveChrome();
     }
-    function closeInputDialogIfPossible_() {
-      try {
-        google.script.host.close();
-      } catch (err) {}
-    }
     function setSheetOpenLink(url, label) {
       var a = $('sheetOpenLink');
       if (!a || !url) return;
@@ -1625,12 +1620,15 @@
           setBusy(false);
           var sheetName = (res.sheetNames && res.sheetNames[0]) || '';
           finishWorkJobAfterPrint();
+          if (res.sheetUrl) {
+            setSheetOpenLink(res.sheetUrl, '印刷シートを開く');
+            try { window.open(res.sheetUrl, '_blank'); } catch (err) {}
+          }
           setStatus(
             '印刷シート「' + sheetName + '」を作成しました（' +
-            res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）'
+            res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）。' +
+            (res.sheetUrl ? ' 別タブで開きます。開かないときはヘッダーの「印刷シートを開く」を押してください。' : '')
           );
-          if (res.sheetUrl) setSheetOpenLink(res.sheetUrl, '印刷シートを開く');
-          closeInputDialogIfPossible_();
         })
         .withFailureHandler(function (err) {
           setBusy(false);
