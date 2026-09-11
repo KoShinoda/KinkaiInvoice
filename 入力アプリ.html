@@ -72,6 +72,64 @@
     }
     #searchStatus { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
     #searchStatus.err { color: var(--danger); }
+    .draft-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      background: #e8eeeb;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+    }
+    .draft-bar[hidden] { display: none; }
+    .draft-tabs {
+      display: flex;
+      gap: 6px;
+      min-width: 0;
+    }
+    .draft-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px 6px 4px 10px;
+      cursor: pointer;
+      max-width: 220px;
+      flex: 0 0 auto;
+    }
+    .draft-tab.on {
+      border-color: var(--accent);
+      background: #e8f0ec;
+    }
+    .draft-tab-label {
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 168px;
+    }
+    .draft-tab-x {
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      padding: 0 4px;
+      font-size: 16px;
+      line-height: 1;
+      border-radius: 4px;
+    }
+    .draft-tab-x:hover { background: #fde8e8; color: var(--danger); }
+    #btnDraftAdd {
+      flex: 0 0 auto;
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    #editBadge {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #editBadge.editing { color: var(--accent); font-weight: 600; }
     main { padding: 14px 18px 132px; }
     .card {
       background: var(--card);
@@ -407,14 +465,6 @@
     .invoice-picker col.c-n { width: 44px; }
     .invoice-picker tbody tr { cursor: pointer; }
     .invoice-picker tbody tr:hover { background: #e8f0ec; }
-    .save-mode-picker { width: min(420px, calc(100vw - 16px)); max-height: none; }
-    .save-mode-msg { padding: 12px 14px 4px; font-size: 13px; line-height: 1.5; color: var(--text); }
-    .save-mode-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 12px 14px 14px;
-    }
     .invoice-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; }
     .worker-picker:not([hidden]) { display: flex; }
     .worker-picker-head {
@@ -631,6 +681,10 @@
       <button type="button" id="navSearch" class="tab">請求書検索</button>
     </nav>
   </header>
+  <div class="draft-bar" id="draftBar">
+    <div class="draft-tabs" id="draftTabs"></div>
+    <button type="button" id="btnDraftAdd" class="sub">＋ 作業を追加</button>
+  </div>
   <main id="viewInput">
     <section class="card">
       <div class="card-head">
@@ -772,8 +826,10 @@
   <footer class="bar" id="appFooter">
     <div class="foot-left">
       <div id="status">読み込み中…</div>
+      <div id="editBadge">新規の請求書を作成中</div>
       <div class="foot-actions">
         <button type="button" id="btnSave">保存</button>
+        <button type="button" id="btnSaveNew" class="sub" hidden>新規保存</button>
         <button type="button" id="btnPrintSheet">印刷シートを作成</button>
       </div>
     </div>
@@ -855,18 +911,6 @@
         </thead>
         <tbody id="invoicePickerBody"></tbody>
       </table>
-    </div>
-  </div>
-  <div id="saveModePicker" class="invoice-picker save-mode-picker" hidden>
-    <div class="worker-picker-head">
-      <span id="saveModeTitle">保存</span>
-      <button type="button" id="saveModeClose" class="worker-picker-x" title="閉じる">×</button>
-    </div>
-    <div class="save-mode-msg">呼び出した内容を上書きしますか？別バージョン（例: 3カ月／12カ月）にする場合は新規です。</div>
-    <div class="save-mode-actions">
-      <button type="button" id="saveModeOverwrite">上書きする</button>
-      <button type="button" id="saveModeNew" class="sub">新規として保存</button>
-      <button type="button" id="saveModeCancel" class="ghost">キャンセル</button>
     </div>
   </div>
 
@@ -1100,7 +1144,7 @@
       }
       return false;
     }
-    function applyTemplateLines(lines, name) {
+    function applyTemplateLines(lines, name, quiet) {
       var next = [];
       (lines || []).forEach(function (src) {
         var row = emptyRow();
@@ -1131,7 +1175,7 @@
       items = next;
       padItems();
       renderGrid();
-      setStatus('テンプレート「' + name + '」から明細 ' + next.length + ' 行を作成しました');
+      if (!quiet) setStatus('テンプレート「' + name + '」から明細 ' + next.length + ' 行を作成しました');
     }
     function normalizeKNo(v) {
       var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
@@ -1163,7 +1207,7 @@
         summary: summary
       };
     }
-    function applySavedPayload(data) {
+    function applySavedPayload(data, quiet) {
       var h = data.header || {};
       $('userName').value = h.userName || '';
       $('kNo').value = normalizeKNo(h.kNo);
@@ -1182,19 +1226,23 @@
         if (data.summary.techPct != null && data.summary.techPct !== '') $('techPct').value = data.summary.techPct;
         if (data.summary.partPct != null && data.summary.partPct !== '') $('partPct').value = data.summary.partPct;
       }
-      applyTemplateLines(data.items || [], h.kNo || '保存データ');
+      applyTemplateLines(data.items || [], h.kNo || '保存データ', quiet);
     }
     function setBusy(busy) {
       $('btnSave').disabled = busy;
+      if ($('btnSaveNew')) $('btnSaveNew').disabled = busy;
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
       if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
+      if ($('btnDraftAdd')) $('btnDraftAdd').disabled = busy;
     }
     function showAppView(view) {
       var search = view === 'search';
+      if (workJobs.length) snapshotActiveJob();
       $('viewInput').hidden = search;
       $('viewSearch').hidden = !search;
       $('appFooter').hidden = search;
+      if ($('draftBar')) $('draftBar').hidden = search;
       $('navInput').classList.toggle('on', !search);
       $('navSearch').classList.toggle('on', search);
       $('appTitle').textContent = search ? '請求書検索' : '車検 請求入力';
@@ -1210,6 +1258,7 @@
     function bindCurrentSave(saveId, kNo) {
       currentSaveId = String(saveId || '').trim();
       boundKNo = normalizeKNo(kNo || '');
+      updateSaveChrome();
     }
     function closeInputDialogIfPossible_() {
       try {
@@ -1222,22 +1271,223 @@
       if (!k || k !== boundKNo) return '';
       return currentSaveId;
     }
-    var saveModeKind = 'save';
-    function hideSaveModePicker() {
-      $('saveModePicker').hidden = true;
+    var WORK_JOB_MAX = 8;
+    var WORK_JOB_STORE = 'kinkaiInvoice.workJobs.v1';
+    var workJobs = [];
+    var workJobId = '';
+    function cloneJobPayload(data) {
+      return JSON.parse(JSON.stringify({
+        header: (data && data.header) || {},
+        items: (data && data.items) || [],
+        summary: (data && data.summary) || {},
+        saveId: (data && data.saveId) || ''
+      }));
     }
-    function showSaveModePicker(kind) {
-      saveModeKind = kind === 'printSheet' ? 'printSheet' : 'save';
-      $('saveModeTitle').textContent = saveModeKind === 'printSheet' ? '印刷シートを作成' : '保存';
-      var panel = $('saveModePicker');
-      panel.hidden = false;
-      var w = panel.offsetWidth;
-      var h = panel.offsetHeight;
-      panel.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
-      panel.style.top = Math.max(8, Math.round((window.innerHeight - h) / 2)) + 'px';
+    function makeWorkJob() {
+      return {
+        id: 'w' + Date.now() + Math.random().toString(16).slice(2, 8),
+        saveId: '',
+        boundKNo: '',
+        templateName: '',
+        payload: { header: {}, items: [], summary: {} }
+      };
+    }
+    function findWorkJob(id) {
+      var i;
+      for (i = 0; i < workJobs.length; i++) {
+        if (workJobs[i].id === id) return workJobs[i];
+      }
+      return null;
+    }
+    function findWorkJobBySaveId(saveId) {
+      var sid = String(saveId || '').trim();
+      if (!sid) return null;
+      var i;
+      for (i = 0; i < workJobs.length; i++) {
+        if (String(workJobs[i].saveId || '') === sid) return workJobs[i];
+      }
+      return null;
+    }
+    function workJobLabel(job) {
+      var h = (job && job.payload && job.payload.header) || {};
+      var k = normalizeKNo(h.kNo || job.boundKNo || '');
+      var user = String(h.userName || '').trim();
+      if (k && user) return 'K-' + k + '　' + user;
+      if (k) return 'K-' + k;
+      if (user) return user;
+      return '新規';
+    }
+    function jobHasContent(job) {
+      var p = job && job.payload ? job.payload : {};
+      var rows = p.items || [];
+      var i;
+      for (i = 0; i < rows.length; i++) {
+        if (!rowIsEmpty(rows[i])) return true;
+      }
+      var h = p.header || {};
+      return !!(String(h.kNo || '').trim() || String(h.userName || '').trim() || String(h.plate || '').trim() ||
+        String(h.inDate || '').trim() || String(h.outDate || '').trim() || String(h.billDate || '').trim());
+    }
+    function persistWorkJobs() {
+      try {
+        localStorage.setItem(WORK_JOB_STORE, JSON.stringify({
+          activeId: workJobId,
+          jobs: workJobs
+        }));
+      } catch (err) {}
+    }
+    function headerHasContent() {
+      return filled($('userName').value) || !!normalizeKNo($('kNo').value) || !!joinPlate() ||
+        filled($('inDate').value) || filled($('outDate').value) || filled($('billDate').value) ||
+        filled($('dept').value) || filled($('serviceType').value) || filled($('receptionist').value);
+    }
+    function formIsEmpty() {
+      return !boundSaveId() && !gridHasContent() && !headerHasContent();
+    }
+    function updateSaveChrome() {
+      var bound = !!boundSaveId();
+      $('btnSave').textContent = bound ? '上書き保存' : '保存';
+      $('btnSaveNew').hidden = !bound;
+      var badge = $('editBadge');
+      if (bound) {
+        badge.className = 'editing';
+        var user = String($('userName').value || '').trim();
+        badge.textContent = 'この請求書を編集中（K-No ' + boundKNo + (user ? ' / ' + user : '') + '）';
+      } else {
+        badge.className = '';
+        badge.textContent = '新規の請求書を作成中';
+      }
+    }
+    function snapshotActiveJob() {
+      var job = findWorkJob(workJobId);
+      if (!job) return;
+      job.payload = cloneJobPayload(collectPayload());
+      job.saveId = currentSaveId;
+      job.boundKNo = boundKNo;
+      job.templateName = $('invoiceTemplate').value;
+      persistWorkJobs();
+    }
+    function loadWorkJob(id, quietStatus) {
+      var job = findWorkJob(id);
+      if (!job) return;
+      workJobId = id;
+      applySavedPayload(job.payload || {}, true);
+      $('invoiceTemplate').value = job.templateName || '';
+      bindCurrentSave(job.saveId, job.boundKNo || ((job.payload && job.payload.header && job.payload.header.kNo) || ''));
+      renderDraftTabs();
+      persistWorkJobs();
+      if (!quietStatus) setStatus('作業中の請求書を表示しています');
+    }
+    function renderDraftTabs() {
+      var box = $('draftTabs');
+      box.innerHTML = '';
+      workJobs.forEach(function (job) {
+        var tab = document.createElement('div');
+        tab.className = 'draft-tab' + (job.id === workJobId ? ' on' : '');
+        tab.setAttribute('data-job-id', job.id);
+        var label = document.createElement('span');
+        label.className = 'draft-tab-label';
+        label.textContent = workJobLabel(job);
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'draft-tab-x';
+        close.setAttribute('data-close-id', job.id);
+        close.title = '閉じる';
+        close.textContent = '×';
+        tab.appendChild(label);
+        tab.appendChild(close);
+        box.appendChild(tab);
+      });
+    }
+    function addBlankWorkJob() {
+      if (workJobs.length >= WORK_JOB_MAX) {
+        setStatus('作業中は最大 ' + WORK_JOB_MAX + ' 件です。タブを閉じてから追加してください。', true);
+        return;
+      }
+      snapshotActiveJob();
+      var job = makeWorkJob();
+      workJobs.push(job);
+      workJobId = job.id;
+      clearHeaderFields();
+      clearItemRows();
+      $('invoiceTemplate').value = '';
+      bindCurrentSave('', '');
+      snapshotActiveJob();
+      renderDraftTabs();
+      setStatus('新しい入力を開始しました。前の入力は上のタブに残っています。');
+    }
+    function closeWorkJob(id) {
+      if (workJobs.length <= 1) {
+        setStatus('最後の作業タブは閉じられません。', true);
+        return;
+      }
+      var job = findWorkJob(id);
+      if (!job) return;
+      if (id === workJobId) snapshotActiveJob();
+      var label = workJobLabel(job);
+      if (jobHasContent(job) && !window.confirm('作業中の「' + label + '」を閉じますか？（未保存の内容は消えます）')) {
+        return;
+      }
+      workJobs = workJobs.filter(function (j) { return j.id !== id; });
+      if (workJobId === id) {
+        loadWorkJob(workJobs[0].id);
+      } else {
+        renderDraftTabs();
+        persistWorkJobs();
+      }
+    }
+    function openSavedInWorkJob(data, saveId) {
+      var sid = String((data && data.saveId) || saveId || '').trim();
+      snapshotActiveJob();
+      var existing = findWorkJobBySaveId(sid);
+      if (existing) {
+        existing.payload = cloneJobPayload(data);
+        existing.saveId = sid;
+        existing.boundKNo = normalizeKNo((data && data.header && data.header.kNo) || '');
+        loadWorkJob(existing.id, true);
+        setStatus('呼び出しました（K-No ' + (existing.boundKNo || '') + '）／作業タブに表示しています');
+        return true;
+      }
+      if (formIsEmpty() && workJobs.length) {
+        applySavedPayload(data, true);
+        bindCurrentSave(sid, (data && data.header && data.header.kNo) || '');
+        snapshotActiveJob();
+        renderDraftTabs();
+        setStatus('呼び出しました（K-No ' + (normalizeKNo((data && data.header && data.header.kNo) || '') || '') + '）');
+        return true;
+      }
+      if (workJobs.length >= WORK_JOB_MAX) {
+        setStatus('作業中は最大 ' + WORK_JOB_MAX + ' 件です。タブを閉じてから開いてください。', true);
+        return false;
+      }
+      var job = makeWorkJob();
+      job.payload = cloneJobPayload(data);
+      job.saveId = sid;
+      job.boundKNo = normalizeKNo((data && data.header && data.header.kNo) || '');
+      workJobs.push(job);
+      loadWorkJob(job.id, true);
+      setStatus('呼び出しました（K-No ' + (job.boundKNo || '') + '）／別タブで開きました');
+      return true;
+    }
+    function initWorkJobs() {
+      var stored = null;
+      try {
+        stored = JSON.parse(localStorage.getItem(WORK_JOB_STORE) || 'null');
+      } catch (err) {
+        stored = null;
+      }
+      if (stored && stored.jobs && stored.jobs.length) {
+        workJobs = stored.jobs;
+        workJobId = stored.activeId && findWorkJob(stored.activeId) ? stored.activeId : workJobs[0].id;
+        loadWorkJob(workJobId, true);
+        return;
+      }
+      workJobs = [makeWorkJob()];
+      workJobId = workJobs[0].id;
+      snapshotActiveJob();
+      renderDraftTabs();
     }
     function runSave(mode) {
-      hideSaveModePicker();
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
         setStatus('保存するには K-No を入力してください。', true);
@@ -1249,11 +1499,13 @@
         payload.saveMode = 'new';
       }
       setBusy(true);
-      setStatus(payload.saveMode === 'overwrite' ? '上書き保存しています…' : '保存しています…');
+      setStatus(payload.saveMode === 'overwrite' ? '上書き保存しています…' : '新規保存しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
           bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
+          snapshotActiveJob();
+          renderDraftTabs();
           var kind = res.overwritten ? '上書き保存' : '新規保存';
           setStatus(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
         })
@@ -1264,7 +1516,6 @@
         .saveInvoiceDraft(payload);
     }
     function runPrintSheet(mode) {
-      hideSaveModePicker();
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
         setStatus('印刷シートを作成するには K-No を入力してください。', true);
@@ -1281,6 +1532,8 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           if (res.saveId) bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
+          snapshotActiveJob();
+          renderDraftTabs();
           var kind = res.overwritten ? '上書き保存' : '新規保存';
           var sheetName = (res.sheetNames && res.sheetNames[0]) || '';
           setStatus(
@@ -2714,8 +2967,12 @@
         setStatus('保存するには K-No を入力してください。', true);
         return;
       }
-      if (boundSaveId()) {
-        showSaveModePicker('save');
+      runSave(boundSaveId() ? 'overwrite' : 'new');
+    });
+    $('btnSaveNew').addEventListener('click', function () {
+      var payload = collectPayload();
+      if (!String(payload.header.kNo || '').trim()) {
+        setStatus('保存するには K-No を入力してください。', true);
         return;
       }
       runSave('new');
@@ -2769,13 +3026,13 @@
       google.script.run
         .withSuccessHandler(function (data) {
           try {
-            applySavedPayload(data);
-            bindCurrentSave((data && data.saveId) || saveId, (data && data.header && data.header.kNo) || '');
+            var ok = openSavedInWorkJob(data, saveId);
             setBusy(false);
             var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
-            setStatus('呼び出しました（K-No ' + k + '）');
-            setSearchStatus('入力画面へ移しました（K-No ' + k + '）');
-            if (goInput) showAppView('input');
+            if (ok) {
+              setSearchStatus('入力画面へ移しました（K-No ' + k + '）');
+              if (goInput) showAppView('input');
+            }
           } catch (err) {
             setBusy(false);
             setStatus('呼び出し後の画面反映に失敗しました: ' + (err.message || err), true);
@@ -2900,7 +3157,6 @@
         return;
       }
       if (act === 'input') {
-        if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
         restoreInvoice(saveId, true);
       }
     });
@@ -2911,22 +3167,24 @@
     $('invoicePickerBody').addEventListener('click', function (e) {
       var tr = e.target.closest('tr[data-save-id]');
       if (!tr) return;
-      if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
       restoreInvoice(tr.getAttribute('data-save-id'));
     });
-    $('saveModeOverwrite').addEventListener('click', function () {
-      if (saveModeKind === 'printSheet') runPrintSheet('overwrite');
-      else runSave('overwrite');
+    $('draftTabs').addEventListener('click', function (e) {
+      var closeId = e.target.getAttribute && e.target.getAttribute('data-close-id');
+      if (closeId) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeWorkJob(closeId);
+        return;
+      }
+      var tab = e.target.closest('[data-job-id]');
+      if (!tab) return;
+      var id = tab.getAttribute('data-job-id');
+      if (!id || id === workJobId) return;
+      snapshotActiveJob();
+      loadWorkJob(id);
     });
-    $('saveModeNew').addEventListener('click', function () {
-      if (saveModeKind === 'printSheet') runPrintSheet('new');
-      else runSave('new');
-    });
-    $('saveModeCancel').addEventListener('click', function () { hideSaveModePicker(); });
-    $('saveModeClose').addEventListener('click', function (e) {
-      e.preventDefault();
-      hideSaveModePicker();
-    });
+    $('btnDraftAdd').addEventListener('click', addBlankWorkJob);
 
     $('btnPrintSheet').addEventListener('click', function () {
       var payload = collectPayload();
@@ -2934,11 +3192,7 @@
         setStatus('印刷シートを作成するには K-No を入力してください。', true);
         return;
       }
-      if (boundSaveId()) {
-        showSaveModePicker('printSheet');
-        return;
-      }
-      runPrintSheet('new');
+      runPrintSheet(boundSaveId() ? 'overwrite' : 'new');
     });
 
     google.script.run
@@ -2956,9 +3210,11 @@
         $('kNo').addEventListener('blur', function () {
           var n = normalizeKNo($('kNo').value);
           if (n || !$('kNo').value.trim()) $('kNo').value = n;
+          updateSaveChrome();
         });
         $('dept').addEventListener('change', applyDeptDefaults);
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
+        initWorkJobs();
         if (master.ordersPending) {
           setStatus('順番が空の行があります。入力は仮の順番で動きます。確定するにはリストを更新してください。');
         } else {
