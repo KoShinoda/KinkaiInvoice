@@ -1,6 +1,6 @@
 /**
  * 請求書の保存・呼び出し（キーは K-No 4桁。同一番号で複数件）。
- * 一覧は 1 件 1 行、明細は年シート。同一保存IDは上書き可。印刷は A4 縦・余白狭の PDF。
+ * 一覧は 1 件 1 行、明細は年シート。同一保存IDは上書き可。
  */
 
 var INVOICE_INDEX_HEADERS_ = [
@@ -123,50 +123,6 @@ function loadInvoiceDraft(saveId) {
       partPct: partPct
     }
   });
-}
-
-function publishInvoicePdf(payload) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = printSheetForSave_(ss, payload);
-  let printed = null;
-  if (!sh) {
-    printed = publishInvoices(payload);
-    sh = ss.getSheetByName((printed.sheetNames && printed.sheetNames[0]) || '');
-  }
-  let saved = null;
-  if (payload && payload.header && normalizeInvoiceKNo_(payload.header.kNo)) {
-    saved = saveInvoiceDraft_(payload);
-  }
-  if (!sh) {
-    throw new Error('印刷シートがありません。先に「印刷シートを作成」してください。');
-  }
-  const blob = exportPrintSheetPdf_(ss, sh, sanitizeSheetName_(sh.getName()) + '.pdf');
-  return invoiceJsonSafe_({
-    pageCount: printed ? printed.pageCount : countPrintSheetPages_(sh),
-    lineCount: printed ? printed.lineCount : '',
-    sheetNames: printed ? printed.sheetNames : [sh.getName()],
-    rebuiltSheet: !!printed,
-    saveId: saved ? saved.saveId : '',
-    savedAt: saved ? saved.savedAt : '',
-    overwritten: !!(saved && saved.overwritten),
-    filename: blob.getName(),
-    pdfBase64: Utilities.base64Encode(blob.getBytes())
-  });
-}
-
-function countPrintSheetPages_(sheet) {
-  const last = sheet.getLastRow();
-  if (last < 1) {
-    return 1;
-  }
-  const vals = sheet.getRange(1, 5, last, 1).getDisplayValues();
-  let n = 0;
-  for (let i = 0; i < vals.length; i++) {
-    if (/^No\.\d+／\d+$/.test(String(vals[i][0] || '').trim())) {
-      n += 1;
-    }
-  }
-  return Math.max(1, n);
 }
 
 function saveInvoiceDraft_(payload, savedAtOpt) {
@@ -738,15 +694,11 @@ function invoicePayloadFromTemplate_(templateName, header, techPct, partPct) {
   };
 }
 
-function pdfFileName_(payload) {
-  return printSheetNameFromPayload_(payload) + '.pdf';
-}
-
 function printSheetNameFromPayload_(payload) {
   const header = payload && payload.header ? payload.header : {};
   const digits = String(normalizeInvoiceKNo_(header.kNo) || '').replace(/\D/g, '');
   const k4 = ('0000' + digits).slice(-4);
-  return sanitizeSheetName_(pdfDateStamp_(header) + '_K-' + k4);
+  return sanitizeSheetName_(printDateStamp_(header) + '_K-' + k4);
 }
 
 /**
@@ -874,44 +826,6 @@ function uniquePrintSheetName_(ss, base) {
   return sanitizeSheetName_(root + '_' + n);
 }
 
-function findLatestPrintSheet_(ss, base) {
-  const root = sanitizeSheetName_(base);
-  const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp('^' + escaped + '(?:_(\\d+))?$');
-  const sheets = ss.getSheets();
-  let best = null;
-  let bestN = 0;
-  for (let i = 0; i < sheets.length; i++) {
-    const m = String(sheets[i].getName() || '').match(re);
-    if (!m) {
-      continue;
-    }
-    const n = m[1] ? Number(m[1]) : 1;
-    if (n >= bestN) {
-      bestN = n;
-      best = sheets[i];
-    }
-  }
-  return best;
-}
-
-function printSheetForSave_(ss, payload) {
-  const sid = payload && payload.saveMode !== 'new' ? String(payload.saveId || '').trim() : '';
-  if (sid) {
-    const found = findInvoiceIndexRow_(ensureInvoiceSaveIndexSheet_(true), sid);
-    const n = found ? invoicePrintSheetName_(found.row) : '';
-    if (n) {
-      const bound = ss.getSheetByName(n);
-      if (bound) {
-        return bound;
-      }
-    }
-  }
-  return findLatestPrintSheet_(ss, printSheetNameFromPayload_(payload))
-    || ss.getSheetByName((CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示')
-    || ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
-}
-
 /** シート名に使えない : \ / ? * [ ] と先頭の ' を除く。 */
 function sanitizeSheetName_(name) {
   let s = String(name == null ? '' : name).replace(/[:\\\/\?\*\[\]]/g, '-').replace(/^'+/, '').trim();
@@ -924,7 +838,7 @@ function sanitizeSheetName_(name) {
   return s;
 }
 
-function pdfDateStamp_(header) {
+function printDateStamp_(header) {
   const raw = header && (header.inDate || header.outDate || header.billDate);
   const ymd = formatInvoiceYmd_(raw);
   const m = String(ymd || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
@@ -932,40 +846,4 @@ function pdfDateStamp_(header) {
     return m[1] + ('0' + m[2]).slice(-2) + ('0' + m[3]).slice(-2);
   }
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyyMMdd');
-}
-
-function exportPrintSheetPdf_(ss, sheet, filename) {
-  SpreadsheetApp.flush();
-  const id = ss.getId();
-  const gid = sheet.getSheetId();
-  const url = 'https://docs.google.com/spreadsheets/d/' + id + '/export'
-    + '?exportFormat=pdf&format=pdf'
-    + '&gid=' + gid
-    + '&size=A4'
-    + '&portrait=true'
-    + '&scale=1'
-    + '&top_margin=0.75'
-    + '&bottom_margin=0.75'
-    + '&left_margin=0.7'
-    + '&right_margin=0.7'
-    + '&header_margin=0'
-    + '&footer_margin=0'
-    + '&gridlines=false'
-    + '&printnotes=false'
-    + '&printtitle=false'
-    + '&sheetnames=false'
-    + '&pagenumbers=false'
-    + '&fzr=false'
-    + '&horizontal_alignment=LEFT'
-    + '&vertical_alignment=TOP';
-  const token = ScriptApp.getOAuthToken();
-  const res = UrlFetchApp.fetch(url, {
-    headers: { Authorization: 'Bearer ' + token },
-    muteHttpExceptions: true,
-    followRedirects: true
-  });
-  if (res.getResponseCode() !== 200) {
-    throw new Error('PDFの作成に失敗しました（' + res.getResponseCode() + '）。権限の承認をやり直してください。');
-  }
-  return res.getBlob().setName(filename || '請求書.pdf');
 }

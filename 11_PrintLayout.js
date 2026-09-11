@@ -1,7 +1,7 @@
 /**
  * A4 印刷原本。1 シートにページを縦積みする。
  * 1 枚目だけヘッダー、最終枚だけフッター。明細の直下に No.、その下の空行で高さを合わせる。
- * 印刷シートは行高さを実測し、A4 縦に収まる倍率へ自動縮小する（PDF は 100%）。
+ * 印刷シートは行高さを実測し、A4 縦に収まる倍率へ自動縮小する。
  * 大量印刷向けに色は使わない。
  */
 
@@ -16,7 +16,7 @@ var PRINT_YEN_FORMAT_ = '#,##0';
 var PRINT_BLACK_ = '#000000';
 /** A4 縦。余白は印刷ダイアログの「標準」に合わせる（インチ）。 */
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
-/** シート／PDF のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
+/** シート印刷のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
 /** No. の下の空行。各ページの高さを印刷可能高さに揃える（余りを埋める）。
  * 最終ページ直前はフッター＋明細3行分短くし、最終ページは最小にしてフッター／No.が次用紙へ落ちないようにする。 */
@@ -468,7 +468,7 @@ function applyA4PageSetup_(sheet, pageCount, breakRows) {
 }
 
 /**
- * 印刷プレビューは PDF より少し狭い。各ページの実高さを測り、A4 に収まる倍率にする。
+ * 各ページの実高さを測り、A4 に収まる倍率にする。
  * 1 枚なら Fit to page。複数枚なら「幅1 × 高さ枚数」が使えればそれを使い、無ければ縮小率。
  */
 function applyPrintFitScale_(ps, sheet, pageCount, breakRows) {
@@ -1155,65 +1155,4 @@ function blankIfEmpty_(value) {
     return '';
   }
   return value;
-}
-
-/**
- * 図形ボタンに割り当て可。Sheets の印刷ダイアログはスクリプトから開けないので、
- * 同じ A4 縦設定の PDF プレビューを開く。
- */
-function openA4PrintPreview() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = printSheetForPreview_(ss);
-  if (!sh) {
-    SpreadsheetApp.getUi().alert('印刷するシートがありません。先に印刷シートを作成するか、検索から表示してください。');
-    return;
-  }
-  ss.setActiveSheet(sh);
-  applyA4PageSetup_(sh, Math.max(1, countPrintSheetPages_(sh)), []);
-  const url = printPreviewPdfUrl_(ss, sh);
-  const html = HtmlService.createHtmlOutput(
-    '<p style="font-family:sans-serif;font-size:13px">A4縦のプレビューを開きます。</p>'
-    + '<script>window.open(' + JSON.stringify(url) + ');setTimeout(function(){google.script.host.close();},400);</script>'
-  ).setWidth(280).setHeight(80);
-  SpreadsheetApp.getUi().showModalDialog(html, '印刷プレビュー');
-}
-
-function printSheetForPreview_(ss) {
-  const sh = ss.getActiveSheet();
-  const n = sh.getName();
-  if (parsePrintSheetSortKey_(n)
-    || n === ((CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示')
-    || n === ((CONFIG.print && CONFIG.print.sheetName) || '印刷')
-    || n === ((CONFIG.print && CONFIG.print.sampleSheetName) || '印刷原本')) {
-    return sh;
-  }
-  return ss.getSheetByName((CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示')
-    || findLatestNamedPrintSheet_(ss)
-    || ss.getSheetByName((CONFIG.print && CONFIG.print.sheetName) || '印刷');
-}
-
-function findLatestNamedPrintSheet_(ss) {
-  const sheets = ss.getSheets();
-  let best = null;
-  let bestKey = null;
-  for (let i = 0; i < sheets.length; i++) {
-    const key = parsePrintSheetSortKey_(sheets[i].getName());
-    if (!key) {
-      continue;
-    }
-    if (!bestKey || cmpPrintSheetKey_(key, bestKey) < 0) {
-      best = sheets[i];
-      bestKey = key;
-    }
-  }
-  return best;
-}
-
-function printPreviewPdfUrl_(ss, sheet) {
-  return 'https://docs.google.com/spreadsheets/d/' + ss.getId()
-    + '/export?exportFormat=pdf&format=pdf&gid=' + sheet.getSheetId()
-    + '&size=A4&portrait=true&scale=1'
-    + '&top_margin=0.75&bottom_margin=0.75&left_margin=0.7&right_margin=0.7'
-    + '&header_margin=0&footer_margin=0&gridlines=false&printnotes=false'
-    + '&printtitle=false&sheetnames=false&pagenumbers=false&fzr=false';
 }

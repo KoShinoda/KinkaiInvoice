@@ -775,7 +775,6 @@
       <div class="foot-actions">
         <button type="button" id="btnSave">保存</button>
         <button type="button" id="btnPrintSheet">印刷シートを作成</button>
-        <button type="button" id="btnPrint" class="sub">PDFを作成</button>
       </div>
     </div>
     <div class="foot-sum">
@@ -1185,33 +1184,10 @@
       }
       applyTemplateLines(data.items || [], h.kNo || '保存データ');
     }
-    function downloadPdfAndPrint(base64, filename) {
-      var bin = atob(base64);
-      var bytes = new Uint8Array(bin.length);
-      var i;
-      for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      var blob = new Blob([bytes], { type: 'application/pdf' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = filename || '請求書.pdf';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      var opened = window.open(url, '_blank');
-      if (opened) {
-        setTimeout(function () {
-          try { opened.focus(); opened.print(); } catch (err) {}
-        }, 800);
-        return true;
-      }
-      return false;
-    }
     function setBusy(busy) {
       $('btnSave').disabled = busy;
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
-      $('btnPrint').disabled = busy;
       if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
     }
     function showAppView(view) {
@@ -2963,36 +2939,6 @@
         return;
       }
       runPrintSheet('new');
-    });
-
-    $('btnPrint').addEventListener('click', function () {
-      var payload = collectPayload();
-      var sid = boundSaveId();
-      payload.saveId = sid;
-      payload.saveMode = sid ? 'overwrite' : 'new';
-      setBusy(true);
-      setStatus('PDF を作成しています…');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setBusy(false);
-          if (res.saveId) bindCurrentSave(res.saveId, payload.header.kNo);
-          var printed = downloadPdfAndPrint(res.pdfBase64, res.filename);
-          var extra = !res.saveId
-            ? '／K-No が空のため保存なし'
-            : (res.overwritten ? '／既存を上書き保存しました' : '／新規保存しました');
-          var sheetNote = res.rebuiltSheet
-            ? '／印刷シートが無かったので作成してから PDF にしました'
-            : '／既存の印刷シートから PDF';
-          setStatus(
-            (printed ? 'PDFを開き、印刷ダイアログを出します。' : 'PDFをダウンロードしました。ファイルを開いて印刷してください。') +
-            ' ' + res.filename + '（' + res.pageCount + ' 枚）' + extra + sheetNote
-          );
-        })
-        .withFailureHandler(function (err) {
-          setBusy(false);
-          setStatus(err.message || String(err), true);
-        })
-        .publishInvoicePdf(payload);
     });
 
     google.script.run

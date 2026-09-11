@@ -12,7 +12,7 @@
  * 08_ServiceInfo.js       … 整備情報マスタ。
  * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
- * 12_InvoiceSave.js       … 請求書の保存・呼び出しと印刷PDF。
+ * 12_InvoiceSave.js       … 請求書の保存・呼び出し。
  * 13_InvoiceSearch.js     … シート「請求書検索」（K-No・一覧・表示）。
  *
  * 【中項目】

@@ -12,7 +12,6 @@ function onOpen() {
     .createMenu('請求書入力')
     .addItem('入力アプリを開く', 'openInputApp')
     .addItem('請求書を検索', 'openInvoiceSearchApp')
-    .addItem('このシートをA4縦で印刷プレビュー', 'openA4PrintPreview')
     .addSeparator()
     .addItem('リストのプルダウンを設定', 'setupInputDropdowns')
     .addItem('整備情報シートを整理', 'tidyServiceInfoSheet')
