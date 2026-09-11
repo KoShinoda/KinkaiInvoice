@@ -4,11 +4,14 @@
  */
 
 function invoiceAppOutput_(startView) {
-  const t = HtmlService.createTemplateFromFile('入力アプリ');
-  t.startView = startView === 'search' ? 'search' : 'input';
-  t.operatorEmail = workJobUserKey_();
-  const title = t.startView === 'search' ? '請求書検索' : '車検 請求入力';
-  return t.evaluate()
+  const view = startView === 'search' ? 'search' : 'input';
+  const email = String(workJobUserKey_() || '');
+  const raw = HtmlService.createHtmlOutputFromFile('入力アプリ').getContent();
+  const html = raw
+    .replace("var START_VIEW = 'input'; // kinkai:startView", "var START_VIEW = " + JSON.stringify(view) + "; // kinkai:startView")
+    .replace("var OPERATOR_EMAIL = ''; // kinkai:operatorEmail", "var OPERATOR_EMAIL = " + JSON.stringify(email) + "; // kinkai:operatorEmail");
+  const title = view === 'search' ? '請求書検索' : '車検 請求入力';
+  return HtmlService.createHtmlOutput(html)
     .setTitle(title)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

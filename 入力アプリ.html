@@ -880,10 +880,8 @@
   </div>
 
   <script>
-    <? var sv = (typeof startView === 'undefined') ? 'input' : startView; ?>
-    var START_VIEW = <?!= JSON.stringify(sv) ?>;
-    <? var opMail = (typeof operatorEmail === 'undefined') ? '' : operatorEmail; ?>
-    var OPERATOR_EMAIL = <?!= JSON.stringify(opMail) ?>;
+    var START_VIEW = 'input'; // kinkai:startView
+    var OPERATOR_EMAIL = ''; // kinkai:operatorEmail
     var master = {
       majors: [], allMids: [], midsByMajor: {}, workLines: [],
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
