@@ -304,7 +304,6 @@ function reservedPrintSheetNames_() {
   names[(CONFIG.print && CONFIG.print.sheetName) || '印刷'] = true;
   names[(CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示'] = true;
   names[(CONFIG.print && CONFIG.print.sampleSheetName) || '印刷原本'] = true;
-  names['_印刷A4縦'] = true;
   return names;
 }
 
@@ -354,6 +353,7 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   trimPrintSheet_(sheet, cursor - 1);
   applyA4PageSetup_(sheet, pageCount, breakRows);
   applyPrintPageBreaksAt_(sheet, breakRows);
+  SpreadsheetApp.flush();
   ss.setActiveSheet(sheet);
   return { sheet: sheet, pageCount: pageCount };
 }
@@ -431,62 +431,6 @@ function replacePrintSheet_(ss, name) {
   } catch (err3) {}
   sh.clear();
   return sh;
-}
-
-function ensurePrintSetupSheet_(ss) {
-  const name = '_印刷A4縦';
-  let sh = ss.getSheetByName(name);
-  if (!sh) {
-    sh = ss.insertSheet(name);
-    sh.getRange(1, 1).setValue('印刷設定用（非表示）');
-    applyA4PageSetup_(sh, 1);
-  } else {
-    applyA4PageSetup_(sh, 1);
-  }
-  hideHelperSheet_(ss, sh);
-  return sh;
-}
-
-/**
- * アクティブなシートは hideSheet できない。別シートへ移してから隠す。
- *
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sh
- */
-function hideHelperSheet_(ss, sh) {
-  if (!sh) {
-    return;
-  }
-  try {
-    if (sh.isSheetHidden()) {
-      return;
-    }
-  } catch (err) {}
-  const sheets = ss.getSheets();
-  let other = null;
-  for (let i = 0; i < sheets.length; i++) {
-    if (sheets[i].getSheetId() === sh.getSheetId()) {
-      continue;
-    }
-    try {
-      if (!sheets[i].isSheetHidden()) {
-        other = sheets[i];
-        break;
-      }
-    } catch (err2) {
-      other = sheets[i];
-      break;
-    }
-  }
-  if (!other) {
-    return;
-  }
-  try {
-    ss.setActiveSheet(other);
-    sh.hideSheet();
-  } catch (err) {
-    Logger.log('%s hideHelperSheet_: %s', CONFIG.logPrefix, err);
-  }
 }
 
 function trimPrintSheet_(sheet, lastRow) {
