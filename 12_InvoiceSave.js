@@ -750,6 +750,17 @@ function printSheetNameFromPayload_(payload) {
 }
 
 /**
+ * 既存タブを上書きするか、同名があれば _2 以降。入力作成と検索表示で同じ規則。
+ */
+function printSheetNameForSave_(ss, payload, reuseName) {
+  const reuse = String(reuseName || '').trim();
+  if (reuse && parsePrintSheetSortKey_(reuse) && ss.getSheetByName(reuse)) {
+    return reuse;
+  }
+  return uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
+}
+
+/**
  * 印刷タブを 日付降順（新しいほど左）→ K-No 昇順 → 連番昇順。
  * 印刷以外のシート（マスタ・検索・保存）は今の相対位置のまま左に残す。
  */

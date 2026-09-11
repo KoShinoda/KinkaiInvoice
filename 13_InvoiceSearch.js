@@ -215,10 +215,13 @@ function showSavedInvoicePrint_(saveId) {
     summary: draft.summary || {},
     saveId: id
   };
-  const viewName = (CONFIG.print && CONFIG.print.viewSheetName) || '印刷_表示';
+  const found = findInvoiceIndexRow_(ensureInvoiceSaveIndexSheet_(true), id);
+  const bound = found ? invoicePrintSheetName_(found.row) : '';
+  const sheetName = printSheetNameForSave_(ss, payload, bound);
   ss.toast('保存データから表示しています…', '請求書検索', 5);
-  const built = buildInvoicePrintSheet_(ss, viewName, payload);
+  const built = buildInvoicePrintSheet_(ss, sheetName, payload);
   setInvoicePrintSheetName_(id, built.sheet.getName());
+  placePrintSheetInOrder_(ss, built.sheet);
   ss.setActiveSheet(built.sheet);
   ss.toast(built.sheet.getName() + ' に表示しました（K-No ' + formatPrintKNo_(payload.header.kNo) + '）', '請求書検索', 6);
 }
