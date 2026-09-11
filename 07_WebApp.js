@@ -83,6 +83,8 @@ function getInvoiceMaster() {
     typeSlotsByDept: service.typeSlotsByDept || {},
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
+    defaultTechPct: clampInvoicePct_(service.techPct, 3),
+    defaultPartPct: clampInvoicePct_(service.partPct, 10),
     operatorEmail: workJobUserKey_(),
     spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl(),
     lineCount: CONFIG.app.lineCount || 120,

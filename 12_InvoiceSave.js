@@ -106,8 +106,9 @@ function loadInvoiceDraft(saveId) {
     receptionist: invoicePlain_(meta[11]),
     staff: invoicePlain_(meta[11])
   };
-  const techPct = meta[12] === '' || meta[12] == null ? 3 : Number(meta[12]);
-  const partPct = meta[13] === '' || meta[13] == null ? 10 : Number(meta[13]);
+  const disc = loadDiscPctDefaults_();
+  const techPct = meta[12] === '' || meta[12] == null ? disc.techPct : Number(meta[12]);
+  const partPct = meta[13] === '' || meta[13] == null ? disc.partPct : Number(meta[13]);
   const items = loadInvoiceSaveLines_(ss, {
     saveId: id,
     lineCount: Number(meta[14]) || 0,

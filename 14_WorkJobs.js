@@ -27,6 +27,7 @@ function listWorkJobs() {
   }
   const width = WORK_JOB_INDEX_HEADERS_.length;
   const vals = index.getRange(2, 1, last - 1, width).getValues();
+  const disc = loadDiscPctDefaults_();
   const jobs = [];
   let activeId = '';
   for (let i = 0; i < vals.length; i++) {
@@ -61,8 +62,8 @@ function listWorkJobs() {
         },
         items: items,
         summary: {
-          techPct: vals[i][12] === '' || vals[i][12] == null ? 3 : Number(vals[i][12]),
-          partPct: vals[i][13] === '' || vals[i][13] == null ? 10 : Number(vals[i][13])
+          techPct: vals[i][12] === '' || vals[i][12] == null ? disc.techPct : Number(vals[i][12]),
+          partPct: vals[i][13] === '' || vals[i][13] == null ? disc.partPct : Number(vals[i][13])
         }
       }
     });

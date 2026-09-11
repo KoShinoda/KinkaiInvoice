@@ -122,8 +122,9 @@ function makePrintSamplePayload_() {
       amount: amount
     });
   }
-  const techPct = 3;
-  const partPct = 10;
+  const disc = defaultDiscPcts_();
+  const techPct = disc.techPct;
+  const partPct = disc.partPct;
   const techDisc = Math.round(techSub * techPct / 100);
   const partDisc = Math.round(partSub * partPct / 100);
   return {

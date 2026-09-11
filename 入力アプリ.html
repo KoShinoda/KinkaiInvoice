@@ -881,9 +881,9 @@
 
   <script>
     <? var sv = (typeof startView === 'undefined') ? 'input' : startView; ?>
-    var START_VIEW = <?= JSON.stringify(sv) ?>;
+    var START_VIEW = <?!= JSON.stringify(sv) ?>;
     <? var opMail = (typeof operatorEmail === 'undefined') ? '' : operatorEmail; ?>
-    var OPERATOR_EMAIL = <?= JSON.stringify(opMail) ?>;
+    var OPERATOR_EMAIL = <?!= JSON.stringify(opMail) ?>;
     var master = {
       majors: [], allMids: [], midsByMajor: {}, workLines: [],
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
@@ -975,6 +975,20 @@
       applyDateField('inDate', 'inDateCal', t);
       applyDateField('outDate', 'outDateCal', t);
       applyDateField('billDate', 'billDateCal', t);
+    }
+    function defaultTechPct() {
+      if (!master || master.defaultTechPct == null || master.defaultTechPct === '') return 3;
+      return clampPct(master.defaultTechPct);
+    }
+    function defaultPartPct() {
+      if (!master || master.defaultPartPct == null || master.defaultPartPct === '') return 10;
+      return clampPct(master.defaultPartPct);
+    }
+    function applyDiscPctDefaults() {
+      var t = $('techPct');
+      var p = $('partPct');
+      if (t) t.value = defaultTechPct();
+      if (p) p.value = defaultPartPct();
     }
     function dateIsDefaultToday(v) {
       return formatYmd(v || '') === todayYmd();
@@ -1198,6 +1212,7 @@
       };
     }
     function applySavedPayload(data, quiet) {
+      data = data || {};
       var h = data.header || {};
       $('userName').value = h.userName || '';
       $('kNo').value = normalizeKNo(h.kNo);
@@ -1210,9 +1225,15 @@
       }
       fillHeaderSelect($('receptionist'), master.receptionists || [], h.receptionist || h.staff || '');
       applyHeaderDates(h);
-      if (data.summary) {
-        if (data.summary.techPct != null && data.summary.techPct !== '') $('techPct').value = data.summary.techPct;
-        if (data.summary.partPct != null && data.summary.partPct !== '') $('partPct').value = data.summary.partPct;
+      if (data.summary && data.summary.techPct != null && data.summary.techPct !== '') {
+        $('techPct').value = data.summary.techPct;
+      } else {
+        $('techPct').value = defaultTechPct();
+      }
+      if (data.summary && data.summary.partPct != null && data.summary.partPct !== '') {
+        $('partPct').value = data.summary.partPct;
+      } else {
+        $('partPct').value = defaultPartPct();
       }
       applyTemplateLines(data.items || [], h.kNo || '保存データ', quiet);
     }
@@ -1496,6 +1517,7 @@
       clearItemRows();
       $('invoiceTemplate').value = '';
       bindCurrentSave('', '');
+      applyDiscPctDefaults();
       snapshotActiveJob(true);
       renderDraftTabs();
       setStatus('新しい入力を開始しました。前の入力は上のタブに残っています。');
@@ -1513,6 +1535,7 @@
         clearItemRows();
         $('invoiceTemplate').value = '';
         bindCurrentSave('', '');
+        applyDiscPctDefaults();
         snapshotActiveJob(true);
         renderDraftTabs();
         persistWorkJobs(true);
@@ -1615,6 +1638,7 @@
       workJobs = [makeWorkJob()];
       workJobId = workJobs[0].id;
       applyDefaultDates();
+      applyDiscPctDefaults();
       snapshotActiveJob();
       renderDraftTabs();
     }
@@ -3295,6 +3319,7 @@
 
     google.script.run
       .withSuccessHandler(function (data) {
+        try {
         master = data || master;
         if (master.operatorEmail) {
           workOperator = String(master.operatorEmail);
@@ -3321,6 +3346,7 @@
         });
         $('dept').addEventListener('change', applyDeptDefaults);
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
+        applyDiscPctDefaults();
         initWorkJobs();
         document.addEventListener('visibilitychange', function () {
           if (document.hidden && workJobs.length) snapshotActiveJob(true);
@@ -3332,6 +3358,9 @@
           setStatus('順番が空の行があります。入力は仮の順番で動きます。確定するにはリストを更新してください。');
         } else {
           setStatus('');
+        }
+        } catch (err) {
+          setStatus('画面の初期化に失敗しました: ' + (err.message || err), true);
         }
       })
       .withFailureHandler(function (err) {

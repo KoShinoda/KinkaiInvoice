@@ -112,8 +112,10 @@ const CONFIG = {
   },
 
   serviceInfo: {
-    /** A＝全て（未選択時の種別順）。B〜E＝種別1〜4（大型／小型／BP板金／部品販売）。F＝受付担当。 */
-    sheetName: '整備情報'
+    /** A＝全て（未選択時の種別順）。B〜E＝種別1〜4（大型／小型／BP板金／部品販売）。F＝受付担当。G・H＝値引％初期値。 */
+    sheetName: '整備情報',
+    defaultTechPct: 3,
+    defaultPartPct: 10
   },
 
   /**

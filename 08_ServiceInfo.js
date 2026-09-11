@@ -4,10 +4,15 @@
  *   A 全て（部門未選択時の整備種別。上からこの順）
  *   B 整備種別1＝大型 / C 整備種別2＝小型 / D 整備種別3＝BP板金 / E 整備種別4＝部品販売
  *   F 受付担当
+ *   G 値引技術% / H 値引部品%（2行目が新規入力の初期値。保存済みには使わない）
  */
 
 var SERVICE_ALL_HEADER_ = '全て';
 var SERVICE_RECV_HEADER_ = '受付担当';
+var SERVICE_TECH_PCT_HEADER_ = '値引技術%';
+var SERVICE_PART_PCT_HEADER_ = '値引部品%';
+var SERVICE_TECH_PCT_ALIASES_ = ['値引技術%', '技術値引%', '値引技術'];
+var SERVICE_PART_PCT_ALIASES_ = ['値引部品%', '部品値引%', '値引部品'];
 
 var SERVICE_DEPT_COLS_ = [
   { header: '整備種別1', dept: '大型' },
@@ -35,10 +40,16 @@ function loadServiceInfo_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(CONFIG.serviceInfo.sheetName);
   const parsed = parseServiceInfoSheet_(sh);
-  if (!sh || !isServiceInfoLayout_(sh)) {
-    sh = rebuildServiceInfoSheet_(ss, parsed);
+  try {
+    if (!sh || !isServiceInfoLayout_(sh)) {
+      sh = rebuildServiceInfoSheet_(ss, parsed);
+    } else {
+      ensureServiceInfoDiscCols_(sh, parsed);
+    }
+    return parseServiceInfoSheet_(sh);
+  } catch (err) {
+    return parsed;
   }
-  return parseServiceInfoSheet_(sh);
 }
 
 function isServiceInfoLayout_(sheet) {
@@ -104,8 +115,126 @@ function emptyServiceInfo_() {
     typeSlotsByDept: typeSlotsByDept,
     allServiceTypes: SERVICE_ALL_TYPES_DEFAULT_.slice(),
     receptionists: [],
-    rows: []
+    rows: [],
+    techPct: defaultDiscPcts_().techPct,
+    partPct: defaultDiscPcts_().partPct
   };
+}
+
+function defaultDiscPcts_() {
+  const cfg = CONFIG.serviceInfo || {};
+  return {
+    techPct: clampInvoicePct_(cfg.defaultTechPct, 3),
+    partPct: clampInvoicePct_(cfg.defaultPartPct, 10)
+  };
+}
+
+function clampInvoicePct_(v, fallback) {
+  const fb = fallback == null ? 0 : fallback;
+  if (v === '' || v == null) {
+    return fb;
+  }
+  const n = Number(String(v).replace(/[%％]/g, '').replace(/,/g, '').trim());
+  if (!isFinite(n)) {
+    return fb;
+  }
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function headerIndexAny_(header, aliases) {
+  for (let i = 0; i < aliases.length; i++) {
+    const idx = header.indexOf(normalize_(aliases[i]));
+    if (idx >= 0) {
+      return idx;
+    }
+  }
+  return -1;
+}
+
+function firstPctInCol_(values, col, startRow) {
+  if (col < 0 || !values) {
+    return '';
+  }
+  for (let i = startRow; i < values.length; i++) {
+    if (col >= values[i].length) {
+      continue;
+    }
+    const raw = values[i][col];
+    if (raw === '' || raw == null) {
+      continue;
+    }
+    const n = Number(String(raw).replace(/[%％]/g, '').replace(/,/g, '').trim());
+    if (isFinite(n)) {
+      return n;
+    }
+  }
+  return '';
+}
+
+function applyDiscPctsFromValues_(out, values) {
+  const d = defaultDiscPcts_();
+  out.techPct = d.techPct;
+  out.partPct = d.partPct;
+  if (!values || !values.length) {
+    return out;
+  }
+  const header = values[0].map(function (v) {
+    return normalize_(v);
+  });
+  const t = firstPctInCol_(values, headerIndexAny_(header, SERVICE_TECH_PCT_ALIASES_), 1);
+  const p = firstPctInCol_(values, headerIndexAny_(header, SERVICE_PART_PCT_ALIASES_), 1);
+  if (t !== '') {
+    out.techPct = clampInvoicePct_(t, d.techPct);
+  }
+  if (p !== '') {
+    out.partPct = clampInvoicePct_(p, d.partPct);
+  }
+  return out;
+}
+
+function loadDiscPctDefaults_() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName(CONFIG.serviceInfo.sheetName);
+    const parsed = parseServiceInfoSheet_(sh);
+    return {
+      techPct: clampInvoicePct_(parsed && parsed.techPct, defaultDiscPcts_().techPct),
+      partPct: clampInvoicePct_(parsed && parsed.partPct, defaultDiscPcts_().partPct)
+    };
+  } catch (err) {
+    return defaultDiscPcts_();
+  }
+}
+
+function writeServiceInfoDiscCols_(sh, pct) {
+  const d = pct || defaultDiscPcts_();
+  sh.getRange(1, 7, 1, 2).setValues([[SERVICE_TECH_PCT_HEADER_, SERVICE_PART_PCT_HEADER_]]);
+  sh.getRange(1, 7, 1, 2).setFontWeight('bold').setBackground('#e8f0ec');
+  sh.getRange(2, 7, 1, 2).setValues([[d.techPct, d.partPct]]);
+  sh.getRange(2, 7, 1, 2).setNumberFormat('0').setFontSize(11);
+  sh.setColumnWidth(7, 110);
+  sh.setColumnWidth(8, 110);
+  sh.getRange(1, 7).setNote('新規の請求入力に使う値引％の初期値。保存済みの請求書には影響しません。');
+}
+
+function serviceInfoHasDiscCols_(sheet) {
+  if (!sheet) {
+    return false;
+  }
+  const header = sheet.getRange(1, 7, 1, 2).getValues()[0].map(function (v) {
+    return normalize_(v);
+  });
+  return headerIndexAny_(header, SERVICE_TECH_PCT_ALIASES_) >= 0 &&
+    headerIndexAny_(header, SERVICE_PART_PCT_ALIASES_) >= 0;
+}
+
+function ensureServiceInfoDiscCols_(sheet, parsed) {
+  if (serviceInfoHasDiscCols_(sheet)) {
+    return;
+  }
+  try {
+    writeServiceInfoDiscCols_(sheet, parsed || defaultDiscPcts_());
+  } catch (err) {}
 }
 
 function isServiceInfoSkipLabel_(value) {
@@ -114,6 +243,9 @@ function isServiceInfoSkipLabel_(value) {
     return true;
   }
   if (t === SERVICE_ALL_HEADER_ || t === SERVICE_RECV_HEADER_ || t === '未選択') {
+    return true;
+  }
+  if (SERVICE_TECH_PCT_ALIASES_.indexOf(t) !== -1 || SERVICE_PART_PCT_ALIASES_.indexOf(t) !== -1) {
     return true;
   }
   if (t === '大型' || t === '小型' || t === 'BP板金') {
@@ -176,6 +308,7 @@ function parseServiceInfoVertical_(sheet) {
       }
     }
   }
+  applyDiscPctsFromValues_(out, values);
   return out;
 }
 
@@ -208,6 +341,7 @@ function parseServiceInfoOldVertical_(sheet) {
       out.receptionists.push(String(values[i][recvCol]).replace(/\u3000/g, ' ').trim());
     }
   }
+  applyDiscPctsFromValues_(out, values);
   return out;
 }
 
@@ -266,6 +400,7 @@ function parseServiceInfoLegacy_(sheet) {
     });
   });
   out.allServiceTypes = mergeAllServiceTypes_([], out);
+  applyDiscPctsFromValues_(out, values);
   return out;
 }
 
@@ -356,10 +491,11 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   sh.setColumnWidth(4, 140);
   sh.setColumnWidth(5, 140);
   sh.setColumnWidth(6, 120);
+  writeServiceInfoDiscCols_(sh, parsed);
   sh.getRange(1, 1).setNote(
     'A列「全て」＝整備部門が未選択のときの整備種別（上からこの順）。\n' +
     '既定: 車検大型→点検大型→一般大型→車検小型→点検小型→一般小型→構造変更→板金塗装→部品販売→特装→諸経費。\n' +
-    'B〜E＝部門別（2行目は部門名。消さない）。F＝受付担当。'
+    'B〜E＝部門別（2行目は部門名。消さない）。F＝受付担当。G・H＝新規入力の値引％初期値。'
   );
   sh.getRange(1, 6).setNote('受付担当を縦に並べます。');
   return sh;
@@ -386,5 +522,5 @@ function tidyServiceInfoSheet() {
   const sh = ss.getSheetByName(CONFIG.serviceInfo.sheetName);
   const parsed = parseServiceInfoSheet_(sh);
   rebuildServiceInfoSheet_(ss, parsed);
-  SpreadsheetApp.getActiveSpreadsheet().toast('整備情報シートを整理しました（全て列＋種別1〜4）', '請求書入力', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('整備情報シートを整理しました（全て列＋種別1〜4＋値引％）', '請求書入力', 5);
 }
