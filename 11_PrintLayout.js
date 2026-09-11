@@ -424,7 +424,33 @@ function replacePrintSheet_(ss, name) {
   if (at > ss.getNumSheets()) {
     at = ss.getNumSheets();
   }
-  return ss.insertSheet(name, at);
+  sh = ss.insertSheet(name, at);
+  trimPrintSheetColumns_(sh);
+  forcePrintPortrait_(sh);
+  return sh;
+}
+
+function trimPrintSheetColumns_(sheet) {
+  const cols = CONFIG.print.colCount || 8;
+  const maxC = sheet.getMaxColumns();
+  if (maxC <= cols) {
+    return;
+  }
+  try {
+    sheet.deleteColumns(cols + 1, maxC - cols);
+  } catch (err) {
+    try {
+      sheet.hideColumns(cols + 1, maxC - cols);
+    } catch (err2) {}
+  }
+}
+
+function forcePrintPortrait_(sheet) {
+  try {
+    sheet.getPageSetup().setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
+  } catch (err) {
+    Logger.log('%s forcePrintPortrait_: %s', CONFIG.logPrefix, err);
+  }
 }
 
 function trimPrintSheet_(sheet, lastRow) {
@@ -439,26 +465,36 @@ function trimPrintSheet_(sheet, lastRow) {
 
 function applyA4PageSetup_(sheet, pageCount, breakRows) {
   const pages = Math.max(1, pageCount || 1);
+  const ps = sheet.getPageSetup();
+  const m = PRINT_MARGIN_IN_;
   try {
-    const ps = sheet.getPageSetup();
-    const m = PRINT_MARGIN_IN_;
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
+  } catch (err) {
+    Logger.log('%s setPaperSize: %s', CONFIG.logPrefix, err);
+  }
+  try {
     ps.setPrintGridlines(false);
-    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
+  } catch (err2) {}
+  try {
     if (typeof ps.setTopMargin === 'function') {
       ps.setTopMargin(m.top);
       ps.setBottomMargin(m.bottom);
       ps.setLeftMargin(m.left);
       ps.setRightMargin(m.right);
     }
+  } catch (err3) {}
+  try {
     if (typeof ps.setHeaderMargin === 'function') {
       ps.setHeaderMargin(PRINT_HF_MARGIN_IN_);
       ps.setFooterMargin(PRINT_HF_MARGIN_IN_);
     }
+  } catch (err4) {}
+  try {
     applyPrintFitScale_(ps, sheet, pages, breakRows || []);
-  } catch (err) {
-    Logger.log('%s A4 page setup: %s', CONFIG.logPrefix, err);
-  }
+  } catch (err5) {}
+  trimPrintSheetColumns_(sheet);
+  forcePrintPortrait_(sheet);
+  SpreadsheetApp.flush();
 }
 
 /**
