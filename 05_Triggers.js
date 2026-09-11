@@ -111,11 +111,6 @@ function handleEdit_(e) {
   const sheet = e.range.getSheet();
   const sheetName = sheet.getName();
 
-  if (sheetName === CONFIG.invoiceSearch.sheetName) {
-    handleInvoiceSearchEdit_(e);
-    return;
-  }
-
   if (sheetName === CONFIG.print.sheetName || sheetName === CONFIG.print.sampleSheetName) {
     handlePrintHeaderDeptEdit_(e);
     return;

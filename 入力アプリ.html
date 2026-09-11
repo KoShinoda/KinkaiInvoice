@@ -63,7 +63,7 @@
     .search-result col.c-plate { width: 130px; }
     .search-result col.c-bill { width: 92px; }
     .search-result col.c-n { width: 48px; }
-    .search-result col.c-act { width: 168px; }
+    .search-result col.c-act { width: 88px; }
     .search-result .row-actions { display: flex; gap: 6px; }
     .search-result .row-actions button {
       padding: 5px 10px;
@@ -1259,8 +1259,9 @@
       $('navSearch').classList.toggle('on', search);
       $('appTitle').textContent = search ? '請求書検索' : '車検 請求入力';
       $('appSub').textContent = search
-        ? 'K-No で保存を検索し、印刷表示または入力画面へ移します'
+        ? 'K-No で保存を検索し、編集で元の入力タブへ呼び出します'
         : 'ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd';
+      if (search && workJobId) searchReturnJobId = workJobId;
     }
     function setSearchStatus(msg, isErr) {
       var el = $('searchStatus');
@@ -1287,6 +1288,7 @@
     var WORK_JOB_STORE = 'kinkaiInvoice.workJobs.v1';
     var workJobs = [];
     var workJobId = '';
+    var searchReturnJobId = '';
     var workOperator = String(OPERATOR_EMAIL || '');
     var workIsolated = !!workOperator;
     function cloneJobPayload(data) {
@@ -1310,15 +1312,6 @@
       var i;
       for (i = 0; i < workJobs.length; i++) {
         if (workJobs[i].id === id) return workJobs[i];
-      }
-      return null;
-    }
-    function findWorkJobBySaveId(saveId) {
-      var sid = String(saveId || '').trim();
-      if (!sid) return null;
-      var i;
-      for (i = 0; i < workJobs.length; i++) {
-        if (String(workJobs[i].saveId || '') === sid) return workJobs[i];
       }
       return null;
     }
@@ -1521,35 +1514,30 @@
     }
     function openSavedInWorkJob(data, saveId) {
       var sid = String((data && data.saveId) || saveId || '').trim();
-      snapshotActiveJob(true);
-      var existing = findWorkJobBySaveId(sid);
-      if (existing) {
-        existing.payload = cloneJobPayload(data);
-        existing.saveId = sid;
-        existing.boundKNo = normalizeKNo((data && data.header && data.header.kNo) || '');
-        loadWorkJob(existing.id, true);
-        setStatus('呼び出しました（K-No ' + (existing.boundKNo || '') + '）／作業タブに表示しています');
-        return true;
+      var targetId = (searchReturnJobId && findWorkJob(searchReturnJobId))
+        ? searchReturnJobId
+        : workJobId;
+      if (!findWorkJob(targetId) && workJobs.length) {
+        targetId = workJobs[0].id;
       }
-      if (formIsEmpty() && workJobs.length) {
-        applySavedPayload(data, true);
-        bindCurrentSave(sid, (data && data.header && data.header.kNo) || '');
-        snapshotActiveJob(true);
-        renderDraftTabs();
-        setStatus('呼び出しました（K-No ' + (normalizeKNo((data && data.header && data.header.kNo) || '') || '') + '）');
-        return true;
+      if (!findWorkJob(targetId)) {
+        var blank = makeWorkJob();
+        workJobs.push(blank);
+        targetId = blank.id;
       }
-      if (workJobs.length >= WORK_JOB_MAX) {
-        setStatus('作業中は最大 ' + WORK_JOB_MAX + ' 件です。タブを閉じてから開いてください。', true);
+      var target = findWorkJob(targetId);
+      if (jobHasContent(target) && !window.confirm('検索元のタブの内容を、選んだ保存で置き換えますか？')) {
         return false;
       }
-      var job = makeWorkJob();
-      job.payload = cloneJobPayload(data);
-      job.saveId = sid;
-      job.boundKNo = normalizeKNo((data && data.header && data.header.kNo) || '');
-      workJobs.push(job);
-      loadWorkJob(job.id, true);
-      setStatus('呼び出しました（K-No ' + (job.boundKNo || '') + '）／別タブで開きました');
+      if (workJobId !== targetId) {
+        loadWorkJob(targetId, true);
+      }
+      applySavedPayload(data, true);
+      bindCurrentSave(sid, (data && data.header && data.header.kNo) || '');
+      snapshotActiveJob(true);
+      renderDraftTabs();
+      var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
+      setStatus('呼び出しました（K-No ' + k + '）');
       return true;
     }
     function applyWorkOperator(state) {
@@ -3163,7 +3151,7 @@
             setBusy(false);
             var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
             if (ok) {
-              setSearchStatus('入力画面へ移しました（K-No ' + k + '）');
+              setSearchStatus('編集画面へ戻しました（K-No ' + k + '）');
               if (goInput) showAppView('input');
             }
           } catch (err) {
@@ -3204,8 +3192,7 @@
           '<td class="clip" title="' + htmlEscape(row.firstMid || '') + '">' + htmlEscape(row.firstMid || '') + '</td>' +
           '<td>' + htmlEscape(String(row.lineCount || 0)) + '行</td>' +
           '<td><div class="row-actions">' +
-            '<button type="button" class="sub" data-act="show">表示</button>' +
-            '<button type="button" data-act="input">入力へ</button>' +
+            '<button type="button" data-act="edit">編集</button>' +
           '</div></td>';
         body.appendChild(tr);
       });
@@ -3229,22 +3216,6 @@
           setSearchStatus(err.message || String(err), true);
         })
         .listInvoiceDrafts(kNo);
-    }
-    function displayInvoiceFromSearch(saveId) {
-      setBusy(true);
-      setSearchStatus('印刷シートを表示しています…');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setBusy(false);
-          var name = (res && res.sheetName) || '';
-          setSearchStatus(name ? ('スプレッドシートの「' + name + '」に表示しました') : '表示しました');
-          closeInputDialogIfPossible_();
-        })
-        .withFailureHandler(function (err) {
-          setBusy(false);
-          setSearchStatus(err.message || String(err), true);
-        })
-        .displaySavedInvoice(saveId);
     }
     $('navInput').addEventListener('click', function () {
       showAppView('input');
@@ -3284,12 +3255,7 @@
       if (!tr) return;
       var saveId = tr.getAttribute('data-save-id');
       if (!saveId) return;
-      var act = btn.getAttribute('data-act');
-      if (act === 'show') {
-        displayInvoiceFromSearch(saveId);
-        return;
-      }
-      if (act === 'input') {
+      if (btn.getAttribute('data-act') === 'edit') {
         restoreInvoice(saveId, true);
       }
     });
