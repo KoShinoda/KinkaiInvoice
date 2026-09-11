@@ -33,6 +33,7 @@
     }
     header h1 { margin: 0; font-size: 17px; font-weight: 600; }
     header span { font-size: 12px; opacity: .8; }
+    #appSub:empty { display: none; }
     header a.sheet-link {
       color: #fff;
       font-size: 12px;
@@ -101,19 +102,21 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      background: rgba(255,255,255,.45);
+      background: #b7c8c0;
+      color: #3d4f48;
       border: 0;
       border-radius: 10px 10px 0 0;
-      padding: 8px 6px 10px 16px;
+      padding: 8px 8px 10px 14px;
       cursor: pointer;
-      min-width: 140px;
+      min-width: 160px;
       max-width: 280px;
       flex: 0 0 auto;
       min-height: 44px;
     }
     .draft-tab.on {
       background: #fff;
-      box-shadow: 0 1px 0 #fff;
+      color: #16382c;
+      box-shadow: inset 0 -3px 0 var(--accent);
     }
     .draft-tab-label {
       font-size: 15px;
@@ -121,12 +124,13 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 200px;
+      min-width: 0;
+      flex: 1 1 auto;
       pointer-events: none;
     }
     .draft-tab-x {
-      background: rgba(0,0,0,.06);
-      color: #445;
+      background: rgba(0,0,0,.08);
+      color: inherit;
       border: 0;
       width: 36px;
       height: 36px;
@@ -135,6 +139,7 @@
       line-height: 1;
       border-radius: 8px;
       flex: 0 0 36px;
+      margin-left: auto;
     }
     .draft-tab-x:hover { background: #fde8e8; color: var(--danger); }
     #btnDraftAdd {
@@ -663,7 +668,7 @@
   <header>
     <div class="header-lead">
       <h1 id="appTitle">車検 請求入力</h1>
-      <span id="appSub">ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd</span>
+      <span id="appSub"></span>
       <a class="sheet-link" id="sheetOpenLink" href="#" target="_blank" rel="noopener" hidden>スプレッドシートを開く</a>
     </div>
     <nav class="app-tabs">
@@ -726,7 +731,7 @@
     </section>
     <section class="card">
       <div class="card-head">
-        <h2>明細（120行・表内スクロール）　大項目はリスト選択　／　中項目は入力可</h2>
+        <h2>明細</h2>
         <button type="button" class="ghost" id="btnClearItems">明細全消去</button>
       </div>
       <div class="template-bar">
@@ -956,10 +961,37 @@
       var m = String(ymd || '').match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
       return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
     }
+    function todayYmd() {
+      var d = new Date();
+      return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
+    }
     function applyDateField(textId, calId, formatted) {
       $(textId).value = formatted;
       var iso = ymdToIso(formatted);
       $(calId).value = iso;
+    }
+    function applyDefaultDates() {
+      var t = todayYmd();
+      applyDateField('inDate', 'inDateCal', t);
+      applyDateField('outDate', 'outDateCal', t);
+      applyDateField('billDate', 'billDateCal', t);
+    }
+    function dateIsDefaultToday(v) {
+      return formatYmd(v || '') === todayYmd();
+    }
+    function headerHasAnyDate(h) {
+      h = h || {};
+      return !!(formatYmd(h.inDate || '') || formatYmd(h.outDate || h.doneDate || '') || formatYmd(h.billDate || ''));
+    }
+    function applyHeaderDates(h) {
+      h = h || {};
+      if (!headerHasAnyDate(h)) {
+        applyDefaultDates();
+        return;
+      }
+      applyDateField('inDate', 'inDateCal', formatYmd(h.inDate || ''));
+      applyDateField('outDate', 'outDateCal', formatYmd(h.outDate || h.doneDate || ''));
+      applyDateField('billDate', 'billDateCal', formatYmd(h.billDate || ''));
     }
     function bindDateField(textId, calId, onSet) {
       var text = $(textId);
@@ -969,14 +1001,9 @@
         applyDateField(textId, calId, f);
         if (onSet) onSet(f, fromCal);
       }
-      function todayYmd() {
-        var d = new Date();
-        return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
-      }
       function shiftYmd(ymd, days) {
         var iso = ymdToIso(formatYmd(ymd));
-        if (!iso) return todayYmd();
-        var d = new Date(iso + 'T12:00:00');
+        var d = iso ? new Date(iso + 'T12:00:00') : new Date();
         d.setDate(d.getDate() + days);
         return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
       }
@@ -989,11 +1016,10 @@
         }
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault();
-          if (!String(text.value || '').trim()) {
-            commit(todayYmd(), false);
-            return;
-          }
-          commit(shiftYmd(text.value, e.key === 'ArrowUp' ? 1 : -1), false);
+          var base = formatYmd(text.value);
+          if (!ymdToIso(base)) base = todayYmd();
+          commit(shiftYmd(base, e.key === 'ArrowUp' ? 1 : -1), false);
+          try { text.select(); } catch (err) {}
         }
       });
       cal.addEventListener('change', function () {
@@ -1091,9 +1117,7 @@
       applyDeptDefaults();
       $('serviceType').value = '';
       $('receptionist').value = '';
-      applyDateField('inDate', 'inDateCal', '');
-      applyDateField('outDate', 'outDateCal', '');
-      applyDateField('billDate', 'billDateCal', '');
+      applyDefaultDates();
       bindCurrentSave('', '');
     }
     function clearItemRows() {
@@ -1185,9 +1209,7 @@
         $('serviceType').value = h.serviceType;
       }
       fillHeaderSelect($('receptionist'), master.receptionists || [], h.receptionist || h.staff || '');
-      applyDateField('inDate', 'inDateCal', formatYmd(h.inDate || ''));
-      applyDateField('outDate', 'outDateCal', formatYmd(h.outDate || h.doneDate || ''));
-      applyDateField('billDate', 'billDateCal', formatYmd(h.billDate || ''));
+      applyHeaderDates(h);
       if (data.summary) {
         if (data.summary.techPct != null && data.summary.techPct !== '') $('techPct').value = data.summary.techPct;
         if (data.summary.partPct != null && data.summary.partPct !== '') $('partPct').value = data.summary.partPct;
@@ -1214,7 +1236,7 @@
       $('appTitle').textContent = search ? '請求書検索' : '車検 請求入力';
       $('appSub').textContent = search
         ? 'K-No で保存を検索し、編集で元の入力タブへ呼び出します'
-        : 'ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd';
+        : '';
       if (search && workJobId) searchReturnJobId = workJobId;
     }
     function setSearchStatus(msg, isErr) {
@@ -1304,7 +1326,9 @@
       }
       var h = p.header || {};
       return !!(String(h.kNo || '').trim() || String(h.userName || '').trim() || String(h.plate || '').trim() ||
-        String(h.inDate || '').trim() || String(h.outDate || '').trim() || String(h.billDate || '').trim());
+        (formatYmd(h.inDate || '') && !dateIsDefaultToday(h.inDate)) ||
+        (formatYmd(h.outDate || '') && !dateIsDefaultToday(h.outDate)) ||
+        (formatYmd(h.billDate || '') && !dateIsDefaultToday(h.billDate)));
     }
     function jobNeedsReplaceConfirm_(job) {
       var rows = (job && job.payload && job.payload.items) || [];
@@ -1382,8 +1406,10 @@
     }
     function headerHasContent() {
       return filled($('userName').value) || !!normalizeKNo($('kNo').value) || !!joinPlate() ||
-        filled($('inDate').value) || filled($('outDate').value) || filled($('billDate').value) ||
-        filled($('dept').value) || filled($('serviceType').value) || filled($('receptionist').value);
+        filled($('dept').value) || filled($('serviceType').value) || filled($('receptionist').value) ||
+        (filled($('inDate').value) && !dateIsDefaultToday($('inDate').value)) ||
+        (filled($('outDate').value) && !dateIsDefaultToday($('outDate').value)) ||
+        (filled($('billDate').value) && !dateIsDefaultToday($('billDate').value));
     }
     function formIsEmpty() {
       return !boundSaveId() && !gridHasContent() && !headerHasContent();
@@ -1588,6 +1614,7 @@
       }
       workJobs = [makeWorkJob()];
       workJobId = workJobs[0].id;
+      applyDefaultDates();
       snapshotActiveJob();
       renderDraftTabs();
     }
@@ -2611,7 +2638,8 @@
       var next = i + dir;
       if (next < 0 || next >= lineCount()) return;
       pendingFocus = { i: next, k: k };
-      prepareComboCommit(el, true);
+      prepareComboCommit(el, false);
+      comboIgnoreBlur = true;
       applyPendingFocus();
     }
     function moveRight(el, dir) {
@@ -3303,7 +3331,7 @@
         if (master.ordersPending) {
           setStatus('順番が空の行があります。入力は仮の順番で動きます。確定するにはリストを更新してください。');
         } else {
-          setStatus('ヘッダーは整備情報マスタ、日付はカレンダーまたは yyyymmdd で入力できます。');
+          setStatus('');
         }
       })
       .withFailureHandler(function (err) {
