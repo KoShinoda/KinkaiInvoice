@@ -831,8 +831,19 @@ function placePrintSheetInOrder_(ss, sheet) {
     }
     pos = i + 2;
   }
-  ss.setActiveSheet(sheet);
-  ss.moveActiveSheet(pos);
+  const n = ss.getNumSheets();
+  if (pos < 1) {
+    pos = 1;
+  }
+  if (pos > n) {
+    pos = n;
+  }
+  try {
+    ss.setActiveSheet(sheet);
+    ss.moveActiveSheet(pos);
+  } catch (err) {
+    Logger.log('%s placePrintSheetInOrder_: %s', CONFIG.logPrefix, err);
+  }
 }
 
 function uniquePrintSheetName_(ss, base) {

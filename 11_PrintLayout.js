@@ -33,6 +33,7 @@ var PRINT_META_LABEL_H_ = 16;
 var PRINT_META_VALUE_H_ = 22;
 var PRINT_SPACER_H_ = 2;
 var PRINT_FOOTER_H_ = 22;
+var PRINT_ROW_H_MAX_ = 409;
 
 /**
  * 印刷シート。A4 縦 1 シートにページを縦積みする。
@@ -415,23 +416,15 @@ function printBodyPlan_(lines) {
 
 function replacePrintSheet_(ss, name) {
   let sh = ss.getSheetByName(name);
-  if (!sh) {
-    sh = ss.insertSheet(name);
-    return sh;
+  let at = ss.getNumSheets();
+  if (sh) {
+    at = Math.max(0, sh.getIndex() - 1);
+    ss.deleteSheet(sh);
   }
-  const maxR = sh.getMaxRows();
-  const maxC = Math.max(1, sh.getMaxColumns());
-  try {
-    sh.showRows(1, maxR);
-  } catch (err) {}
-  try {
-    sh.showColumns(1, maxC);
-  } catch (err2) {}
-  try {
-    sh.getRange(1, 1, maxR, maxC).breakApart();
-  } catch (err3) {}
-  sh.clear();
-  return sh;
+  if (at > ss.getNumSheets()) {
+    at = ss.getNumSheets();
+  }
+  return ss.insertSheet(name, at);
 }
 
 function trimPrintSheet_(sheet, lastRow) {
@@ -890,34 +883,47 @@ function fitPrintFont_(text, colWidth) {
   return PRINT_FONT_MIN_;
 }
 
+function setPrintRowHeight_(sheet, row, h) {
+  const n = Math.max(1, Math.min(PRINT_ROW_H_MAX_, Math.round(Number(h) || 1)));
+  sheet.setRowHeight(row, n);
+}
+
+function setPrintRowHeights_(sheet, row, count, h) {
+  if (count < 1) {
+    return;
+  }
+  const n = Math.max(1, Math.min(PRINT_ROW_H_MAX_, Math.round(Number(h) || 1)));
+  sheet.setRowHeights(row, count, n);
+}
+
 function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan, padBeforeFooterPage) {
   const padH = printPadHeight_(showHeader, showFooter, slotH, padBeforeFooterPage);
   if (showHeader && L.title != null) {
-    sheet.setRowHeight(start + L.title, PRINT_TITLE_H_);
-    sheet.setRowHeight(start + L.metaL1, PRINT_META_LABEL_H_);
-    sheet.setRowHeight(start + L.metaV1, PRINT_META_VALUE_H_);
-    sheet.setRowHeight(start + L.metaL2, PRINT_META_LABEL_H_);
-    sheet.setRowHeight(start + L.metaV2, PRINT_META_VALUE_H_);
-    sheet.setRowHeight(start + L.metaL3, PRINT_META_LABEL_H_);
-    sheet.setRowHeight(start + L.metaV3, PRINT_META_VALUE_H_);
-    sheet.setRowHeight(start + L.spacer, PRINT_SPACER_H_);
+    setPrintRowHeight_(sheet, start + L.title, PRINT_TITLE_H_);
+    setPrintRowHeight_(sheet, start + L.metaL1, PRINT_META_LABEL_H_);
+    setPrintRowHeight_(sheet, start + L.metaV1, PRINT_META_VALUE_H_);
+    setPrintRowHeight_(sheet, start + L.metaL2, PRINT_META_LABEL_H_);
+    setPrintRowHeight_(sheet, start + L.metaV2, PRINT_META_VALUE_H_);
+    setPrintRowHeight_(sheet, start + L.metaL3, PRINT_META_LABEL_H_);
+    setPrintRowHeight_(sheet, start + L.metaV3, PRINT_META_VALUE_H_);
+    setPrintRowHeight_(sheet, start + L.spacer, PRINT_SPACER_H_);
   }
-  sheet.setRowHeight(start + L.colHead, PRINT_COL_HEAD_H_);
+  setPrintRowHeight_(sheet, start + L.colHead, PRINT_COL_HEAD_H_);
   let r = start + L.firstLine;
   const units = (plan && plan.itemUnits) || [];
   for (let i = 0; i < units.length; i++) {
-    sheet.setRowHeight(r, slotH * units[i]);
+    setPrintRowHeight_(sheet, r, slotH * units[i]);
     r++;
   }
   const blanks = plan && plan.blanks != null ? plan.blanks : CONFIG.print.linesPerPage;
   if (blanks > 0) {
-    sheet.setRowHeights(r, blanks, slotH);
+    setPrintRowHeights_(sheet, r, blanks, slotH);
   }
   if (showFooter) {
-    sheet.setRowHeights(start + L.footerStart, 5, PRINT_FOOTER_H_);
+    setPrintRowHeights_(sheet, start + L.footerStart, 5, PRINT_FOOTER_H_);
   }
-  sheet.setRowHeight(start + L.pad, padH);
-  sheet.setRowHeight(start + L.pageNo, PRINT_PAGE_NO_H_);
+  setPrintRowHeight_(sheet, start + L.pad, padH);
+  setPrintRowHeight_(sheet, start + L.pageNo, PRINT_PAGE_NO_H_);
 }
 
 function mergePrintPage_(sheet, start, L, showHeader, showFooter) {

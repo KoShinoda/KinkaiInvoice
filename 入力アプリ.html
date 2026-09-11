@@ -109,17 +109,23 @@
     }
     .search-popup-head h2 { margin: 0; font-size: 16px; }
     .search-popup-x {
-      width: 36px;
-      height: 36px;
+      width: 44px;
+      height: 44px;
       padding: 0;
-      border: 0;
-      border-radius: 8px;
-      background: rgba(0,0,0,.06);
-      font-size: 22px;
+      border: 2px solid #1c2430;
+      border-radius: 10px;
+      background: #fff;
+      color: #1c2430;
+      font-size: 28px;
+      font-weight: 700;
       line-height: 1;
       cursor: pointer;
     }
-    .search-popup-x:hover { background: #fde8e8; color: var(--danger); }
+    .search-popup-x:hover {
+      background: #b42318;
+      border-color: #b42318;
+      color: #fff;
+    }
     .search-popup-body { padding: 14px 16px 18px; }
     #popupSearchStatus { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
     #popupSearchStatus.err { color: var(--danger); }
