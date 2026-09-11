@@ -726,14 +726,28 @@ function printSheetNameFromPayload_(payload) {
 }
 
 /**
- * 既存タブを上書きするか、同名があれば _2 以降。入力作成と検索表示で同じ規則。
+ * 印刷タブ名。Googleアカウントごとに1枚を上書きする。
+ * 全員で「印刷」1枚だと、同時に作ると他人の帳票が消える。
+ */
+function printWorkingSheetName_() {
+  const prefix = String((CONFIG.print && CONFIG.print.sheetName) || '印刷').trim() || '印刷';
+  const user = String(workJobUserKey_() || '').trim().toLowerCase();
+  const local = user.split('@')[0] || '';
+  const safe = sanitizeSheetName_(local);
+  if (!safe) {
+    return prefix;
+  }
+  return sanitizeSheetName_(prefix + '_' + safe);
+}
+
+/**
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @param {object} payload
+ * @param {string=} reuseName
+ * @return {string}
  */
 function printSheetNameForSave_(ss, payload, reuseName) {
-  const reuse = String(reuseName || '').trim();
-  if (reuse && parsePrintSheetSortKey_(reuse) && ss.getSheetByName(reuse)) {
-    return reuse;
-  }
-  return uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
+  return printWorkingSheetName_();
 }
 
 /**

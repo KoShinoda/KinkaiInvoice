@@ -416,8 +416,7 @@ function publishPrintSheet(payload) {
   }
   const saved = saveInvoiceDraft_(payload);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const reuse = saved.overwritten ? String(saved.printSheetName || '').trim() : '';
-  const sheetName = printSheetNameForSave_(ss, payload, reuse);
+  const sheetName = printWorkingSheetName_();
   const printed = publishInvoices(payload, sheetName);
   const printedName = (printed.sheetNames && printed.sheetNames[0]) || sheetName;
   setInvoicePrintSheetName_(saved.saveId, printedName);
