@@ -14,6 +14,7 @@
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
  * 12_InvoiceSave.js       … 請求書の保存・呼び出し。
  * 13_InvoiceSearch.js     … シート「請求書検索」（K-No・一覧・表示）。
+ * 14_WorkJobs.js          … 入力アプリの作業中タブ（担当者ごと。確定保存は共用）。
  *
  * 【中項目】
  * 入力アプリが作業リストから候補を出し、選ぶと作業内容・部品を展開する。
@@ -151,6 +152,14 @@ const CONFIG = {
    */
   invoiceSearch: {
     sheetName: '請求書検索'
+  },
+
+  /**
+   * 入力アプリの作業中タブ。担当者（Googleアカウント）ごとに保持。確定の請求書保存は共用。
+   */
+  invoiceWork: {
+    sheetName: '請求書作業中',
+    detailSheetName: '請求書作業中明細'
   },
 
   /**

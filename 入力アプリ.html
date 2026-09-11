@@ -125,6 +125,12 @@
       padding: 5px 10px;
       font-size: 12px;
     }
+    .draft-operator {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
     #editBadge {
       font-size: 12px;
       color: var(--muted);
@@ -684,6 +690,7 @@
   <div class="draft-bar" id="draftBar">
     <div class="draft-tabs" id="draftTabs"></div>
     <button type="button" id="btnDraftAdd" class="sub">＋ 作業を追加</button>
+    <span class="draft-operator" id="workOperator"></span>
   </div>
   <main id="viewInput">
     <section class="card">
@@ -917,6 +924,8 @@
   <script>
     <? var sv = (typeof startView === 'undefined') ? 'input' : startView; ?>
     var START_VIEW = <?= JSON.stringify(sv) ?>;
+    <? var opMail = (typeof operatorEmail === 'undefined') ? '' : operatorEmail; ?>
+    var OPERATOR_EMAIL = <?= JSON.stringify(opMail) ?>;
     var master = {
       majors: [], allMids: [], midsByMajor: {}, workLines: [],
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
@@ -1144,7 +1153,7 @@
       }
       return false;
     }
-    function applyTemplateLines(lines, name, quiet) {
+    function itemsFromTemplateLines(lines) {
       var next = [];
       (lines || []).forEach(function (src) {
         var row = emptyRow();
@@ -1172,10 +1181,13 @@
         else if (hasPart(row)) row.kind = 'part';
         if (!rowIsEmpty(row)) next.push(row);
       });
-      items = next;
+      return next;
+    }
+    function applyTemplateLines(lines, name, quiet) {
+      items = itemsFromTemplateLines(lines);
       padItems();
       renderGrid();
-      if (!quiet) setStatus('テンプレート「' + name + '」から明細 ' + next.length + ' 行を作成しました');
+      if (!quiet) setStatus('テンプレート「' + name + '」から明細 ' + items.filter(function (r) { return !rowIsEmpty(r); }).length + ' 行を作成しました');
     }
     function normalizeKNo(v) {
       var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
@@ -1238,7 +1250,7 @@
     }
     function showAppView(view) {
       var search = view === 'search';
-      if (workJobs.length) snapshotActiveJob();
+      if (workJobs.length) snapshotActiveJob(true);
       $('viewInput').hidden = search;
       $('viewSearch').hidden = !search;
       $('appFooter').hidden = search;
@@ -1275,6 +1287,8 @@
     var WORK_JOB_STORE = 'kinkaiInvoice.workJobs.v1';
     var workJobs = [];
     var workJobId = '';
+    var workOperator = String(OPERATOR_EMAIL || '');
+    var workIsolated = !!workOperator;
     function cloneJobPayload(data) {
       return JSON.parse(JSON.stringify({
         header: (data && data.header) || {},
@@ -1309,13 +1323,16 @@
       return null;
     }
     function workJobLabel(job) {
-      var h = (job && job.payload && job.payload.header) || {};
-      var k = normalizeKNo(h.kNo || job.boundKNo || '');
-      var user = String(h.userName || '').trim();
-      if (k && user) return 'K-' + k + '　' + user;
-      if (k) return 'K-' + k;
-      if (user) return user;
-      return '新規';
+      var k = normalizeKNo((job && job.payload && job.payload.header && job.payload.header.kNo) || (job && job.boundKNo) || '');
+      if (!k) return '新規';
+      var n = 0;
+      var i;
+      for (i = 0; i < workJobs.length; i++) {
+        if (workJobs[i].id === job.id) break;
+        var other = normalizeKNo((workJobs[i].payload && workJobs[i].payload.header && workJobs[i].payload.header.kNo) || workJobs[i].boundKNo || '');
+        if (other === k) n += 1;
+      }
+      return n ? ('K-' + k + ' (' + (n + 1) + ')') : ('K-' + k);
     }
     function jobHasContent(job) {
       var p = job && job.payload ? job.payload : {};
@@ -1328,13 +1345,71 @@
       return !!(String(h.kNo || '').trim() || String(h.userName || '').trim() || String(h.plate || '').trim() ||
         String(h.inDate || '').trim() || String(h.outDate || '').trim() || String(h.billDate || '').trim());
     }
-    function persistWorkJobs() {
+    function workJobStoreKey() {
+      return WORK_JOB_STORE + '.' + (workOperator || 'anon');
+    }
+    function setWorkOperatorLabel() {
+      var el = $('workOperator');
+      if (!el) return;
+      if (workIsolated && workOperator) {
+        el.textContent = '作業中はこのアカウントのみ　' + workOperator;
+      } else {
+        el.textContent = '作業中の個人保持には、各自のGoogleアカウントで開いてください';
+      }
+    }
+    var workSaveTimer = null;
+    var workSaveBusy = false;
+    var workSaveAgain = false;
+    function persistWorkJobs(immediate) {
       try {
-        localStorage.setItem(WORK_JOB_STORE, JSON.stringify({
+        localStorage.setItem(workJobStoreKey(), JSON.stringify({
           activeId: workJobId,
           jobs: workJobs
         }));
       } catch (err) {}
+      scheduleServerWorkSave(!!immediate);
+    }
+    function scheduleServerWorkSave(immediate) {
+      if (immediate) {
+        if (workSaveTimer) {
+          clearTimeout(workSaveTimer);
+          workSaveTimer = null;
+        }
+        flushServerWorkSave();
+        return;
+      }
+      if (workSaveTimer) clearTimeout(workSaveTimer);
+      workSaveTimer = setTimeout(function () {
+        workSaveTimer = null;
+        flushServerWorkSave();
+      }, 1500);
+    }
+    function flushServerWorkSave() {
+      if (!workIsolated) {
+        workSaveBusy = false;
+        workSaveAgain = false;
+        return;
+      }
+      if (workSaveBusy) {
+        workSaveAgain = true;
+        return;
+      }
+      workSaveBusy = true;
+      google.script.run
+        .withSuccessHandler(function () {
+          workSaveBusy = false;
+          if (workSaveAgain) {
+            workSaveAgain = false;
+            flushServerWorkSave();
+          }
+        })
+        .withFailureHandler(function () {
+          workSaveBusy = false;
+        })
+        .saveWorkJobs({
+          activeId: workJobId,
+          jobs: workJobs
+        });
     }
     function headerHasContent() {
       return filled($('userName').value) || !!normalizeKNo($('kNo').value) || !!joinPlate() ||
@@ -1358,14 +1433,22 @@
         badge.textContent = '新規の請求書を作成中';
       }
     }
-    function snapshotActiveJob() {
+    function snapshotActiveJob(immediate) {
       var job = findWorkJob(workJobId);
       if (!job) return;
       job.payload = cloneJobPayload(collectPayload());
       job.saveId = currentSaveId;
       job.boundKNo = boundKNo;
       job.templateName = $('invoiceTemplate').value;
-      persistWorkJobs();
+      persistWorkJobs(immediate);
+    }
+    function syncActiveTabKNo() {
+      var job = findWorkJob(workJobId);
+      if (!job) return;
+      if (!job.payload) job.payload = { header: {}, items: [], summary: {} };
+      if (!job.payload.header) job.payload.header = {};
+      job.payload.header.kNo = normalizeKNo($('kNo').value);
+      renderDraftTabs();
     }
     function loadWorkJob(id, quietStatus) {
       var job = findWorkJob(id);
@@ -1404,7 +1487,7 @@
         setStatus('作業中は最大 ' + WORK_JOB_MAX + ' 件です。タブを閉じてから追加してください。', true);
         return;
       }
-      snapshotActiveJob();
+      snapshotActiveJob(true);
       var job = makeWorkJob();
       workJobs.push(job);
       workJobId = job.id;
@@ -1412,7 +1495,7 @@
       clearItemRows();
       $('invoiceTemplate').value = '';
       bindCurrentSave('', '');
-      snapshotActiveJob();
+      snapshotActiveJob(true);
       renderDraftTabs();
       setStatus('新しい入力を開始しました。前の入力は上のタブに残っています。');
     }
@@ -1423,9 +1506,9 @@
       }
       var job = findWorkJob(id);
       if (!job) return;
-      if (id === workJobId) snapshotActiveJob();
+      if (id === workJobId) snapshotActiveJob(true);
       var label = workJobLabel(job);
-      if (jobHasContent(job) && !window.confirm('作業中の「' + label + '」を閉じますか？（未保存の内容は消えます）')) {
+      if (jobHasContent(job) && !window.confirm('作業中の「' + label + '」を閉じますか？閉じると翌日の作業中一覧からも外れます。')) {
         return;
       }
       workJobs = workJobs.filter(function (j) { return j.id !== id; });
@@ -1433,12 +1516,12 @@
         loadWorkJob(workJobs[0].id);
       } else {
         renderDraftTabs();
-        persistWorkJobs();
+        persistWorkJobs(true);
       }
     }
     function openSavedInWorkJob(data, saveId) {
       var sid = String((data && data.saveId) || saveId || '').trim();
-      snapshotActiveJob();
+      snapshotActiveJob(true);
       var existing = findWorkJobBySaveId(sid);
       if (existing) {
         existing.payload = cloneJobPayload(data);
@@ -1451,7 +1534,7 @@
       if (formIsEmpty() && workJobs.length) {
         applySavedPayload(data, true);
         bindCurrentSave(sid, (data && data.header && data.header.kNo) || '');
-        snapshotActiveJob();
+        snapshotActiveJob(true);
         renderDraftTabs();
         setStatus('呼び出しました（K-No ' + (normalizeKNo((data && data.header && data.header.kNo) || '') || '') + '）');
         return true;
@@ -1469,10 +1552,40 @@
       setStatus('呼び出しました（K-No ' + (job.boundKNo || '') + '）／別タブで開きました');
       return true;
     }
+    function applyWorkOperator(state) {
+      if (state && state.operator) workOperator = String(state.operator);
+      workIsolated = !!(state && state.isolated);
+      setWorkOperatorLabel();
+    }
     function initWorkJobs() {
+      setWorkOperatorLabel();
+      google.script.run
+        .withSuccessHandler(function (state) {
+          applyWorkOperator(state);
+          if (workIsolated && state && state.jobs && state.jobs.length) {
+            applyWorkJobState(state);
+            return;
+          }
+          initWorkJobsFromLocal();
+        })
+        .withFailureHandler(function () {
+          workIsolated = false;
+          setWorkOperatorLabel();
+          initWorkJobsFromLocal();
+        })
+        .listWorkJobs();
+    }
+    function applyWorkJobState(state) {
+      workJobs = state.jobs;
+      workJobId = state.activeId && findWorkJob(state.activeId) ? state.activeId : workJobs[0].id;
+      loadWorkJob(workJobId, true);
+      persistWorkJobs();
+      setStatus('作業中の請求書を復元しました（自分の分 ' + workJobs.length + ' 件）');
+    }
+    function initWorkJobsFromLocal() {
       var stored = null;
       try {
-        stored = JSON.parse(localStorage.getItem(WORK_JOB_STORE) || 'null');
+        stored = JSON.parse(localStorage.getItem(workJobStoreKey()) || 'null');
       } catch (err) {
         stored = null;
       }
@@ -1480,6 +1593,7 @@
         workJobs = stored.jobs;
         workJobId = stored.activeId && findWorkJob(stored.activeId) ? stored.activeId : workJobs[0].id;
         loadWorkJob(workJobId, true);
+        persistWorkJobs(true);
         return;
       }
       workJobs = [makeWorkJob()];
@@ -1504,7 +1618,7 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
-          snapshotActiveJob();
+          snapshotActiveJob(true);
           renderDraftTabs();
           var kind = res.overwritten ? '上書き保存' : '新規保存';
           setStatus(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
@@ -1532,7 +1646,7 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           if (res.saveId) bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
-          snapshotActiveJob();
+          snapshotActiveJob(true);
           renderDraftTabs();
           var kind = res.overwritten ? '上書き保存' : '新規保存';
           var sheetName = (res.sheetNames && res.sheetNames[0]) || '';
@@ -1548,19 +1662,38 @@
         })
         .publishPrintSheet(payload);
     }
+    var templateLoadSeq = 0;
     function onTemplatePicked() {
       var name = $('invoiceTemplate').value;
       if (!name) return;
       if (gridHasContent() && !window.confirm('現在の明細をテンプレート「' + name + '」で置き換えますか？')) {
+        var job = findWorkJob(workJobId);
+        $('invoiceTemplate').value = (job && job.templateName) || '';
         return;
       }
+      var jobId = workJobId;
+      var seq = ++templateLoadSeq;
       setStatus('テンプレート「' + name + '」を読み込んでいます…');
       google.script.run
         .withSuccessHandler(function (lines) {
-          applyTemplateLines(lines || [], name);
+          if (workJobId === jobId && seq !== templateLoadSeq) return;
+          var job = findWorkJob(jobId);
+          if (!job) return;
+          if (workJobId === jobId) {
+            applyTemplateLines(lines || [], name);
+            snapshotActiveJob();
+            return;
+          }
+          job.payload = job.payload || { header: {}, items: [], summary: {} };
+          job.payload.items = JSON.parse(JSON.stringify(itemsFromTemplateLines(lines || [])));
+          job.templateName = name;
+          persistWorkJobs();
+          renderDraftTabs();
         })
         .withFailureHandler(function (err) {
-          setStatus(err.message || String(err), true);
+          if (workJobId === jobId && seq === templateLoadSeq) {
+            setStatus(err.message || String(err), true);
+          }
         })
         .getInvoiceTemplateLines(name);
     }
@@ -3181,7 +3314,7 @@
       if (!tab) return;
       var id = tab.getAttribute('data-job-id');
       if (!id || id === workJobId) return;
-      snapshotActiveJob();
+      snapshotActiveJob(true);
       loadWorkJob(id);
     });
     $('btnDraftAdd').addEventListener('click', addBlankWorkJob);
@@ -3198,6 +3331,11 @@
     google.script.run
       .withSuccessHandler(function (data) {
         master = data || master;
+        if (master.operatorEmail) {
+          workOperator = String(master.operatorEmail);
+          workIsolated = true;
+          setWorkOperatorLabel();
+        }
         refreshOptionCache();
         fillWorkerPicker();
         renderGrid();
@@ -3207,14 +3345,23 @@
           if (f) applyDateField('billDate', 'billDateCal', f);
         });
         bindDateField('billDate', 'billDateCal');
+        $('kNo').addEventListener('input', syncActiveTabKNo);
         $('kNo').addEventListener('blur', function () {
           var n = normalizeKNo($('kNo').value);
           if (n || !$('kNo').value.trim()) $('kNo').value = n;
           updateSaveChrome();
+          snapshotActiveJob();
+          renderDraftTabs();
         });
         $('dept').addEventListener('change', applyDeptDefaults);
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
         initWorkJobs();
+        document.addEventListener('visibilitychange', function () {
+          if (document.hidden && workJobs.length) snapshotActiveJob(true);
+        });
+        window.addEventListener('pagehide', function () {
+          if (workJobs.length) snapshotActiveJob(true);
+        });
         if (master.ordersPending) {
           setStatus('順番が空の行があります。入力は仮の順番で動きます。確定するにはリストを更新してください。');
         } else {

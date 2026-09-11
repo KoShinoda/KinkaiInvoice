@@ -22,7 +22,8 @@
     "10_ListRefresh.js",
     "11_PrintLayout.js",
     "12_InvoiceSave.js",
-    "13_InvoiceSearch.js"
+    "13_InvoiceSearch.js",
+    "14_WorkJobs.js"
   ],
   "skipSubdirectories": false
 }
