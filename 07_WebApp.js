@@ -3,18 +3,34 @@
  * メニュー「入力アプリを開く」または「デプロイ → ウェブアプリ」。
  */
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('入力アプリ')
-    .setTitle('車検 請求入力')
+function invoiceAppOutput_(startView) {
+  const t = HtmlService.createTemplateFromFile('入力アプリ');
+  t.startView = startView === 'search' ? 'search' : 'input';
+  const title = t.startView === 'search' ? '請求書検索' : '車検 請求入力';
+  return t.evaluate()
+    .setTitle(title)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function doGet(e) {
+  const page = e && e.parameter ? String(e.parameter.page || '') : '';
+  return invoiceAppOutput_(page === 'search' ? 'search' : 'input');
 }
 
 function openInputApp() {
   notifyPendingListOrders_();
-  const html = HtmlService.createHtmlOutputFromFile('入力アプリ')
+  const html = invoiceAppOutput_('input')
     .setWidth(1900)
     .setHeight(860);
   SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
+}
+
+function openInvoiceSearchApp() {
+  notifyPendingListOrders_();
+  const html = invoiceAppOutput_('search')
+    .setWidth(1900)
+    .setHeight(860);
+  SpreadsheetApp.getUi().showModalDialog(html, '請求書検索');
 }
 
 /**

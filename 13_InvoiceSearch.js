@@ -1,6 +1,6 @@
 /**
- * シート「請求書検索」。K-No 検索 → 一覧から選択 → 印刷_表示へ描画。
- * 入力アプリの画面は書き換えない。
+ * シート「請求書検索」（図形ボタン用）と、入力アプリの検索画面。
+ * 表示は印刷シートへ描画する。入力へ移す処理は入力アプリ側。
  */
 
 var INVOICE_SEARCH_KNO_ = 'B3';
@@ -199,6 +199,15 @@ function showSavedInvoicePrintSafe_(saveId) {
   }
 }
 
+/** 入力アプリ（検索画面）から印刷シートへ表示する。 */
+function displaySavedInvoice(saveId) {
+  const built = showSavedInvoicePrint_(saveId);
+  return invoiceJsonSafe_({
+    saveId: String(saveId || '').trim(),
+    sheetName: built && built.sheet ? built.sheet.getName() : ''
+  });
+}
+
 function showSavedInvoicePrint_(saveId) {
   const id = String(saveId || '').trim();
   if (!id) {
@@ -224,6 +233,7 @@ function showSavedInvoicePrint_(saveId) {
   placePrintSheetInOrder_(ss, built.sheet);
   ss.setActiveSheet(built.sheet);
   ss.toast(built.sheet.getName() + ' に表示しました（K-No ' + formatPrintKNo_(payload.header.kNo) + '）', '請求書検索', 6);
+  return built;
 }
 
 function ensureInvoiceSearchSheet_(ss) {

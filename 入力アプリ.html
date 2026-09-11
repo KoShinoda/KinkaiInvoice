@@ -27,10 +27,51 @@
       padding: 12px 18px;
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
+      align-items: center;
+      gap: 12px;
     }
     header h1 { margin: 0; font-size: 17px; font-weight: 600; }
     header span { font-size: 12px; opacity: .8; }
+    .header-lead { display: flex; flex-direction: column; gap: 2px; }
+    .app-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
+    button.tab {
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.4);
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    button.tab.on { background: #fff; color: #16382c; }
+    button.tab:hover { background: rgba(255,255,255,.16); }
+    button.tab.on:hover { background: #fff; }
+    .search-table-wrap { margin-top: 12px; overflow: auto; }
+    .search-result { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .search-result th, .search-result td {
+      padding: 8px 10px;
+      font-size: 12px;
+      text-align: left;
+      border-bottom: 1px solid #eef1f3;
+    }
+    .search-result th { color: var(--muted); font-weight: 600; }
+    .search-result td.clip {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .search-result col.c-date { width: 92px; }
+    .search-result col.c-user { width: 110px; }
+    .search-result col.c-plate { width: 130px; }
+    .search-result col.c-bill { width: 92px; }
+    .search-result col.c-n { width: 48px; }
+    .search-result col.c-act { width: 168px; }
+    .search-result .row-actions { display: flex; gap: 6px; }
+    .search-result .row-actions button {
+      padding: 5px 10px;
+      font-size: 12px;
+      flex: 0 0 auto;
+    }
+    #searchStatus { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    #searchStatus.err { color: var(--danger); }
     main { padding: 14px 18px 132px; }
     .card {
       background: var(--card);
@@ -581,10 +622,16 @@
 </head>
 <body>
   <header>
-    <h1>車検 請求入力</h1>
-    <span>ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd</span>
+    <div class="header-lead">
+      <h1 id="appTitle">車検 請求入力</h1>
+      <span id="appSub">ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd</span>
+    </div>
+    <nav class="app-tabs">
+      <button type="button" id="navInput" class="tab on">請求入力</button>
+      <button type="button" id="navSearch" class="tab">請求書検索</button>
+    </nav>
   </header>
-  <main>
+  <main id="viewInput">
     <section class="card">
       <div class="card-head">
         <h2>ヘッダー</h2>
@@ -684,7 +731,45 @@
       </div>
     </section>
   </main>
-  <footer class="bar">
+  <main id="viewSearch" hidden>
+    <section class="card">
+      <div class="card-head">
+        <h2>K-No で保存を検索</h2>
+      </div>
+      <div class="kno-wrap" style="max-width: 420px">
+        <input id="searchKNo" placeholder="K-No" autocomplete="off">
+        <button type="button" id="btnSearchApp" class="sub">検索</button>
+      </div>
+      <p id="searchStatus"></p>
+      <div id="searchEmpty" class="invoice-empty" hidden></div>
+      <div class="search-table-wrap">
+        <table class="search-result" id="searchResultTable" hidden>
+          <colgroup>
+            <col class="c-date">
+            <col class="c-user">
+            <col class="c-plate">
+            <col class="c-bill">
+            <col class="c-mid">
+            <col class="c-n">
+            <col class="c-act">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>保存日</th>
+              <th>ユーザー</th>
+              <th>登録番号</th>
+              <th>請求日</th>
+              <th>中項目</th>
+              <th>明細</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="searchResultBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <footer class="bar" id="appFooter">
     <div class="foot-left">
       <div id="status">読み込み中…</div>
       <div class="foot-actions">
@@ -787,6 +872,8 @@
   </div>
 
   <script>
+    <? var sv = (typeof startView === 'undefined') ? 'input' : startView; ?>
+    var START_VIEW = <?= JSON.stringify(sv) ?>;
     var master = {
       majors: [], allMids: [], midsByMajor: {}, workLines: [],
       partMajors: [], allPartMids: [], partMidsByMajor: {}, partLines: [],
@@ -1125,6 +1212,24 @@
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
       $('btnPrint').disabled = busy;
+      if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
+    }
+    function showAppView(view) {
+      var search = view === 'search';
+      $('viewInput').hidden = search;
+      $('viewSearch').hidden = !search;
+      $('appFooter').hidden = search;
+      $('navInput').classList.toggle('on', !search);
+      $('navSearch').classList.toggle('on', search);
+      $('appTitle').textContent = search ? '請求書検索' : '車検 請求入力';
+      $('appSub').textContent = search
+        ? 'K-No で保存を検索し、印刷表示または入力画面へ移します'
+        : 'ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd';
+    }
+    function setSearchStatus(msg, isErr) {
+      var el = $('searchStatus');
+      el.textContent = msg || '';
+      el.classList.toggle('err', !!isErr);
     }
     function bindCurrentSave(saveId, kNo) {
       currentSaveId = String(saveId || '').trim();
@@ -2680,47 +2785,148 @@
       }
       positionInvoicePicker();
     }
-    function restoreInvoice(saveId) {
+    function restoreInvoice(saveId, goInput) {
       hideInvoicePicker();
       setBusy(true);
       setStatus('呼び出しています…');
+      setSearchStatus('呼び出しています…');
       google.script.run
         .withSuccessHandler(function (data) {
           try {
             applySavedPayload(data);
             bindCurrentSave((data && data.saveId) || saveId, (data && data.header && data.header.kNo) || '');
             setBusy(false);
-            setStatus('呼び出しました（K-No ' + (normalizeKNo((data && data.header && data.header.kNo) || '') || '') + '）');
+            var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
+            setStatus('呼び出しました（K-No ' + k + '）');
+            setSearchStatus('入力画面へ移しました（K-No ' + k + '）');
+            if (goInput) showAppView('input');
           } catch (err) {
             setBusy(false);
             setStatus('呼び出し後の画面反映に失敗しました: ' + (err.message || err), true);
+            setSearchStatus('呼び出し後の画面反映に失敗しました: ' + (err.message || err), true);
           }
         })
         .withFailureHandler(function (err) {
           setBusy(false);
           setStatus(err.message || String(err), true);
+          setSearchStatus(err.message || String(err), true);
         })
         .loadInvoiceDraft(saveId);
     }
-    $('btnLoad').addEventListener('click', function () {
-      var kNo = normalizeKNo($('kNo').value);
-      $('kNo').value = kNo;
+    function fillSearchResults(list, kNo) {
+      var empty = $('searchEmpty');
+      var table = $('searchResultTable');
+      var body = $('searchResultBody');
+      body.innerHTML = '';
+      if (!list || !list.length) {
+        empty.hidden = false;
+        empty.textContent = 'K-No「' + kNo + '」の保存はありません';
+        table.hidden = true;
+        setSearchStatus('');
+        return;
+      }
+      empty.hidden = true;
+      table.hidden = false;
+      setSearchStatus('K-No ' + kNo + ' ／ ' + list.length + ' 件');
+      list.forEach(function (row) {
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-save-id', row.saveId || '');
+        tr.innerHTML = '<td>' + htmlEscape(formatYmd(row.savedAt) || '') + '</td>' +
+          '<td class="clip">' + htmlEscape(row.userName || '') + '</td>' +
+          '<td class="clip">' + htmlEscape(row.plate || '') + '</td>' +
+          '<td>' + htmlEscape(formatYmd(row.billDate) || '') + '</td>' +
+          '<td class="clip" title="' + htmlEscape(row.firstMid || '') + '">' + htmlEscape(row.firstMid || '') + '</td>' +
+          '<td>' + htmlEscape(String(row.lineCount || 0)) + '行</td>' +
+          '<td><div class="row-actions">' +
+            '<button type="button" class="sub" data-act="show">表示</button>' +
+            '<button type="button" data-act="input">入力へ</button>' +
+          '</div></td>';
+        body.appendChild(tr);
+      });
+    }
+    function runAppSearch() {
+      var kNo = normalizeKNo($('searchKNo').value);
+      $('searchKNo').value = kNo;
       if (!kNo) {
-        setStatus('検索する K-No を入力してください。', true);
+        setSearchStatus('K-No を入力してください。', true);
         return;
       }
       setBusy(true);
-      setStatus('保存一覧を読み込んでいます…');
+      setSearchStatus('検索中…');
       google.script.run
         .withSuccessHandler(function (list) {
           setBusy(false);
-          showInvoicePicker(list || [], kNo);
+          fillSearchResults(list || [], kNo);
         })
         .withFailureHandler(function (err) {
           setBusy(false);
-          setStatus(err.message || String(err), true);
+          setSearchStatus(err.message || String(err), true);
         })
         .listInvoiceDrafts(kNo);
+    }
+    function displayInvoiceFromSearch(saveId) {
+      setBusy(true);
+      setSearchStatus('印刷シートを表示しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          var name = (res && res.sheetName) || '';
+          setSearchStatus(name ? ('スプレッドシートの「' + name + '」に表示しました') : '表示しました');
+          closeInputDialogIfPossible_();
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setSearchStatus(err.message || String(err), true);
+        })
+        .displaySavedInvoice(saveId);
+    }
+    $('navInput').addEventListener('click', function () {
+      showAppView('input');
+    });
+    $('navSearch').addEventListener('click', function () {
+      var k = normalizeKNo($('kNo').value);
+      if (k) $('searchKNo').value = k;
+      showAppView('search');
+      $('searchKNo').focus();
+    });
+    $('btnLoad').addEventListener('click', function () {
+      var kNo = normalizeKNo($('kNo').value);
+      $('kNo').value = kNo;
+      if (kNo) $('searchKNo').value = kNo;
+      showAppView('search');
+      if (kNo) runAppSearch();
+      else {
+        setSearchStatus('K-No を入力してください。', true);
+        $('searchKNo').focus();
+      }
+    });
+    $('btnSearchApp').addEventListener('click', runAppSearch);
+    $('searchKNo').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runAppSearch();
+      }
+    });
+    $('searchKNo').addEventListener('blur', function () {
+      var n = normalizeKNo($('searchKNo').value);
+      if (n || !$('searchKNo').value.trim()) $('searchKNo').value = n;
+    });
+    $('searchResultBody').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      var tr = e.target.closest('tr[data-save-id]');
+      if (!tr) return;
+      var saveId = tr.getAttribute('data-save-id');
+      if (!saveId) return;
+      var act = btn.getAttribute('data-act');
+      if (act === 'show') {
+        displayInvoiceFromSearch(saveId);
+        return;
+      }
+      if (act === 'input') {
+        if (gridHasContent() && !window.confirm('現在の入力を、選んだ保存内容で置き換えますか？')) return;
+        restoreInvoice(saveId, true);
+      }
     });
     $('invoicePickerClose').addEventListener('click', function (e) {
       e.preventDefault();
@@ -2817,6 +3023,8 @@
         setStatus(err.message || String(err), true);
       })
       .getInvoiceMaster();
+
+    showAppView(START_VIEW === 'search' ? 'search' : 'input');
 
     google.script.run
       .withSuccessHandler(function (names) {

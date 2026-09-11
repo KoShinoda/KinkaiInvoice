@@ -11,7 +11,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('請求書入力')
     .addItem('入力アプリを開く', 'openInputApp')
-    .addItem('請求書を検索', 'openInvoiceSearchSheet')
+    .addItem('請求書を検索', 'openInvoiceSearchApp')
     .addItem('このシートをA4縦で印刷プレビュー', 'openA4PrintPreview')
     .addSeparator()
     .addItem('リストのプルダウンを設定', 'setupInputDropdowns')
