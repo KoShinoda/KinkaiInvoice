@@ -826,7 +826,7 @@
   <main id="viewSearch" hidden>
     <section class="card">
       <div class="card-head">
-        <h2>K-No で保存を検索</h2>
+        <h2>請求書検索</h2>
       </div>
       <div class="kno-wrap" style="max-width: 420px">
         <input id="searchKNo" placeholder="K-No" autocomplete="off">
@@ -1338,9 +1338,7 @@
       $('navInput').classList.toggle('on', !search);
       $('navSearch').classList.toggle('on', search);
       $('appTitle').textContent = search ? '請求書検索' : '車検 請求入力';
-      $('appSub').textContent = search
-        ? 'K-No で保存を検索し、編集で元の入力タブへ呼び出します'
-        : '';
+      $('appSub').textContent = '';
       if (search && workJobId) searchReturnJobId = workJobId;
     }
     function searchUi(kind) {
