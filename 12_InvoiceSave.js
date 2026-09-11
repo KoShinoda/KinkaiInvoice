@@ -116,6 +116,7 @@ function loadInvoiceDraft(saveId) {
   });
   return invoiceJsonSafe_({
     saveId: id,
+    savedAt: invoiceSavedAtStamp_(meta[2]),
     header: header,
     items: items,
     summary: {
@@ -126,6 +127,16 @@ function loadInvoiceDraft(saveId) {
 }
 
 function saveInvoiceDraft_(payload, savedAtOpt) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    return saveInvoiceDraftUnlocked_(payload, savedAtOpt);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveInvoiceDraftUnlocked_(payload, savedAtOpt) {
   if (!payload || !payload.header) {
     throw new Error('保存する請求書がありません。');
   }
@@ -146,7 +157,7 @@ function saveInvoiceDraft_(payload, savedAtOpt) {
   index.appendRow(invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items));
   return {
     saveId: saveId,
-    savedAt: formatInvoiceYmd_(placed.savedAt),
+    savedAt: invoiceSavedAtStamp_(placed.savedAt),
     lineCount: items.length,
     kNo: kNo,
     overwritten: false,
@@ -158,6 +169,11 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
   const found = findInvoiceIndexRow_(index, saveId);
   if (!found) {
     throw new Error('上書きする保存データが見つかりません。');
+  }
+  const currentStamp = invoiceSavedAtStamp_(found.row[2]);
+  const expected = String(payload.expectedSavedAt || '').trim();
+  if (expected && currentStamp && expected !== currentStamp) {
+    throw new Error('他の人が先に保存しています。検索から開き直してから保存してください。');
   }
   const ss = index.getParent();
   const oldSheet = String(found.row[16] || '');
@@ -173,7 +189,7 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
     .setValues([invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items, printName)]);
   return {
     saveId: saveId,
-    savedAt: formatInvoiceYmd_(placed.savedAt),
+    savedAt: invoiceSavedAtStamp_(placed.savedAt),
     lineCount: items.length,
     kNo: kNo,
     overwritten: true,
@@ -348,6 +364,13 @@ function invoicePlain_(value) {
     return '';
   }
   return String(value);
+}
+
+function invoiceSavedAtStamp_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
+  }
+  return String(value == null ? '' : value).trim();
 }
 
 function formatInvoiceYmd_(value) {

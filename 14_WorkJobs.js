@@ -275,3 +275,35 @@ function workJobUserKey_() {
     return '';
   }
 }
+
+/** 同じ保存IDを他の人が作業中なら一覧を返す。確定保存の上書きロックとは別。 */
+function listWorkJobConflicts(saveId) {
+  const id = String(saveId || '').trim();
+  if (!id) {
+    return [];
+  }
+  const me = workJobUserKey_();
+  const index = ensureWorkJobIndexSheet_();
+  const last = index.getLastRow();
+  if (last < 2) {
+    return invoiceJsonSafe_([]);
+  }
+  const vals = index.getRange(2, 1, last - 1, WORK_JOB_INDEX_HEADERS_.length).getValues();
+  const seen = {};
+  const out = [];
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][1] || '').trim() !== id) {
+      continue;
+    }
+    const owner = String(vals[i][18] || '').trim().toLowerCase();
+    if (!owner || owner === me || seen[owner]) {
+      continue;
+    }
+    seen[owner] = true;
+    out.push({
+      operator: owner,
+      kNo: normalizeInvoiceKNo_(vals[i][2])
+    });
+  }
+  return invoiceJsonSafe_(out);
+}

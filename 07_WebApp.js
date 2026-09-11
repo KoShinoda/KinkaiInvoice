@@ -84,6 +84,7 @@ function getInvoiceMaster() {
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
     operatorEmail: workJobUserKey_(),
+    spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl(),
     lineCount: CONFIG.app.lineCount || 120,
     linesPerPage: CONFIG.print.linesPerPage,
     ordersPending: !!ctx.ordersPending
@@ -416,9 +417,11 @@ function publishPrintSheet(payload) {
   const printedName = (printed.sheetNames && printed.sheetNames[0]) || sheetName;
   setInvoicePrintSheetName_(saved.saveId, printedName);
   const out = ss.getSheetByName(printedName);
+  let sheetUrl = ss.getUrl();
   if (out) {
     ss.setActiveSheet(out);
     SpreadsheetApp.flush();
+    sheetUrl = ss.getUrl() + '#gid=' + out.getSheetId();
   }
   return invoiceJsonSafe_({
     pageCount: printed.pageCount,
@@ -427,7 +430,8 @@ function publishPrintSheet(payload) {
     saveId: saved.saveId,
     savedAt: saved.savedAt,
     overwritten: !!saved.overwritten,
-    kNo: saved.kNo
+    kNo: saved.kNo,
+    sheetUrl: sheetUrl
   });
 }
 

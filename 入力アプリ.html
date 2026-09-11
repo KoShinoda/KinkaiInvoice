@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <base target="_top">
   <style>
     :root {
@@ -32,6 +33,13 @@
     }
     header h1 { margin: 0; font-size: 17px; font-weight: 600; }
     header span { font-size: 12px; opacity: .8; }
+    header a.sheet-link {
+      color: #fff;
+      font-size: 12px;
+      opacity: .85;
+      text-decoration: underline;
+    }
+    header a.sheet-link:hover { opacity: 1; }
     .header-lead { display: flex; flex-direction: column; gap: 2px; }
     .app-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
     button.tab {
@@ -435,42 +443,6 @@
       flex-direction: column;
       overflow: visible;
     }
-    .invoice-picker {
-      position: fixed;
-      z-index: 85;
-      width: min(1100px, calc(100vw - 16px));
-      max-height: min(70vh, 480px);
-      overflow: hidden;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(28, 36, 48, .16);
-      display: flex;
-      flex-direction: column;
-    }
-    .invoice-picker[hidden] { display: none !important; }
-    .invoice-picker-body {
-      overflow: auto;
-      padding: 0 0 8px;
-    }
-    .invoice-picker table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    .invoice-picker th, .invoice-picker td {
-      padding: 8px 10px;
-      font-size: 12px;
-      text-align: left;
-      border-bottom: 1px solid #eef1f3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .invoice-picker col.c-date { width: 92px; }
-    .invoice-picker col.c-user { width: 100px; }
-    .invoice-picker col.c-plate { width: 120px; }
-    .invoice-picker col.c-bill { width: 92px; }
-    .invoice-picker col.c-mid { width: auto; }
-    .invoice-picker col.c-n { width: 44px; }
-    .invoice-picker tbody tr { cursor: pointer; }
-    .invoice-picker tbody tr:hover { background: #e8f0ec; }
     .invoice-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; }
     .worker-picker:not([hidden]) { display: flex; }
     .worker-picker-head {
@@ -681,6 +653,7 @@
     <div class="header-lead">
       <h1 id="appTitle">車検 請求入力</h1>
       <span id="appSub">ヘッダーは整備情報マスタ連動　／　日付はカレンダーまたは yyyymmdd</span>
+      <a class="sheet-link" id="sheetOpenLink" href="#" target="_blank" rel="noopener" hidden>スプレッドシートを開く</a>
     </div>
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
@@ -889,37 +862,6 @@
     <div id="workerPickerMeta" class="worker-picker-meta"></div>
     <div id="workerPickerBoards" class="worker-picker-boards"></div>
   </div>
-  <div id="invoicePicker" class="invoice-picker" hidden>
-    <div class="worker-picker-head">
-      <span id="invoicePickerTitle">保存した請求書</span>
-      <button type="button" id="invoicePickerClose" class="worker-picker-x" title="閉じる">×</button>
-    </div>
-    <div id="invoicePickerMeta" class="worker-picker-meta"></div>
-    <div class="invoice-picker-body">
-      <div id="invoicePickerEmpty" class="invoice-empty" hidden>保存がありません</div>
-      <table hidden id="invoicePickerTable">
-        <colgroup>
-          <col class="c-date">
-          <col class="c-user">
-          <col class="c-plate">
-          <col class="c-bill">
-          <col class="c-mid">
-          <col class="c-n">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>保存日</th>
-            <th>ユーザー</th>
-            <th>登録番号</th>
-            <th>請求日</th>
-            <th>中項目</th>
-            <th>明細</th>
-          </tr>
-        </thead>
-        <tbody id="invoicePickerBody"></tbody>
-      </table>
-    </div>
-  </div>
 
   <script>
     <? var sv = (typeof startView === 'undefined') ? 'input' : startView; ?>
@@ -947,6 +889,7 @@
     var workerSelectOnMouseUp = null;
     var currentSaveId = '';
     var boundKNo = '';
+    var boundSavedAt = '';
 
     function $(id) { return document.getElementById(id); }
     function setStatus(msg, isErr) {
@@ -1268,15 +1211,34 @@
       el.textContent = msg || '';
       el.classList.toggle('err', !!isErr);
     }
-    function bindCurrentSave(saveId, kNo) {
+    function bindCurrentSave(saveId, kNo, savedAt) {
       currentSaveId = String(saveId || '').trim();
       boundKNo = normalizeKNo(kNo || '');
+      boundSavedAt = arguments.length > 2 ? String(savedAt || '').trim() : boundSavedAt;
+      if (!currentSaveId) boundSavedAt = '';
       updateSaveChrome();
     }
     function closeInputDialogIfPossible_() {
       try {
         google.script.host.close();
       } catch (err) {}
+    }
+    function setSheetOpenLink(url, label) {
+      var a = $('sheetOpenLink');
+      if (!a || !url) return;
+      a.href = url;
+      a.hidden = false;
+      a.textContent = label || 'スプレッドシートを開く';
+    }
+    function warnIfOthersWorking_(saveId) {
+      if (!saveId) return;
+      google.script.run
+        .withSuccessHandler(function (list) {
+          if (!list || !list.length) return;
+          var names = list.map(function (r) { return r.operator || '他の人'; }).join('、');
+          setStatus('呼び出しました。同じ請求書を ' + names + ' が作業中です。後から上書き保存した側は失敗します。');
+        })
+        .listWorkJobConflicts(saveId);
     }
     function boundSaveId() {
       if (!currentSaveId) return '';
@@ -1338,6 +1300,14 @@
       return !!(String(h.kNo || '').trim() || String(h.userName || '').trim() || String(h.plate || '').trim() ||
         String(h.inDate || '').trim() || String(h.outDate || '').trim() || String(h.billDate || '').trim());
     }
+    function jobNeedsReplaceConfirm_(job) {
+      var rows = (job && job.payload && job.payload.items) || [];
+      var i;
+      for (i = 0; i < rows.length; i++) {
+        if (!rowIsEmpty(rows[i])) return true;
+      }
+      return false;
+    }
     function workJobStoreKey() {
       return WORK_JOB_STORE + '.' + (workOperator || 'anon');
     }
@@ -1375,7 +1345,7 @@
       workSaveTimer = setTimeout(function () {
         workSaveTimer = null;
         flushServerWorkSave();
-      }, 1500);
+      }, 400);
     }
     function flushServerWorkSave() {
       if (!workIsolated) {
@@ -1433,7 +1403,8 @@
       job.saveId = currentSaveId;
       job.boundKNo = boundKNo;
       job.templateName = $('invoiceTemplate').value;
-      persistWorkJobs(immediate);
+      job.savedAt = boundSavedAt;
+      persistWorkJobs(immediate !== false);
     }
     function syncActiveTabKNo() {
       var job = findWorkJob(workJobId);
@@ -1442,6 +1413,7 @@
       if (!job.payload.header) job.payload.header = {};
       job.payload.header.kNo = normalizeKNo($('kNo').value);
       renderDraftTabs();
+      persistWorkJobs();
     }
     function loadWorkJob(id, quietStatus) {
       var job = findWorkJob(id);
@@ -1449,9 +1421,13 @@
       workJobId = id;
       applySavedPayload(job.payload || {}, true);
       $('invoiceTemplate').value = job.templateName || '';
-      bindCurrentSave(job.saveId, job.boundKNo || ((job.payload && job.payload.header && job.payload.header.kNo) || ''));
+      bindCurrentSave(
+        job.saveId,
+        job.boundKNo || ((job.payload && job.payload.header && job.payload.header.kNo) || ''),
+        job.savedAt || ''
+      );
       renderDraftTabs();
-      persistWorkJobs();
+      persistWorkJobs(true);
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
     }
     function renderDraftTabs() {
@@ -1512,6 +1488,16 @@
         persistWorkJobs(true);
       }
     }
+    function finishWorkJobAfterPrint() {
+      var id = workJobId;
+      workJobs = workJobs.filter(function (j) { return j.id !== id; });
+      if (!workJobs.length) {
+        workJobs = [makeWorkJob()];
+      }
+      workJobId = workJobs[0].id;
+      loadWorkJob(workJobId, true);
+      persistWorkJobs(true);
+    }
     function openSavedInWorkJob(data, saveId) {
       var sid = String((data && data.saveId) || saveId || '').trim();
       var targetId = (searchReturnJobId && findWorkJob(searchReturnJobId))
@@ -1526,14 +1512,14 @@
         targetId = blank.id;
       }
       var target = findWorkJob(targetId);
-      if (jobHasContent(target) && !window.confirm('検索元のタブの内容を、選んだ保存で置き換えますか？')) {
+      if (jobNeedsReplaceConfirm_(target) && !window.confirm('検索元のタブの内容を、選んだ保存で置き換えますか？')) {
         return false;
       }
       if (workJobId !== targetId) {
         loadWorkJob(targetId, true);
       }
       applySavedPayload(data, true);
-      bindCurrentSave(sid, (data && data.header && data.header.kNo) || '');
+      bindCurrentSave(sid, (data && data.header && data.header.kNo) || '', (data && data.savedAt) || '');
       snapshotActiveJob(true);
       renderDraftTabs();
       var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
@@ -1597,15 +1583,17 @@
       }
       payload.saveMode = mode === 'overwrite' ? 'overwrite' : 'new';
       payload.saveId = mode === 'overwrite' ? boundSaveId() : '';
+      payload.expectedSavedAt = payload.saveId ? boundSavedAt : '';
       if (mode === 'overwrite' && !payload.saveId) {
         payload.saveMode = 'new';
+        payload.expectedSavedAt = '';
       }
       setBusy(true);
       setStatus(payload.saveMode === 'overwrite' ? '上書き保存しています…' : '新規保存しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
-          bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
+          bindCurrentSave(res.saveId, res.kNo || payload.header.kNo, res.savedAt);
           snapshotActiveJob(true);
           renderDraftTabs();
           var kind = res.overwritten ? '上書き保存' : '新規保存';
@@ -1625,23 +1613,23 @@
       }
       payload.saveMode = mode === 'overwrite' ? 'overwrite' : 'new';
       payload.saveId = mode === 'overwrite' ? boundSaveId() : '';
+      payload.expectedSavedAt = payload.saveId ? boundSavedAt : '';
       if (mode === 'overwrite' && !payload.saveId) {
         payload.saveMode = 'new';
+        payload.expectedSavedAt = '';
       }
       setBusy(true);
       setStatus(payload.saveMode === 'overwrite' ? '上書き保存して印刷シートを作成しています…' : '保存して印刷シートを作成しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
-          if (res.saveId) bindCurrentSave(res.saveId, res.kNo || payload.header.kNo);
-          snapshotActiveJob(true);
-          renderDraftTabs();
-          var kind = res.overwritten ? '上書き保存' : '新規保存';
           var sheetName = (res.sheetNames && res.sheetNames[0]) || '';
+          finishWorkJobAfterPrint();
           setStatus(
-            kind + 'し、印刷シート「' + sheetName + '」を作成しました（' +
+            '印刷シート「' + sheetName + '」を作成しました（' +
             res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）'
           );
+          if (res.sheetUrl) setSheetOpenLink(res.sheetUrl, '印刷シートを開く');
           closeInputDialogIfPossible_();
         })
         .withFailureHandler(function (err) {
@@ -3099,48 +3087,7 @@
       runSave('new');
     });
 
-    function hideInvoicePicker() {
-      $('invoicePicker').hidden = true;
-    }
-    function positionInvoicePicker() {
-      var panel = $('invoicePicker');
-      panel.hidden = false;
-      var w = panel.offsetWidth;
-      var h = panel.offsetHeight;
-      panel.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + 'px';
-      panel.style.top = Math.max(8, Math.round((window.innerHeight - h) / 2)) + 'px';
-    }
-    function showInvoicePicker(list, kNo) {
-      $('invoicePickerTitle').textContent = 'K-No ' + kNo;
-      var empty = $('invoicePickerEmpty');
-      var table = $('invoicePickerTable');
-      var body = $('invoicePickerBody');
-      body.innerHTML = '';
-      if (!list || !list.length) {
-        empty.hidden = false;
-        empty.textContent = 'K-No「' + kNo + '」の保存はありません';
-        table.hidden = true;
-        $('invoicePickerMeta').textContent = '';
-      } else {
-        empty.hidden = true;
-        table.hidden = false;
-        $('invoicePickerMeta').textContent = list.length + ' 件　／　行をクリックして復元';
-        list.forEach(function (row) {
-          var tr = document.createElement('tr');
-          tr.setAttribute('data-save-id', row.saveId || '');
-          tr.innerHTML = '<td>' + htmlEscape(formatYmd(row.savedAt) || '') + '</td>' +
-            '<td>' + htmlEscape(row.userName || '') + '</td>' +
-            '<td>' + htmlEscape(row.plate || '') + '</td>' +
-            '<td>' + htmlEscape(formatYmd(row.billDate) || '') + '</td>' +
-            '<td title="' + htmlEscape(row.firstMid || '') + '">' + htmlEscape(row.firstMid || '') + '</td>' +
-            '<td>' + htmlEscape(String(row.lineCount || 0)) + '行</td>';
-          body.appendChild(tr);
-        });
-      }
-      positionInvoicePicker();
-    }
     function restoreInvoice(saveId, goInput) {
-      hideInvoicePicker();
       setBusy(true);
       setStatus('呼び出しています…');
       setSearchStatus('呼び出しています…');
@@ -3153,6 +3100,7 @@
             if (ok) {
               setSearchStatus('編集画面へ戻しました（K-No ' + k + '）');
               if (goInput) showAppView('input');
+              warnIfOthersWorking_(saveId);
             }
           } catch (err) {
             setBusy(false);
@@ -3259,15 +3207,6 @@
         restoreInvoice(saveId, true);
       }
     });
-    $('invoicePickerClose').addEventListener('click', function (e) {
-      e.preventDefault();
-      hideInvoicePicker();
-    });
-    $('invoicePickerBody').addEventListener('click', function (e) {
-      var tr = e.target.closest('tr[data-save-id]');
-      if (!tr) return;
-      restoreInvoice(tr.getAttribute('data-save-id'));
-    });
     $('draftTabs').addEventListener('click', function (e) {
       var closeId = e.target.getAttribute && e.target.getAttribute('data-close-id');
       if (closeId) {
@@ -3302,6 +3241,7 @@
           workIsolated = true;
           setWorkOperatorLabel();
         }
+        if (master.spreadsheetUrl) setSheetOpenLink(master.spreadsheetUrl, 'スプレッドシートを開く');
         refreshOptionCache();
         fillWorkerPicker();
         renderGrid();
