@@ -81,6 +81,48 @@
     }
     #searchStatus { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
     #searchStatus.err { color: var(--danger); }
+    .search-popup-back {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      background: rgba(28, 36, 48, .45);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px 24px;
+      overflow: auto;
+    }
+    .search-popup-back[hidden] { display: none; }
+    .search-popup {
+      width: min(980px, 100%);
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(28, 36, 48, .22);
+    }
+    .search-popup-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .search-popup-head h2 { margin: 0; font-size: 16px; }
+    .search-popup-x {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: rgba(0,0,0,.06);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .search-popup-x:hover { background: #fde8e8; color: var(--danger); }
+    .search-popup-body { padding: 14px 16px 18px; }
+    #popupSearchStatus { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    #popupSearchStatus.err { color: var(--danger); }
     .draft-bar {
       display: flex;
       align-items: stretch;
@@ -879,6 +921,48 @@
     <div id="workerPickerBoards" class="worker-picker-boards"></div>
   </div>
 
+  <div id="searchPopup" class="search-popup-back" hidden>
+    <div class="search-popup" role="dialog" aria-modal="true" aria-labelledby="searchPopupTitle">
+      <div class="search-popup-head">
+        <h2 id="searchPopupTitle">請求書を検索</h2>
+        <button type="button" id="searchPopupClose" class="search-popup-x" title="閉じる">×</button>
+      </div>
+      <div class="search-popup-body">
+        <div class="kno-wrap" style="max-width: 420px">
+          <input id="popupSearchKNo" placeholder="K-No" autocomplete="off">
+          <button type="button" id="btnPopupSearch" class="sub">検索</button>
+        </div>
+        <p id="popupSearchStatus"></p>
+        <div id="popupSearchEmpty" class="invoice-empty" hidden></div>
+        <div class="search-table-wrap">
+          <table class="search-result" id="popupSearchTable" hidden>
+            <colgroup>
+              <col class="c-date">
+              <col class="c-user">
+              <col class="c-plate">
+              <col class="c-bill">
+              <col class="c-mid">
+              <col class="c-n">
+              <col class="c-act">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>保存日</th>
+                <th>ユーザー</th>
+                <th>登録番号</th>
+                <th>請求日</th>
+                <th>中項目</th>
+                <th>明細</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="popupSearchBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     var START_VIEW = 'input'; // kinkai:startView
     var OPERATOR_EMAIL = ''; // kinkai:operatorEmail
@@ -1241,6 +1325,7 @@
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
       if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
+      if ($('btnPopupSearch')) $('btnPopupSearch').disabled = busy;
       if ($('btnDraftAdd')) $('btnDraftAdd').disabled = busy;
     }
     function showAppView(view) {
@@ -1258,8 +1343,52 @@
         : '';
       if (search && workJobId) searchReturnJobId = workJobId;
     }
-    function setSearchStatus(msg, isErr) {
-      var el = $('searchStatus');
+    function searchUi(kind) {
+      if (kind === 'popup') {
+        return {
+          kNo: $('popupSearchKNo'),
+          status: $('popupSearchStatus'),
+          empty: $('popupSearchEmpty'),
+          table: $('popupSearchTable'),
+          body: $('popupSearchBody')
+        };
+      }
+      return {
+        kNo: $('searchKNo'),
+        status: $('searchStatus'),
+        empty: $('searchEmpty'),
+        table: $('searchResultTable'),
+        body: $('searchResultBody')
+      };
+    }
+    function activeSearchKind() {
+      return ($('searchPopup') && !$('searchPopup').hidden) ? 'popup' : 'page';
+    }
+    function isSearchPopupOpen() {
+      return !!( $('searchPopup') && !$('searchPopup').hidden );
+    }
+    function openSearchPopup() {
+      searchReturnJobId = workJobId;
+      $('searchPopup').hidden = false;
+      var k = normalizeKNo($('kNo').value);
+      if (k || !$('kNo').value.trim()) $('kNo').value = k;
+      $('popupSearchKNo').value = k;
+      $('popupSearchEmpty').hidden = true;
+      $('popupSearchTable').hidden = true;
+      $('popupSearchBody').innerHTML = '';
+      if (k) {
+        runAppSearch('popup');
+      } else {
+        setSearchStatus('K-No を入力してください。', true, 'popup');
+        $('popupSearchKNo').focus();
+      }
+    }
+    function closeSearchPopup() {
+      if ($('searchPopup')) $('searchPopup').hidden = true;
+    }
+    function setSearchStatus(msg, isErr, kind) {
+      var el = searchUi(kind || activeSearchKind()).status;
+      if (!el) return;
       el.textContent = msg || '';
       el.classList.toggle('err', !!isErr);
     }
@@ -3180,7 +3309,8 @@
             setBusy(false);
             var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
             if (ok) {
-              setSearchStatus('編集画面へ戻しました（K-No ' + k + '）');
+              setSearchStatus('呼び出しました（K-No ' + k + '）');
+              closeSearchPopup();
               if (goInput) showAppView('input');
               warnIfOthersWorking_(saveId);
             }
@@ -3197,21 +3327,19 @@
         })
         .loadInvoiceDraft(saveId);
     }
-    function fillSearchResults(list, kNo) {
-      var empty = $('searchEmpty');
-      var table = $('searchResultTable');
-      var body = $('searchResultBody');
-      body.innerHTML = '';
+    function fillSearchResults(list, kNo, kind) {
+      var ui = searchUi(kind || activeSearchKind());
+      ui.body.innerHTML = '';
       if (!list || !list.length) {
-        empty.hidden = false;
-        empty.textContent = 'K-No「' + kNo + '」の保存はありません';
-        table.hidden = true;
-        setSearchStatus('');
+        ui.empty.hidden = false;
+        ui.empty.textContent = 'K-No「' + kNo + '」の保存はありません';
+        ui.table.hidden = true;
+        setSearchStatus('', false, kind);
         return;
       }
-      empty.hidden = true;
-      table.hidden = false;
-      setSearchStatus('K-No ' + kNo + ' ／ ' + list.length + ' 件');
+      ui.empty.hidden = true;
+      ui.table.hidden = false;
+      setSearchStatus('K-No ' + kNo + ' ／ ' + list.length + ' 件', false, kind);
       list.forEach(function (row) {
         var tr = document.createElement('tr');
         tr.setAttribute('data-save-id', row.saveId || '');
@@ -3224,26 +3352,28 @@
           '<td><div class="row-actions">' +
             '<button type="button" data-act="edit">編集</button>' +
           '</div></td>';
-        body.appendChild(tr);
+        ui.body.appendChild(tr);
       });
     }
-    function runAppSearch() {
-      var kNo = normalizeKNo($('searchKNo').value);
-      $('searchKNo').value = kNo;
+    function runAppSearch(kind) {
+      kind = kind || activeSearchKind();
+      var ui = searchUi(kind);
+      var kNo = normalizeKNo(ui.kNo.value);
+      ui.kNo.value = kNo;
       if (!kNo) {
-        setSearchStatus('K-No を入力してください。', true);
+        setSearchStatus('K-No を入力してください。', true, kind);
         return;
       }
       setBusy(true);
-      setSearchStatus('検索中…');
+      setSearchStatus('検索中…', false, kind);
       google.script.run
         .withSuccessHandler(function (list) {
           setBusy(false);
-          fillSearchResults(list || [], kNo);
+          fillSearchResults(list || [], kNo, kind);
         })
         .withFailureHandler(function (err) {
           setBusy(false);
-          setSearchStatus(err.message || String(err), true);
+          setSearchStatus(err.message || String(err), true, kind);
         })
         .listInvoiceDrafts(kNo);
     }
@@ -3257,28 +3387,41 @@
       $('searchKNo').focus();
     });
     $('btnLoad').addEventListener('click', function () {
-      var kNo = normalizeKNo($('kNo').value);
-      $('kNo').value = kNo;
-      if (kNo) $('searchKNo').value = kNo;
-      showAppView('search');
-      if (kNo) runAppSearch();
-      else {
-        setSearchStatus('K-No を入力してください。', true);
-        $('searchKNo').focus();
-      }
+      openSearchPopup();
     });
-    $('btnSearchApp').addEventListener('click', runAppSearch);
+    $('btnSearchApp').addEventListener('click', function () { runAppSearch('page'); });
     $('searchKNo').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        runAppSearch();
+        runAppSearch('page');
       }
     });
     $('searchKNo').addEventListener('blur', function () {
       var n = normalizeKNo($('searchKNo').value);
       if (n || !$('searchKNo').value.trim()) $('searchKNo').value = n;
     });
-    $('searchResultBody').addEventListener('click', function (e) {
+    $('btnPopupSearch').addEventListener('click', function () { runAppSearch('popup'); });
+    $('popupSearchKNo').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runAppSearch('popup');
+      }
+    });
+    $('popupSearchKNo').addEventListener('blur', function () {
+      var n = normalizeKNo($('popupSearchKNo').value);
+      if (n || !$('popupSearchKNo').value.trim()) $('popupSearchKNo').value = n;
+    });
+    $('searchPopupClose').addEventListener('click', closeSearchPopup);
+    $('searchPopup').addEventListener('click', function (e) {
+      if (e.target === $('searchPopup')) closeSearchPopup();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isSearchPopupOpen()) {
+        e.preventDefault();
+        closeSearchPopup();
+      }
+    });
+    function onSearchResultEdit(e) {
       var btn = e.target.closest('button[data-act]');
       if (!btn) return;
       var tr = e.target.closest('tr[data-save-id]');
@@ -3286,9 +3429,11 @@
       var saveId = tr.getAttribute('data-save-id');
       if (!saveId) return;
       if (btn.getAttribute('data-act') === 'edit') {
-        restoreInvoice(saveId, true);
+        restoreInvoice(saveId, !isSearchPopupOpen());
       }
-    });
+    }
+    $('searchResultBody').addEventListener('click', onSearchResultEdit);
+    $('popupSearchBody').addEventListener('click', onSearchResultEdit);
     $('draftTabs').addEventListener('click', function (e) {
       var closeId = e.target.getAttribute && e.target.getAttribute('data-close-id');
       if (closeId) {
