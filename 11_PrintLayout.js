@@ -415,19 +415,96 @@ function printBodyPlan_(lines) {
 }
 
 function replacePrintSheet_(ss, name) {
-  let sh = ss.getSheetByName(name);
+  SpreadsheetApp.flush();
+  let sh = null;
+  try {
+    sh = ss.getSheetByName(name);
+  } catch (err) {
+    sh = null;
+  }
   let at = ss.getNumSheets();
   if (sh) {
-    at = Math.max(0, sh.getIndex() - 1);
-    ss.deleteSheet(sh);
+    try {
+      at = Math.max(0, sh.getIndex() - 1);
+    } catch (err2) {
+      at = ss.getNumSheets();
+    }
+    try {
+      ss.deleteSheet(sh);
+    } catch (err3) {}
+    SpreadsheetApp.flush();
   }
-  if (at > ss.getNumSheets()) {
-    at = ss.getNumSheets();
+  sh = null;
+  try {
+    sh = ss.getSheetByName(name);
+  } catch (err4) {
+    sh = null;
   }
-  sh = ss.insertSheet(name, at);
+  if (sh) {
+    resetPrintSheetBody_(sh);
+  } else {
+    sh = insertPrintSheetFresh_(ss, name, at);
+  }
+  SpreadsheetApp.flush();
+  try {
+    const live = ss.getSheetByName(name);
+    if (live) {
+      sh = live;
+    }
+  } catch (err5) {}
+  if (!sh) {
+    throw new Error('印刷シートを作成できませんでした。スプレッドシートを再読み込みしてから、もう一度印刷してください。');
+  }
   trimPrintSheetColumns_(sh);
   forcePrintPortrait_(sh);
   return sh;
+}
+
+function insertPrintSheetFresh_(ss, name, at) {
+  const idx = Math.min(Math.max(0, at), ss.getNumSheets());
+  try {
+    return ss.insertSheet(name, idx);
+  } catch (err) {
+    SpreadsheetApp.flush();
+    let existing = null;
+    try {
+      existing = ss.getSheetByName(name);
+    } catch (err2) {
+      existing = null;
+    }
+    if (existing) {
+      resetPrintSheetBody_(existing);
+      return existing;
+    }
+    return ss.insertSheet(name);
+  }
+}
+
+function resetPrintSheetBody_(sheet) {
+  try {
+    sheet.showRows(1, sheet.getMaxRows());
+  } catch (err) {}
+  try {
+    sheet.showColumns(1, sheet.getMaxColumns());
+  } catch (err2) {}
+  try {
+    sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).breakApart();
+  } catch (err3) {}
+  try {
+    sheet.clear();
+  } catch (err4) {}
+}
+
+function printSheetPageSetup_(sheet) {
+  if (!sheet || typeof sheet.getPageSetup !== 'function') {
+    return null;
+  }
+  try {
+    return sheet.getPageSetup();
+  } catch (err) {
+    Logger.log('%s getPageSetup: %s', CONFIG.logPrefix, err);
+    return null;
+  }
 }
 
 function trimPrintSheetColumns_(sheet) {
@@ -446,8 +523,12 @@ function trimPrintSheetColumns_(sheet) {
 }
 
 function forcePrintPortrait_(sheet) {
+  const ps = printSheetPageSetup_(sheet);
+  if (!ps || typeof ps.setOrientation !== 'function') {
+    return;
+  }
   try {
-    sheet.getPageSetup().setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
+    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
   } catch (err) {
     Logger.log('%s forcePrintPortrait_: %s', CONFIG.logPrefix, err);
   }
@@ -465,7 +546,10 @@ function trimPrintSheet_(sheet, lastRow) {
 
 function applyA4PageSetup_(sheet, pageCount, breakRows) {
   const pages = Math.max(1, pageCount || 1);
-  const ps = sheet.getPageSetup();
+  const ps = printSheetPageSetup_(sheet);
+  if (!ps) {
+    return;
+  }
   const m = PRINT_MARGIN_IN_;
   try {
     ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
