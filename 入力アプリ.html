@@ -82,56 +82,67 @@
     #searchStatus.err { color: var(--danger); }
     .draft-bar {
       display: flex;
-      align-items: center;
+      align-items: stretch;
       gap: 8px;
-      padding: 8px 18px;
-      background: #e8eeeb;
+      padding: 6px 14px 0;
+      background: #dfe8e4;
       border-bottom: 1px solid var(--line);
       overflow-x: auto;
+      min-height: 52px;
     }
     .draft-bar[hidden] { display: none; }
     .draft-tabs {
       display: flex;
-      gap: 6px;
+      gap: 4px;
       min-width: 0;
+      align-items: stretch;
     }
     .draft-tab {
       display: flex;
       align-items: center;
-      gap: 6px;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 4px 6px 4px 10px;
+      gap: 8px;
+      background: rgba(255,255,255,.45);
+      border: 0;
+      border-radius: 10px 10px 0 0;
+      padding: 8px 6px 10px 16px;
       cursor: pointer;
-      max-width: 220px;
+      min-width: 140px;
+      max-width: 280px;
       flex: 0 0 auto;
+      min-height: 44px;
     }
     .draft-tab.on {
-      border-color: var(--accent);
-      background: #e8f0ec;
+      background: #fff;
+      box-shadow: 0 1px 0 #fff;
     }
     .draft-tab-label {
-      font-size: 12px;
+      font-size: 15px;
+      font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 168px;
+      max-width: 200px;
+      pointer-events: none;
     }
     .draft-tab-x {
-      background: transparent;
-      color: var(--muted);
+      background: rgba(0,0,0,.06);
+      color: #445;
       border: 0;
-      padding: 0 4px;
-      font-size: 16px;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      font-size: 22px;
       line-height: 1;
-      border-radius: 4px;
+      border-radius: 8px;
+      flex: 0 0 36px;
     }
     .draft-tab-x:hover { background: #fde8e8; color: var(--danger); }
     #btnDraftAdd {
       flex: 0 0 auto;
-      padding: 5px 10px;
-      font-size: 12px;
+      align-self: center;
+      min-height: 40px;
+      padding: 8px 16px;
+      font-size: 14px;
     }
     .draft-operator {
       margin-left: auto;
@@ -618,7 +629,7 @@
       border-radius: 6px;
       box-shadow: 0 6px 16px rgba(28, 36, 48, .12);
     }
-    .combo-list div { padding: 5px 8px; cursor: pointer; }
+    .combo-list div { padding: 8px 10px; cursor: pointer; min-height: 28px; }
     .combo-list div:hover,
     .combo-list div.active { background: #e8f0ec; }
     input.warn-neg {
@@ -1439,7 +1450,7 @@
         close.type = 'button';
         close.className = 'draft-tab-x';
         close.setAttribute('data-close-id', job.id);
-        close.title = '閉じる';
+        close.title = workJobs.length <= 1 ? '入力をすべて消去' : '閉じる';
         close.textContent = '×';
         tab.appendChild(label);
         tab.appendChild(close);
@@ -1464,14 +1475,24 @@
       setStatus('新しい入力を開始しました。前の入力は上のタブに残っています。');
     }
     function closeWorkJob(id) {
-      if (workJobs.length <= 1) {
-        setStatus('最後の作業タブは閉じられません。', true);
-        return;
-      }
       var job = findWorkJob(id);
       if (!job) return;
       if (id === workJobId) snapshotActiveJob(true);
       var label = workJobLabel(job);
+      if (workJobs.length <= 1) {
+        if (jobHasContent(job) && !window.confirm('この入力をすべて消去しますか？')) {
+          return;
+        }
+        clearHeaderFields();
+        clearItemRows();
+        $('invoiceTemplate').value = '';
+        bindCurrentSave('', '');
+        snapshotActiveJob(true);
+        renderDraftTabs();
+        persistWorkJobs(true);
+        setStatus('入力を消去しました');
+        return;
+      }
       if (jobHasContent(job) && !window.confirm('作業中の「' + label + '」を閉じますか？閉じると翌日の作業中一覧からも外れます。')) {
         return;
       }
@@ -1934,14 +1955,21 @@
       partMidsJsonByMajor = {};
       gridReady = false;
     }
+    function withBlankFirst(values) {
+      var out = [''];
+      (values || []).forEach(function (v) {
+        if (String(v) !== '') out.push(v);
+      });
+      return out;
+    }
     function midsJson(major) {
       var k = major || '';
-      if (!midsJsonByMajor.hasOwnProperty(k)) midsJsonByMajor[k] = JSON.stringify(midsFor(k));
+      if (!midsJsonByMajor.hasOwnProperty(k)) midsJsonByMajor[k] = JSON.stringify(withBlankFirst(midsFor(k)));
       return midsJsonByMajor[k];
     }
     function partMidsJson(major) {
       var k = major || '';
-      if (!partMidsJsonByMajor.hasOwnProperty(k)) partMidsJsonByMajor[k] = JSON.stringify(partMidsFor(k));
+      if (!partMidsJsonByMajor.hasOwnProperty(k)) partMidsJsonByMajor[k] = JSON.stringify(withBlankFirst(partMidsFor(k)));
       return partMidsJsonByMajor[k];
     }
     function setSelectValue(sel, values, selected) {
@@ -2453,6 +2481,11 @@
     function comboOptionLabel(v) {
       return String(v == null ? '' : v).replace(/\r\n|\n|\r/g, ' / ');
     }
+    function comboDivValue(el) {
+      if (!el) return '';
+      var a = el.getAttribute('data-value');
+      return a == null ? '' : a;
+    }
     function comboOptions(input) {
       try { return JSON.parse(input.dataset.options || '[]'); } catch (e) { return []; }
     }
@@ -2488,8 +2521,8 @@
         });
         opts.forEach(function (v) {
           var d = document.createElement('div');
-          d.textContent = comboOptionLabel(v);
-          d.dataset.value = v;
+          d.setAttribute('data-value', v);
+          d.textContent = v === '' ? '　' : comboOptionLabel(v);
           list.appendChild(d);
         });
       }
@@ -2511,7 +2544,7 @@
         if (comboActiveIndex >= list.children.length) comboActiveIndex = 0;
       }
       highlightCombo(list, comboActiveIndex);
-      input.value = list.children[comboActiveIndex].dataset.value;
+      input.value = comboDivValue(list.children[comboActiveIndex]);
     }
     function commitCombo(input) {
       var i = Number(input.dataset.i);
@@ -2525,7 +2558,7 @@
       }
       var list = comboListEl(input);
       if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
-        input.value = list.children[comboActiveIndex].dataset.value;
+        input.value = comboDivValue(list.children[comboActiveIndex]);
       }
       var v = input.value;
       hideComboLists(keep);
@@ -2554,7 +2587,7 @@
       var list = comboListEl(el);
       var fromList = !!(list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]);
       if (fromList) {
-        el.value = list.children[comboActiveIndex].dataset.value;
+        el.value = comboDivValue(list.children[comboActiveIndex]);
       }
       var changed = k === 'workerCode'
         ? workerEditValue(items[i]) !== String(el.value || '').trim()
@@ -2865,20 +2898,21 @@
       e.preventDefault();
       var input = opt.parentNode.parentNode.querySelector('[data-k="mid"], [data-k="partMid"], [data-k="workerCode"]');
       if (!input) return;
-      input.value = opt.dataset.value;
+      var chosen = comboDivValue(opt);
+      input.value = chosen;
       hideComboLists();
       comboIgnoreBlur = true;
       var i = Number(input.dataset.i);
       if (input.dataset.k === 'mid') {
-        items[i].mid = opt.dataset.value;
+        items[i].mid = chosen;
         fitMidHeight(input);
         onMidChosen(i);
       } else if (input.dataset.k === 'partMid') {
-        items[i].partMid = opt.dataset.value;
+        items[i].partMid = chosen;
         fitMidHeight(input);
         onPartMidChosen(i);
       } else if (input.dataset.k === 'workerCode') {
-        commitWorkerAt(i, opt.dataset.value, { fillDown: true });
+        commitWorkerAt(i, chosen, { fillDown: true });
         recalc();
       }
     });
