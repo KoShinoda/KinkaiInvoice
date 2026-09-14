@@ -875,7 +875,7 @@
   <footer class="bar" id="appFooter">
     <div class="foot-left">
       <div id="status">読み込み中…</div>
-      <div id="editBadge">新規の請求書を作成中</div>
+      <div id="editBadge" hidden></div>
       <div class="foot-actions">
         <button type="button" id="btnSave">保存</button>
         <button type="button" id="btnSaveNew" class="sub" hidden>新規保存</button>
@@ -1686,14 +1686,23 @@
       $('btnSave').textContent = bound ? '上書き保存' : '保存';
       $('btnSaveNew').hidden = !bound;
       var badge = $('editBadge');
+      if (!badge) return;
       if (bound) {
+        badge.hidden = false;
         badge.className = 'editing';
         var user = String($('userName').value || '').trim();
         badge.textContent = 'この請求書を編集中（K-No ' + boundKNo + (user ? ' / ' + user : '') + '）';
-      } else {
-        badge.className = '';
-        badge.textContent = '新規の請求書を作成中';
+        return;
       }
+      if (formIsEmpty()) {
+        badge.hidden = true;
+        badge.className = '';
+        badge.textContent = '';
+        return;
+      }
+      badge.hidden = false;
+      badge.className = '';
+      badge.textContent = '新規の請求書を作成中';
     }
     function snapshotActiveJob(immediate) {
       var job = findWorkJob(workJobId);
@@ -1704,6 +1713,7 @@
       job.templateName = $('invoiceTemplate').value;
       job.savedAt = boundSavedAt;
       persistWorkJobs(immediate !== false);
+      updateSaveChrome();
     }
     function syncActiveTabKNo() {
       var job = findWorkJob(workJobId);
@@ -2962,26 +2972,35 @@
       }
       return last;
     }
-    function fillWorkerCodesFrom(start) {
+    function fillWorkerCodesFrom(start, prevCode) {
       if (start < 0 || !items[start]) return;
+      syncWorkerInput(start);
       var last = lastFilledMidIndex();
       if (last < start) last = start;
       var src = items[start];
+      var prev = String(prevCode == null ? '' : prevCode).trim();
       var i;
-      for (i = start; i <= last; i++) {
-        items[i].workerCode = src.workerCode;
-        items[i].workerName = src.workerName;
-        syncWorkerInput(i);
+      for (i = start + 1; i <= last; i++) {
+        var it = items[i];
+        var cur = String(it.workerCode || '').trim();
+        if (cur === prev || (!cur && !filled(it.workerName))) {
+          it.workerCode = src.workerCode;
+          it.workerName = src.workerName;
+          syncWorkerInput(i);
+          continue;
+        }
+        break;
       }
     }
     function commitWorkerAt(rowIndex, raw, opts) {
       var it = items[rowIndex];
-      var before = String(it.workerCode || '') + '\t' + String(it.workerName || '');
+      var prevCode = String(it.workerCode || '').trim();
+      var before = prevCode + '\t' + String(it.workerName || '');
       assignWorker(it, findWorker(raw), raw);
       var after = String(it.workerCode || '') + '\t' + String(it.workerName || '');
       var fill = opts && opts.fillDown;
       if (fill == null) fill = before !== after;
-      if (fill) fillWorkerCodesFrom(rowIndex);
+      if (fill) fillWorkerCodesFrom(rowIndex, prevCode);
       else syncWorkerInput(rowIndex);
     }
 
@@ -3392,6 +3411,7 @@
       $('partDiscShow').textContent = yen(partDisc);
       $('partTotal').textContent = yen(partNet);
       $('grand').textContent = yen(techNet + partNet);
+      updateSaveChrome();
       return {
         techSub: techSum,
         techDisc: techDisc,
@@ -3408,14 +3428,22 @@
     $('btnClearHeader').addEventListener('click', function () {
       if (!window.confirm('ヘッダー（ユーザー・車両・日付など）をすべて消しますか？')) return;
       clearHeaderFields();
+      updateSaveChrome();
       setStatus('ヘッダーを消去しました');
     });
     $('btnClearItems').addEventListener('click', function () {
       if (!window.confirm('明細をすべて消しますか？（値引％は残します）')) return;
       clearItemRows();
       $('invoiceTemplate').value = '';
+      updateSaveChrome();
       setStatus('明細を消去しました');
     });
+
+    var headerGrid = document.querySelector('#viewInput .header-grid');
+    if (headerGrid) {
+      headerGrid.addEventListener('input', updateSaveChrome);
+      headerGrid.addEventListener('change', updateSaveChrome);
+    }
 
     $('btnSave').addEventListener('click', function () {
       var payload = collectPayload();
