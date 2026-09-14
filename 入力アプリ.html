@@ -1195,10 +1195,10 @@
       var dept = $('dept').value;
       var types = typesForDept(dept);
       var cur = $('serviceType').value;
-      var next = pickPreferredType(dept);
+      var next = cur && types.indexOf(cur) !== -1 ? cur : '';
       if (!next) {
-        next = cur && types.indexOf(cur) !== -1 ? cur : '';
-        if (dept && types.length === 1) next = types[0];
+        next = pickPreferredType(dept);
+        if (!next && dept && types.length === 1) next = types[0];
       }
       fillHeaderSelect($('serviceType'), types, next);
       if (next) $('serviceType').value = next;
@@ -1389,11 +1389,18 @@
       $('kNo').value = normalizeKNo(h.kNo);
       setPlateFields(h.plate || '');
       fillHeaderSelect($('dept'), master.departments || [], h.dept || '');
-      applyDeptDefaults();
-      if (h.serviceType) {
-        fillHeaderSelect($('serviceType'), typesForDept($('dept').value), h.serviceType);
-        $('serviceType').value = h.serviceType;
+      var types = typesForDept($('dept').value);
+      var type = h.serviceType || '';
+      if (type && types.indexOf(type) === -1) {
+        fillHeaderSelect($('serviceType'), types.concat([type]), type);
+      } else {
+        if (!type) {
+          type = pickPreferredType($('dept').value);
+          if (!type && $('dept').value && types.length === 1) type = types[0];
+        }
+        fillHeaderSelect($('serviceType'), types, type);
       }
+      if (type) $('serviceType').value = type;
       fillHeaderSelect($('receptionist'), master.receptionists || [], h.receptionist || h.staff || '');
       applyHeaderDates(h);
       if (data.summary && data.summary.techPct != null && data.summary.techPct !== '') {
@@ -1561,6 +1568,7 @@
       }
       var h = p.header || {};
       return !!(String(h.kNo || '').trim() || String(h.userName || '').trim() || String(h.plate || '').trim() ||
+        String(h.dept || '').trim() || String(h.serviceType || '').trim() ||
         (String(h.receptionist || h.staff || '').trim() && !receptionistIsDefault(h.receptionist || h.staff)) ||
         (formatYmd(h.inDate || '') && !dateIsDefaultToday(h.inDate)) ||
         (formatYmd(h.outDate || '') && !dateIsDefaultToday(h.outDate)) ||
@@ -1638,14 +1646,81 @@
     var workSaveTimer = null;
     var workSaveBusy = false;
     var workSaveAgain = false;
+    var workJobHydrating = false;
     function persistWorkJobs(immediate) {
       try {
         localStorage.setItem(workJobStoreKey(), JSON.stringify({
           activeId: workJobId,
-          jobs: workJobs
+          jobs: workJobs,
+          updatedAt: Date.now()
         }));
       } catch (err) {}
       scheduleServerWorkSave(!!immediate);
+    }
+    function readLocalWorkJobState() {
+      try {
+        return JSON.parse(localStorage.getItem(workJobStoreKey()) || 'null');
+      } catch (err) {
+        return null;
+      }
+    }
+    function workJobTouchedAt(job, fallback) {
+      var t = Number(job && job.touchedAt);
+      if (isFinite(t) && t > 0) return t;
+      var fb = Number(fallback);
+      return isFinite(fb) && fb > 0 ? fb : 0;
+    }
+    function mergeWorkJobState(local, server) {
+      var localJobs = (local && local.jobs) || [];
+      var serverJobs = (server && server.jobs) || [];
+      var localStoreT = Number(local && local.updatedAt) || 0;
+      var map = {};
+      var order = [];
+      function consider(job, fallbackT) {
+        if (!job || !String(job.id || '').trim()) return;
+        var id = String(job.id);
+        var next = job;
+        next.touchedAt = workJobTouchedAt(job, fallbackT);
+        if (!map[id]) {
+          order.push(id);
+          map[id] = next;
+          return;
+        }
+        if (next.touchedAt >= workJobTouchedAt(map[id], 0)) {
+          map[id] = next;
+        }
+      }
+      serverJobs.forEach(function (job) {
+        consider(job, 0);
+      });
+      localJobs.forEach(function (job) {
+        consider(job, localStoreT);
+      });
+      var jobs = [];
+      var i;
+      for (i = 0; i < order.length && jobs.length < WORK_JOB_MAX; i++) {
+        jobs.push(map[order[i]]);
+      }
+      var localMax = localStoreT;
+      localJobs.forEach(function (job) {
+        localMax = Math.max(localMax, workJobTouchedAt(job, localStoreT));
+      });
+      var serverMax = 0;
+      serverJobs.forEach(function (job) {
+        serverMax = Math.max(serverMax, workJobTouchedAt(job, 0));
+      });
+      var activeId = localMax >= serverMax
+        ? ((local && local.activeId) || (server && server.activeId) || '')
+        : ((server && server.activeId) || (local && local.activeId) || '');
+      if (activeId && !map[activeId]) {
+        activeId = jobs.length ? jobs[0].id : '';
+      }
+      return {
+        activeId: activeId,
+        jobs: jobs,
+        operator: (server && server.operator) || (local && local.operator) || '',
+        isolated: !!(server && server.isolated)
+      };
     }
     function scheduleServerWorkSave(immediate) {
       if (immediate) {
@@ -1724,6 +1799,7 @@
       badge.textContent = '新規の請求書を作成中';
     }
     function snapshotActiveJob(immediate) {
+      if (workJobHydrating) return;
       var job = findWorkJob(workJobId);
       if (!job) return;
       job.payload = cloneJobPayload(collectPayload());
@@ -1731,6 +1807,7 @@
       job.boundKNo = boundKNo;
       job.templateName = $('invoiceTemplate').value;
       job.savedAt = boundSavedAt;
+      job.touchedAt = Date.now();
       persistWorkJobs(immediate !== false);
       updateSaveChrome();
     }
@@ -1746,16 +1823,21 @@
     function loadWorkJob(id, quietStatus) {
       var job = findWorkJob(id);
       if (!job) return;
-      workJobId = id;
-      applySavedPayload(job.payload || {}, true);
-      $('invoiceTemplate').value = job.templateName || '';
-      bindCurrentSave(
-        job.saveId,
-        job.boundKNo || ((job.payload && job.payload.header && job.payload.header.kNo) || ''),
-        job.savedAt || ''
-      );
-      if (!boundSaveId() && !filled($('receptionist').value)) applyDefaultReceptionist();
-      renderDraftTabs();
+      workJobHydrating = true;
+      try {
+        workJobId = id;
+        applySavedPayload(job.payload || {}, true);
+        $('invoiceTemplate').value = job.templateName || '';
+        bindCurrentSave(
+          job.saveId,
+          job.boundKNo || ((job.payload && job.payload.header && job.payload.header.kNo) || ''),
+          job.savedAt || ''
+        );
+        if (!boundSaveId() && !filled($('receptionist').value)) applyDefaultReceptionist();
+        renderDraftTabs();
+      } finally {
+        workJobHydrating = false;
+      }
       persistWorkJobs(true);
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
     }
@@ -1876,8 +1958,9 @@
       google.script.run
         .withSuccessHandler(function (state) {
           applyWorkOperator(state);
+          var local = readLocalWorkJobState();
           if (workIsolated && state && state.jobs && state.jobs.length) {
-            applyWorkJobState(state);
+            applyWorkJobState(mergeWorkJobState(local, state));
             return;
           }
           initWorkJobsFromLocal();
@@ -1890,19 +1973,18 @@
         .listWorkJobs();
     }
     function applyWorkJobState(state) {
-      workJobs = state.jobs;
+      workJobs = (state && state.jobs) || [];
+      if (!workJobs.length) {
+        initWorkJobsFromLocal();
+        return;
+      }
       workJobId = state.activeId && findWorkJob(state.activeId) ? state.activeId : workJobs[0].id;
       loadWorkJob(workJobId, true);
-      persistWorkJobs();
+      persistWorkJobs(true);
       setStatus('作業中の請求書を復元しました（自分の分 ' + workJobs.length + ' 件）');
     }
     function initWorkJobsFromLocal() {
-      var stored = null;
-      try {
-        stored = JSON.parse(localStorage.getItem(workJobStoreKey()) || 'null');
-      } catch (err) {
-        stored = null;
-      }
+      var stored = readLocalWorkJobState();
       if (stored && stored.jobs && stored.jobs.length) {
         workJobs = stored.jobs;
         workJobId = stored.activeId && findWorkJob(stored.activeId) ? stored.activeId : workJobs[0].id;
@@ -3462,8 +3544,14 @@
 
     var headerGrid = document.querySelector('#viewInput .header-grid');
     if (headerGrid) {
-      headerGrid.addEventListener('input', updateSaveChrome);
-      headerGrid.addEventListener('change', updateSaveChrome);
+      headerGrid.addEventListener('input', function () {
+        updateSaveChrome();
+        snapshotActiveJob(false);
+      });
+      headerGrid.addEventListener('change', function () {
+        updateSaveChrome();
+        snapshotActiveJob(false);
+      });
     }
 
     $('btnSave').addEventListener('click', function () {
@@ -3673,7 +3761,10 @@
           snapshotActiveJob();
           renderDraftTabs();
         });
-        $('dept').addEventListener('change', applyDeptDefaults);
+        $('dept').addEventListener('change', function () {
+          applyDeptDefaults();
+          snapshotActiveJob(false);
+        });
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
         applyDiscPctDefaults();
         initWorkJobs();

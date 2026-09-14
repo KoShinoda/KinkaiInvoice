@@ -46,6 +46,7 @@ function listWorkJobs() {
       saveId: String(vals[i][1] || '').trim(),
       boundKNo: kNo,
       templateName: invoicePlain_(vals[i][16]),
+      touchedAt: workJobTouchedAt_(vals[i][3]),
       payload: {
         header: {
           kNo: kNo,
@@ -124,7 +125,25 @@ function workJobWorthSaving_(job) {
       return true;
     }
   }
-  return !!(String(header.userName || '').trim() || String(header.plate || '').trim());
+  return !!(
+    String(header.userName || '').trim() ||
+    String(header.plate || '').trim() ||
+    String(header.dept || '').trim() ||
+    String(header.serviceType || '').trim()
+  );
+}
+
+function workJobTouchedAt_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return value.getTime();
+  }
+  const s = String(value == null ? '' : value).trim();
+  if (!s) {
+    return 0;
+  }
+  const d = new Date(s.replace(/-/g, '/'));
+  const t = d.getTime();
+  return isNaN(t) ? 0 : t;
 }
 
 function replaceWorkJobsForUser_(jobs, activeId, user, now) {
