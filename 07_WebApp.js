@@ -89,6 +89,7 @@ function getInvoiceMaster() {
     plateAreas: (service.plateAreas && service.plateAreas.length)
       ? service.plateAreas
       : ['苫小牧', '室蘭', '北九州'],
+    defaultReceptionist: receptionistForOperator_(service, workJobUserKey_()),
     defaultTechPct: clampInvoicePct_(service.techPct, 3),
     defaultPartPct: clampInvoicePct_(service.partPct, 10),
     operatorEmail: workJobUserKey_(),

@@ -1084,6 +1084,21 @@
       if (t) t.value = defaultTechPct();
       if (p) p.value = defaultPartPct();
     }
+    function defaultReceptionist() {
+      return String(master.defaultReceptionist || '').trim();
+    }
+    function receptionistIsDefault(v) {
+      var d = defaultReceptionist();
+      return !!d && String(v || '').trim() === d;
+    }
+    function applyDefaultReceptionist() {
+      var name = defaultReceptionist();
+      var el = $('receptionist');
+      if (!el || !name) return;
+      var list = master.receptionists || [];
+      if (list.indexOf(name) === -1) return;
+      el.value = name;
+    }
     function dateIsDefaultToday(v) {
       return formatYmd(v || '') === todayYmd();
     }
@@ -1191,6 +1206,7 @@
     function initHeaderMasters() {
       fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
       fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
+      if (!$('receptionist').value) applyDefaultReceptionist();
       initPlateAreaCombo();
       if (master.templateNames && master.templateNames.length) {
         fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
@@ -1286,6 +1302,7 @@
       $('serviceType').value = '';
       $('receptionist').value = '';
       applyDefaultDates();
+      applyDefaultReceptionist();
       bindCurrentSave('', '');
     }
     function clearItemRows() {
@@ -1544,6 +1561,7 @@
       }
       var h = p.header || {};
       return !!(String(h.kNo || '').trim() || String(h.userName || '').trim() || String(h.plate || '').trim() ||
+        (String(h.receptionist || h.staff || '').trim() && !receptionistIsDefault(h.receptionist || h.staff)) ||
         (formatYmd(h.inDate || '') && !dateIsDefaultToday(h.inDate)) ||
         (formatYmd(h.outDate || '') && !dateIsDefaultToday(h.outDate)) ||
         (formatYmd(h.billDate || '') && !dateIsDefaultToday(h.billDate)));
@@ -1673,7 +1691,8 @@
     }
     function headerHasContent() {
       return filled($('userName').value) || !!normalizeKNo($('kNo').value) || !!joinPlate() ||
-        filled($('dept').value) || filled($('serviceType').value) || filled($('receptionist').value) ||
+        filled($('dept').value) || filled($('serviceType').value) ||
+        (filled($('receptionist').value) && !receptionistIsDefault($('receptionist').value)) ||
         (filled($('inDate').value) && !dateIsDefaultToday($('inDate').value)) ||
         (filled($('outDate').value) && !dateIsDefaultToday($('outDate').value)) ||
         (filled($('billDate').value) && !dateIsDefaultToday($('billDate').value));
@@ -1735,6 +1754,7 @@
         job.boundKNo || ((job.payload && job.payload.header && job.payload.header.kNo) || ''),
         job.savedAt || ''
       );
+      if (!boundSaveId() && !filled($('receptionist').value)) applyDefaultReceptionist();
       renderDraftTabs();
       persistWorkJobs(true);
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
@@ -1893,6 +1913,7 @@
       workJobs = [makeWorkJob()];
       workJobId = workJobs[0].id;
       applyDefaultDates();
+      applyDefaultReceptionist();
       applyDiscPctDefaults();
       snapshotActiveJob();
       renderDraftTabs();

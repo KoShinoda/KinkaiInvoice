@@ -112,7 +112,7 @@ const CONFIG = {
   },
 
   serviceInfo: {
-    /** A＝全て。B〜E＝種別1〜4。F＝受付担当。G・H＝値引％初期値。I＝登録地名。 */
+    /** A＝全て。B〜E＝種別1〜4。F＝受付担当。G・H＝値引％初期値。I＝登録地名。J＝受付メール。 */
     sheetName: '整備情報',
     defaultTechPct: 3,
     defaultPartPct: 10

@@ -3,13 +3,15 @@
  * レイアウト（縦持ち）:
  *   A 全て（部門未選択時の整備種別。上からこの順）
  *   B 整備種別1＝大型 / C 整備種別2＝小型 / D 整備種別3＝BP板金 / E 整備種別4＝部品販売
- *   F 受付担当
+ *   F 受付担当 / J 受付メール（Googleアカウントと突き合わせて新規の初期値）
  *   G 値引技術% / H 値引部品%（2行目が新規入力の初期値。保存済みには使わない）
  *   I 登録地名（請求入力の登録番号コンボ）
  */
 
 var SERVICE_ALL_HEADER_ = '全て';
 var SERVICE_RECV_HEADER_ = '受付担当';
+var SERVICE_RECV_MAIL_HEADER_ = '受付メール';
+var SERVICE_RECV_MAIL_ALIASES_ = ['受付メール', 'メール', 'googleアカウント', 'アカウント'];
 var SERVICE_PLATE_HEADER_ = '登録地名';
 var SERVICE_PLATE_ALIASES_ = ['登録地名', '地名', 'ナンバー地名', '運輸支局'];
 var SERVICE_PLATE_AREAS_DEFAULT_ = ['苫小牧', '室蘭', '北九州'];
@@ -50,6 +52,7 @@ function loadServiceInfo_() {
     } else {
       ensureServiceInfoDiscCols_(sh, parsed);
       ensureServiceInfoPlateCol_(sh, parsed);
+      ensureServiceInfoRecvMailCol_(sh, parsed);
     }
     return parseServiceInfoSheet_(sh);
   } catch (err) {
@@ -120,6 +123,7 @@ function emptyServiceInfo_() {
     typeSlotsByDept: typeSlotsByDept,
     allServiceTypes: SERVICE_ALL_TYPES_DEFAULT_.slice(),
     receptionists: [],
+    receptionistMails: [],
     plateAreas: SERVICE_PLATE_AREAS_DEFAULT_.slice(),
     rows: [],
     techPct: defaultDiscPcts_().techPct,
@@ -240,6 +244,111 @@ function applyPlateAreasFromValues_(out, values, header, startRow) {
   }
 }
 
+function applyReceptionistsFromValues_(out, values, header, startRow) {
+  if (!out || !values || !values.length) {
+    return;
+  }
+  const heads = header && header.length
+    ? header
+    : values[0].map(function (v) { return normalize_(v); });
+  const recvCol = heads.indexOf(SERVICE_RECV_HEADER_);
+  if (recvCol < 0) {
+    return;
+  }
+  const mailCol = headerIndexAny_(heads, SERVICE_RECV_MAIL_ALIASES_);
+  const from = startRow == null ? 1 : startRow;
+  for (let i = from; i < values.length; i++) {
+    if (recvCol >= values[i].length) {
+      continue;
+    }
+    const name = String(values[i][recvCol] == null ? '' : values[i][recvCol]).replace(/\u3000/g, ' ').trim();
+    const key = normalize_(name);
+    if (!name || key === SERVICE_RECV_HEADER_ || isServiceInfoSkipLabel_(name)) {
+      continue;
+    }
+    if (out.receptionists.indexOf(name) !== -1) {
+      continue;
+    }
+    out.receptionists.push(name);
+    let mail = '';
+    if (mailCol >= 0 && mailCol < values[i].length) {
+      mail = String(values[i][mailCol] == null ? '' : values[i][mailCol]).replace(/\u3000/g, ' ').trim().toLowerCase();
+    }
+    out.receptionistMails.push(mail);
+  }
+}
+
+function receptionistForOperator_(parsed, email) {
+  const mail = String(email || '').trim().toLowerCase();
+  if (!mail) {
+    return '';
+  }
+  const local = mail.split('@')[0] || '';
+  const names = (parsed && parsed.receptionists) || [];
+  const mails = (parsed && parsed.receptionistMails) || [];
+  let i;
+  for (i = 0; i < names.length; i++) {
+    const m = String(mails[i] || '').trim().toLowerCase();
+    if (!m) {
+      continue;
+    }
+    const mLocal = m.indexOf('@') >= 0 ? m.split('@')[0] : m;
+    if (m === mail || m === local || mLocal === local) {
+      return names[i];
+    }
+  }
+  for (i = 0; i < names.length; i++) {
+    const n = normalize_(names[i]);
+    if (n && (n === normalize_(local) || n === normalize_(mail))) {
+      return names[i];
+    }
+  }
+  return '';
+}
+
+function writeServiceInfoRecvMailCol_(sh, names, mails) {
+  sh.getRange(1, 10).setValue(SERVICE_RECV_MAIL_HEADER_).setFontWeight('bold').setBackground('#e8f0ec');
+  sh.getRange(1, 10).setNote(
+    'F列の受付担当と同じ行に、請求入力を開くGoogleアカウントを書きます。\n' +
+    'メール全体でも @ より前だけでも可。一致した名前が受付担当の初期値になります。'
+  );
+  sh.setColumnWidth(10, 200);
+  const list = names || [];
+  const acc = mails || [];
+  const last = Math.max(sh.getLastRow(), list.length + 2);
+  if (last >= 2) {
+    sh.getRange(2, 10, last - 1, 1).clearContent();
+  }
+  if (!list.length) {
+    return;
+  }
+  const body = list.map(function (name, i) {
+    return [acc[i] || ''];
+  });
+  sh.getRange(3, 10, body.length, 1).setValues(body);
+}
+
+function serviceInfoHasRecvMailCol_(sheet) {
+  if (!sheet) {
+    return false;
+  }
+  const header = normalize_(sheet.getRange(1, 10).getValue());
+  return SERVICE_RECV_MAIL_ALIASES_.indexOf(header) >= 0;
+}
+
+function ensureServiceInfoRecvMailCol_(sheet, parsed) {
+  if (serviceInfoHasRecvMailCol_(sheet)) {
+    return;
+  }
+  try {
+    writeServiceInfoRecvMailCol_(
+      sheet,
+      parsed && parsed.receptionists,
+      parsed && parsed.receptionistMails
+    );
+  } catch (err) {}
+}
+
 function writeServiceInfoPlateCol_(sh, areas) {
   const list = (areas && areas.length) ? areas.slice() : SERVICE_PLATE_AREAS_DEFAULT_.slice();
   sh.getRange(1, 9).setValue(SERVICE_PLATE_HEADER_).setFontWeight('bold').setBackground('#e8f0ec');
@@ -303,7 +412,11 @@ function isServiceInfoSkipLabel_(value) {
   if (!t) {
     return true;
   }
-  if (t === SERVICE_ALL_HEADER_ || t === SERVICE_RECV_HEADER_ || t === SERVICE_PLATE_HEADER_ || t === '未選択') {
+  if (t === SERVICE_ALL_HEADER_ || t === SERVICE_RECV_HEADER_ || t === SERVICE_PLATE_HEADER_ ||
+      t === SERVICE_RECV_MAIL_HEADER_ || t === '未選択') {
+    return true;
+  }
+  if (SERVICE_RECV_MAIL_ALIASES_.indexOf(t) !== -1) {
     return true;
   }
   if (SERVICE_PLATE_ALIASES_.indexOf(t) !== -1) {
@@ -344,13 +457,12 @@ function collectVerticalCol_(values, colIndex, startRow) {
 function parseServiceInfoVertical_(sheet) {
   const out = emptyServiceInfo_();
   const last = Math.max(sheet.getLastRow(), 1);
-  const width = Math.max(sheet.getLastColumn(), 9);
+  const width = Math.max(sheet.getLastColumn(), 10);
   const values = sheet.getRange(1, 1, last, width).getValues();
   const header = values[0].map(function (v) {
     return normalize_(v);
   });
   const allCol = header.indexOf(SERVICE_ALL_HEADER_);
-  const recvCol = header.indexOf(SERVICE_RECV_HEADER_);
   const cols = SERVICE_DEPT_COLS_;
   for (let c = 0; c < cols.length; c++) {
     const dept = cols[c].dept;
@@ -364,14 +476,7 @@ function parseServiceInfoVertical_(sheet) {
     out.rows.push({ dept: dept, types: types, slots: types.slice() });
   }
   out.allServiceTypes = mergeAllServiceTypes_(collectVerticalCol_(values, allCol, 2), null);
-  if (recvCol >= 0) {
-    for (let i = 2; i < values.length; i++) {
-      const rec = normalize_(values[i][recvCol]);
-      if (rec && rec !== SERVICE_RECV_HEADER_ && out.receptionists.indexOf(rec) === -1) {
-        out.receptionists.push(String(values[i][recvCol]).replace(/\u3000/g, ' ').trim());
-      }
-    }
-  }
+  applyReceptionistsFromValues_(out, values, header, 2);
   applyDiscPctsFromValues_(out, values);
   applyPlateAreasFromValues_(out, values, header, 1);
   return out;
@@ -380,12 +485,11 @@ function parseServiceInfoVertical_(sheet) {
 function parseServiceInfoOldVertical_(sheet) {
   const out = emptyServiceInfo_();
   const last = Math.max(sheet.getLastRow(), 1);
-  const width = Math.max(sheet.getLastColumn(), 9);
+  const width = Math.max(sheet.getLastColumn(), 10);
   const values = sheet.getRange(1, 1, last, width).getValues();
   const header = values[0].map(function (v) {
     return normalize_(v);
   });
-  const recvCol = header.indexOf(SERVICE_RECV_HEADER_) >= 0 ? header.indexOf(SERVICE_RECV_HEADER_) : 4;
   SERVICE_DEPT_COLS_.forEach(function (col, c) {
     const idx = header.indexOf(col.header);
     const types = collectVerticalCol_(values, idx >= 0 ? idx : c, 1);
@@ -397,15 +501,7 @@ function parseServiceInfoOldVertical_(sheet) {
     out.rows.push({ dept: col.dept, types: types, slots: types.slice() });
   });
   out.allServiceTypes = mergeAllServiceTypes_([], out);
-  for (let i = 1; i < values.length; i++) {
-    if (recvCol >= values[i].length) {
-      continue;
-    }
-    const rec = normalize_(values[i][recvCol]);
-    if (rec && rec !== SERVICE_RECV_HEADER_ && out.receptionists.indexOf(rec) === -1) {
-      out.receptionists.push(String(values[i][recvCol]).replace(/\u3000/g, ' ').trim());
-    }
-  }
+  applyReceptionistsFromValues_(out, values, header, 1);
   applyDiscPctsFromValues_(out, values);
   applyPlateAreasFromValues_(out, values, header, 1);
   return out;
@@ -447,12 +543,6 @@ function parseServiceInfoLegacy_(sheet) {
         }
       }
     }
-    if (recvCol < values[i].length) {
-      const rec = normalize_(values[i][recvCol]);
-      if (rec && rec !== SERVICE_RECV_HEADER_ && out.receptionists.indexOf(rec) === -1) {
-        out.receptionists.push(String(values[i][recvCol]).replace(/\u3000/g, ' ').trim());
-      }
-    }
   }
   SERVICE_DEPT_COLS_.forEach(function (col) {
     if (col.fallback && out.typesByDept[col.dept].indexOf(col.fallback) === -1) {
@@ -466,6 +556,7 @@ function parseServiceInfoLegacy_(sheet) {
     });
   });
   out.allServiceTypes = mergeAllServiceTypes_([], out);
+  applyReceptionistsFromValues_(out, values, header, 1);
   applyDiscPctsFromValues_(out, values);
   applyPlateAreasFromValues_(out, values, header, 1);
   return out;
@@ -522,6 +613,7 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   const receptionists = (parsed && parsed.receptionists && parsed.receptionists.length)
     ? parsed.receptionists.slice()
     : [];
+  const receptionistMails = (parsed && parsed.receptionistMails) ? parsed.receptionistMails.slice() : [];
   const plateAreas = (parsed && parsed.plateAreas && parsed.plateAreas.length)
     ? parsed.plateAreas.slice()
     : SERVICE_PLATE_AREAS_DEFAULT_.slice();
@@ -564,12 +656,13 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   sh.setColumnWidth(6, 120);
   writeServiceInfoDiscCols_(sh, parsed);
   writeServiceInfoPlateCol_(sh, plateAreas);
+  writeServiceInfoRecvMailCol_(sh, receptionists, receptionistMails);
   sh.getRange(1, 1).setNote(
     'A列「全て」＝整備部門が未選択のときの整備種別（上からこの順）。\n' +
     '既定: 車検大型→点検大型→一般大型→車検小型→点検小型→一般小型→構造変更→板金塗装→部品販売→特装→諸経費。\n' +
-    'B〜E＝部門別（2行目は部門名。消さない）。F＝受付担当。G・H＝新規入力の値引％初期値。I＝登録地名。'
+    'B〜E＝部門別（2行目は部門名。消さない）。F＝受付担当。G・H＝新規入力の値引％初期値。I＝登録地名。J＝受付メール。'
   );
-  sh.getRange(1, 6).setNote('受付担当を縦に並べます。');
+  sh.getRange(1, 6).setNote('受付担当を縦に並べます。J列に同じ行のGoogleアカウントを書くと、請求入力の初期値になります。');
   sh.getRange(1, 9).setNote('請求入力の登録番号の地名候補。上からこの順。リストにない地名も手入力できます。');
   return sh;
 }
@@ -595,5 +688,5 @@ function tidyServiceInfoSheet() {
   const sh = ss.getSheetByName(CONFIG.serviceInfo.sheetName);
   const parsed = parseServiceInfoSheet_(sh);
   rebuildServiceInfoSheet_(ss, parsed);
-  SpreadsheetApp.getActiveSpreadsheet().toast('整備情報シートを整理しました（全て列＋種別1〜4＋値引％＋登録地名）', '請求書入力', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('整備情報シートを整理しました（全て列＋種別1〜4＋値引％＋登録地名＋受付メール）', '請求書入力', 5);
 }
