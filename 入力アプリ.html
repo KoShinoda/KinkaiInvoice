@@ -1548,13 +1548,62 @@
         (formatYmd(h.outDate || '') && !dateIsDefaultToday(h.outDate)) ||
         (formatYmd(h.billDate || '') && !dateIsDefaultToday(h.billDate)));
     }
-    function jobNeedsReplaceConfirm_(job) {
+    function jobHasLineItems_(job) {
       var rows = (job && job.payload && job.payload.items) || [];
       var i;
       for (i = 0; i < rows.length; i++) {
         if (!rowIsEmpty(rows[i])) return true;
       }
       return false;
+    }
+    function findWorkJobBySaveId_(saveId) {
+      var sid = String(saveId || '').trim();
+      if (!sid) return null;
+      var i;
+      for (i = 0; i < workJobs.length; i++) {
+        if (String(workJobs[i].saveId || '').trim() === sid) return workJobs[i];
+      }
+      return null;
+    }
+    function findEmptyWorkJob_() {
+      var i;
+      for (i = 0; i < workJobs.length; i++) {
+        if (!jobHasLineItems_(workJobs[i])) return workJobs[i];
+      }
+      return null;
+    }
+    function pickWorkJobForRestore_(saveId) {
+      var existing = findWorkJobBySaveId_(saveId);
+      if (existing) {
+        return { job: existing, created: false, reused: true };
+      }
+      var origin = (searchReturnJobId && findWorkJob(searchReturnJobId))
+        ? findWorkJob(searchReturnJobId)
+        : findWorkJob(workJobId);
+      if (origin && !jobHasLineItems_(origin)) {
+        return { job: origin, created: false, reused: false };
+      }
+      var empty = findEmptyWorkJob_();
+      if (empty) {
+        return { job: empty, created: false, reused: false };
+      }
+      if (workJobs.length < WORK_JOB_MAX) {
+        snapshotActiveJob(true);
+        var created = makeWorkJob();
+        workJobs.push(created);
+        return { job: created, created: true, reused: false };
+      }
+      var target = origin || findWorkJob(workJobId);
+      if (!target) {
+        snapshotActiveJob(true);
+        target = makeWorkJob();
+        workJobs.push(target);
+        return { job: target, created: true, reused: false };
+      }
+      if (!window.confirm('作業中が最大 ' + WORK_JOB_MAX + ' 件です。このタブの内容を、選んだ保存で置き換えますか？')) {
+        return null;
+      }
+      return { job: target, created: false, reused: false, replaced: true };
     }
     function workJobStoreKey() {
       return WORK_JOB_STORE + '.' + (workOperator || 'anon');
@@ -1700,6 +1749,8 @@
         tab.appendChild(close);
         box.appendChild(tab);
       });
+      var addBtn = $('btnDraftAdd');
+      if (addBtn) addBtn.hidden = workJobs.length >= WORK_JOB_MAX;
     }
     function addBlankWorkJob() {
       if (workJobs.length >= WORK_JOB_MAX) {
@@ -1762,21 +1813,12 @@
     }
     function openSavedInWorkJob(data, saveId) {
       var sid = String((data && data.saveId) || saveId || '').trim();
-      var targetId = (searchReturnJobId && findWorkJob(searchReturnJobId))
-        ? searchReturnJobId
-        : workJobId;
-      if (!findWorkJob(targetId) && workJobs.length) {
-        targetId = workJobs[0].id;
-      }
-      if (!findWorkJob(targetId)) {
-        var blank = makeWorkJob();
-        workJobs.push(blank);
-        targetId = blank.id;
-      }
-      var target = findWorkJob(targetId);
-      if (jobNeedsReplaceConfirm_(target) && !window.confirm('検索元のタブの内容を、選んだ保存で置き換えますか？')) {
+      if (workJobId) snapshotActiveJob(true);
+      var picked = pickWorkJobForRestore_(sid);
+      if (!picked || !picked.job) {
         return false;
       }
+      var targetId = picked.job.id;
       if (workJobId !== targetId) {
         loadWorkJob(targetId, true);
       }
@@ -1785,7 +1827,13 @@
       snapshotActiveJob(true);
       renderDraftTabs();
       var k = normalizeKNo((data && data.header && data.header.kNo) || '') || '';
-      setStatus('呼び出しました（K-No ' + k + '）');
+      if (picked.created) {
+        setStatus('新しいタブで呼び出しました（K-No ' + k + '）');
+      } else if (picked.replaced) {
+        setStatus('呼び出しました（K-No ' + k + '）。このタブの内容を置き換えました');
+      } else {
+        setStatus('呼び出しました（K-No ' + k + '）');
+      }
       return true;
     }
     function applyWorkOperator(state) {
