@@ -170,6 +170,8 @@ const CONFIG = {
    */
   print: {
     sheetName: '印刷',
+    /** 縦向きの印刷設定を引き継ぐための隠しタブ。手で触らない。 */
+    settingsSheetName: '_印刷設定',
     viewSheetName: '印刷_表示',
     sampleSheetName: '印刷原本',
     sheetNamePrefix: '印刷_',

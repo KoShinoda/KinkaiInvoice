@@ -442,6 +442,7 @@ function replacePrintSheet_(ss, name) {
   }
   if (sh) {
     resetPrintSheetBody_(sh);
+    forcePrintPortrait_(sh);
   } else {
     sh = insertPrintSheetFresh_(ss, name, at);
   }
@@ -461,6 +462,13 @@ function replacePrintSheet_(ss, name) {
 }
 
 function insertPrintSheetFresh_(ss, name, at) {
+  const donor = ensurePortraitDonorSheet_(ss);
+  if (donor) {
+    try {
+      ss.setActiveSheet(donor);
+      SpreadsheetApp.flush();
+    } catch (err) {}
+  }
   const idx = Math.min(Math.max(0, at), ss.getNumSheets());
   try {
     return ss.insertSheet(name, idx);
@@ -474,10 +482,61 @@ function insertPrintSheetFresh_(ss, name, at) {
     }
     if (existing) {
       resetPrintSheetBody_(existing);
+      forcePrintPortrait_(existing);
       return existing;
     }
     return ss.insertSheet(name);
   }
+}
+
+/**
+ * insertSheet はアクティブシートの印刷向きをコピーする。
+ * 作業リストなどが横向きだと印刷タブも横になるため、縦向きの隠しタブを先に開く。
+ */
+function ensurePortraitDonorSheet_(ss) {
+  const name = String((CONFIG.print && CONFIG.print.settingsSheetName) || '_印刷設定').trim() || '_印刷設定';
+  let sh = null;
+  try {
+    sh = ss.getSheetByName(name);
+  } catch (err) {
+    sh = null;
+  }
+  if (!sh) {
+    try {
+      sh = ss.insertSheet(name);
+    } catch (err2) {
+      try {
+        sh = ss.getSheetByName(name);
+      } catch (err3) {
+        return null;
+      }
+    }
+  }
+  if (!sh) {
+    return null;
+  }
+  try {
+    sh.getRange(1, 1).setValue('印刷向きの原本（縦）。削除しないでください。');
+  } catch (err4) {}
+  forcePrintPortrait_(sh);
+  applyPortraitPageSetupOnly_(sh);
+  try {
+    sh.hideSheet();
+  } catch (err5) {}
+  return sh;
+}
+
+function applyPortraitPageSetupOnly_(sheet) {
+  const ps = printSheetPageSetup_(sheet);
+  if (!ps) {
+    return;
+  }
+  try {
+    ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
+  } catch (err) {}
+  try {
+    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
+  } catch (err2) {}
 }
 
 function resetPrintSheetBody_(sheet) {
@@ -496,7 +555,7 @@ function resetPrintSheetBody_(sheet) {
 }
 
 function printSheetPageSetup_(sheet) {
-  if (!sheet || typeof sheet.getPageSetup !== 'function') {
+  if (!sheet) {
     return null;
   }
   try {
@@ -524,7 +583,7 @@ function trimPrintSheetColumns_(sheet) {
 
 function forcePrintPortrait_(sheet) {
   const ps = printSheetPageSetup_(sheet);
-  if (!ps || typeof ps.setOrientation !== 'function') {
+  if (!ps) {
     return;
   }
   try {
