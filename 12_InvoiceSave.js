@@ -725,76 +725,6 @@ function printSheetNameFromPayload_(payload) {
   return sanitizeSheetName_(printDateStamp_(header) + '_K-' + k4);
 }
 
-/**
- * 印刷タブ名。Googleアカウントごとに1枚を上書きする。
- * 全員で「印刷」1枚だと、同時に作ると他人の帳票が消える。
- */
-function printWorkingSheetName_() {
-  const prefix = String((CONFIG.print && CONFIG.print.sheetName) || '印刷').trim() || '印刷';
-  const user = String(workJobUserKey_() || '').trim().toLowerCase();
-  const local = user.split('@')[0] || '';
-  const safe = sanitizeSheetName_(local);
-  if (!safe) {
-    return prefix;
-  }
-  return sanitizeSheetName_(prefix + '_' + safe);
-}
-
-/**
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
- * @param {object} payload
- * @param {string=} reuseName
- * @return {string}
- */
-function printSheetNameForSave_(ss, payload, reuseName) {
-  return printWorkingSheetName_();
-}
-
-/**
- * 印刷タブを 日付降順（新しいほど左）→ K-No 昇順 → 連番昇順。
- * 印刷以外のシート（マスタ・検索・保存）は今の相対位置のまま左に残す。
- */
-function sortPrintInvoiceSheets_(ss) {
-  if (!ss) {
-    return;
-  }
-  const current = ss.getActiveSheet();
-  const sheets = ss.getSheets();
-  const keep = [];
-  const prints = [];
-  for (let i = 0; i < sheets.length; i++) {
-    const sh = sheets[i];
-    const key = parsePrintSheetSortKey_(sh.getName());
-    if (key) {
-      prints.push({ sh: sh, key: key });
-    } else {
-      keep.push(sh);
-    }
-  }
-  if (prints.length < 2) {
-    return;
-  }
-  prints.sort(function (a, b) {
-    if (a.key.date !== b.key.date) {
-      return a.key.date > b.key.date ? -1 : 1;
-    }
-    if (a.key.kNo !== b.key.kNo) {
-      return a.key.kNo < b.key.kNo ? -1 : 1;
-    }
-    return a.key.serial - b.key.serial;
-  });
-  const ordered = keep.concat(prints.map(function (p) {
-    return p.sh;
-  }));
-  for (let p = 0; p < ordered.length; p++) {
-    ss.setActiveSheet(ordered[p]);
-    ss.moveActiveSheet(p + 1);
-  }
-  if (current) {
-    ss.setActiveSheet(current);
-  }
-}
-
 function parsePrintSheetSortKey_(name) {
   const m = String(name || '').match(/^(\d{8})_K-(\d+)(?:_(\d+))?$/i);
   if (!m) {
@@ -807,57 +737,6 @@ function parsePrintSheetSortKey_(name) {
     kNo: kNo,
     serial: m[3] ? Number(m[3]) : 1
   };
-}
-
-function cmpPrintSheetKey_(a, b) {
-  if (a.date !== b.date) {
-    return a.date > b.date ? -1 : 1;
-  }
-  if (a.kNo !== b.kNo) {
-    return a.kNo < b.kNo ? -1 : 1;
-  }
-  return a.serial - b.serial;
-}
-
-/** 新規タブだけ正しい位置へ1回移動（全タブ並べ替えより速い）。 */
-function placePrintSheetInOrder_(ss, sheet) {
-  if (!ss || !sheet) {
-    return;
-  }
-  const key = parsePrintSheetSortKey_(sheet.getName());
-  if (!key) {
-    return;
-  }
-  const sheets = ss.getSheets();
-  let pos = sheets.length;
-  for (let i = 0; i < sheets.length; i++) {
-    const other = sheets[i];
-    if (other.getSheetId() === sheet.getSheetId()) {
-      continue;
-    }
-    const ok = parsePrintSheetSortKey_(other.getName());
-    if (!ok) {
-      continue;
-    }
-    if (cmpPrintSheetKey_(key, ok) < 0) {
-      pos = i + 1;
-      break;
-    }
-    pos = i + 2;
-  }
-  const n = ss.getNumSheets();
-  if (pos < 1) {
-    pos = 1;
-  }
-  if (pos > n) {
-    pos = n;
-  }
-  try {
-    ss.setActiveSheet(sheet);
-    ss.moveActiveSheet(pos);
-  } catch (err) {
-    Logger.log('%s placePrintSheetInOrder_: %s', CONFIG.logPrefix, err);
-  }
 }
 
 function uniquePrintSheetName_(ss, base) {

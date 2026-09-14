@@ -1,8 +1,7 @@
 /**
- * A4 印刷原本。1 シートにページを縦積みする。
+ * A4 印刷原本。1 シートにページを縦積みし、PDF（A4 縦）にする。
  * 1 枚目だけヘッダー、最終枚だけフッター。明細の直下に No.、その下の空行で高さを合わせる。
- * 印刷シートは行高さを実測し、A4 縦に収まる倍率へ自動縮小する。
- * 大量印刷向けに色は使わない。
+ * 一時シートは PDF 出力後に消す。大量印刷向けに色は使わない。
  */
 
 /** 列幅（px）。A4・余白標準の印刷幅に合わせて縮小する。
@@ -46,14 +45,69 @@ var PRINT_ROW_H_MAX_ = 409;
 function writePrintSheets_(ss, payload, sheetName) {
   const name = sheetName
     ? sanitizeSheetName_(sheetName)
-    : uniquePrintSheetName_(ss, printSheetNameFromPayload_(payload));
+    : pdfTempSheetName_();
   const built = buildInvoicePrintSheet_(ss, name, payload);
-  placePrintSheetInOrder_(ss, built.sheet);
-  ss.setActiveSheet(built.sheet);
+  try {
+    built.sheet.hideSheet();
+  } catch (err) {}
   return {
     pageCount: built.pageCount,
-    sheetNames: [name]
+    sheetNames: [name],
+    sheet: built.sheet
   };
+}
+
+function pdfTempSheetName_() {
+  const user = String(workJobUserKey_() || '').trim().toLowerCase();
+  const local = (user.split('@')[0] || 'user').replace(/[^0-9a-zA-Z._-]/g, '').slice(0, 40) || 'user';
+  return sanitizeSheetName_('_pdf_' + local);
+}
+
+function invoicePdfFileName_(payload) {
+  const header = payload && payload.header ? payload.header : {};
+  const digits = String(normalizeInvoiceKNo_(header.kNo) || '').replace(/\D/g, '');
+  const k4 = ('0000' + digits).slice(-4);
+  const d = String(header.billDate || '').replace(/\D/g, '').slice(0, 8);
+  const stamp = d || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyyMMdd');
+  return stamp + '_K-' + k4 + '.pdf';
+}
+
+/**
+ * 一時シートを A4 縦の PDF にする。向きは export の portrait=true で固定する。
+ */
+function exportSheetPdf_(ss, sheet) {
+  const id = ss.getId();
+  const gid = sheet.getSheetId();
+  const m = PRINT_MARGIN_IN_;
+  const url = 'https://docs.google.com/spreadsheets/d/' + id + '/export?exportFormat=pdf&format=pdf'
+    + '&size=A4'
+    + '&portrait=true'
+    + '&fitw=true'
+    + '&scale=1'
+    + '&sheetnames=false'
+    + '&printtitle=false'
+    + '&pagenum=UNDEFINED'
+    + '&gridlines=false'
+    + '&fzr=false'
+    + '&printnotes=false'
+    + '&top_margin=' + m.top
+    + '&bottom_margin=' + m.bottom
+    + '&left_margin=' + m.left
+    + '&right_margin=' + m.right
+    + '&gid=' + gid;
+  const res = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  const code = res.getResponseCode();
+  const blob = res.getBlob();
+  const bytes = blob ? blob.getBytes() : null;
+  if (code !== 200 || !bytes || bytes.length < 4 ||
+      bytes[0] !== 37 || bytes[1] !== 80 || bytes[2] !== 68 || bytes[3] !== 70) {
+    throw new Error('PDF の作成に失敗しました。権限の承認が出たら許可して、もう一度実行してください。');
+  }
+  return Utilities.base64Encode(bytes);
 }
 
 /**
@@ -353,10 +407,8 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   }
 
   trimPrintSheet_(sheet, cursor - 1);
-  applyA4PageSetup_(sheet, pageCount, breakRows);
   applyPrintPageBreaksAt_(sheet, breakRows);
   SpreadsheetApp.flush();
-  ss.setActiveSheet(sheet);
   return { sheet: sheet, pageCount: pageCount };
 }
 
@@ -442,7 +494,6 @@ function replacePrintSheet_(ss, name) {
   }
   if (sh) {
     resetPrintSheetBody_(sh);
-    forcePrintPortrait_(sh);
   } else {
     sh = insertPrintSheetFresh_(ss, name, at);
   }
@@ -454,21 +505,13 @@ function replacePrintSheet_(ss, name) {
     }
   } catch (err5) {}
   if (!sh) {
-    throw new Error('印刷シートを作成できませんでした。スプレッドシートを再読み込みしてから、もう一度印刷してください。');
+    throw new Error('帳票用シートを作成できませんでした。スプレッドシートを再読み込みしてから、もう一度実行してください。');
   }
   trimPrintSheetColumns_(sh);
-  forcePrintPortrait_(sh);
   return sh;
 }
 
 function insertPrintSheetFresh_(ss, name, at) {
-  const donor = ensurePortraitDonorSheet_(ss);
-  if (donor) {
-    try {
-      ss.setActiveSheet(donor);
-      SpreadsheetApp.flush();
-    } catch (err) {}
-  }
   const idx = Math.min(Math.max(0, at), ss.getNumSheets());
   try {
     return ss.insertSheet(name, idx);
@@ -482,61 +525,10 @@ function insertPrintSheetFresh_(ss, name, at) {
     }
     if (existing) {
       resetPrintSheetBody_(existing);
-      forcePrintPortrait_(existing);
       return existing;
     }
     return ss.insertSheet(name);
   }
-}
-
-/**
- * insertSheet はアクティブシートの印刷向きをコピーする。
- * 作業リストなどが横向きだと印刷タブも横になるため、縦向きの隠しタブを先に開く。
- */
-function ensurePortraitDonorSheet_(ss) {
-  const name = String((CONFIG.print && CONFIG.print.settingsSheetName) || '_印刷設定').trim() || '_印刷設定';
-  let sh = null;
-  try {
-    sh = ss.getSheetByName(name);
-  } catch (err) {
-    sh = null;
-  }
-  if (!sh) {
-    try {
-      sh = ss.insertSheet(name);
-    } catch (err2) {
-      try {
-        sh = ss.getSheetByName(name);
-      } catch (err3) {
-        return null;
-      }
-    }
-  }
-  if (!sh) {
-    return null;
-  }
-  try {
-    sh.getRange(1, 1).setValue('印刷向きの原本（縦）。削除しないでください。');
-  } catch (err4) {}
-  forcePrintPortrait_(sh);
-  applyPortraitPageSetupOnly_(sh);
-  try {
-    sh.hideSheet();
-  } catch (err5) {}
-  return sh;
-}
-
-function applyPortraitPageSetupOnly_(sheet) {
-  const ps = printSheetPageSetup_(sheet);
-  if (!ps) {
-    return;
-  }
-  try {
-    ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
-  } catch (err) {}
-  try {
-    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
-  } catch (err2) {}
 }
 
 function resetPrintSheetBody_(sheet) {
@@ -554,18 +546,6 @@ function resetPrintSheetBody_(sheet) {
   } catch (err4) {}
 }
 
-function printSheetPageSetup_(sheet) {
-  if (!sheet) {
-    return null;
-  }
-  try {
-    return sheet.getPageSetup();
-  } catch (err) {
-    Logger.log('%s getPageSetup: %s', CONFIG.logPrefix, err);
-    return null;
-  }
-}
-
 function trimPrintSheetColumns_(sheet) {
   const cols = CONFIG.print.colCount || 8;
   const maxC = sheet.getMaxColumns();
@@ -581,18 +561,6 @@ function trimPrintSheetColumns_(sheet) {
   }
 }
 
-function forcePrintPortrait_(sheet) {
-  const ps = printSheetPageSetup_(sheet);
-  if (!ps) {
-    return;
-  }
-  try {
-    ps.setOrientation(SpreadsheetApp.PageOrientation.PORTRAIT);
-  } catch (err) {
-    Logger.log('%s forcePrintPortrait_: %s', CONFIG.logPrefix, err);
-  }
-}
-
 function trimPrintSheet_(sheet, lastRow) {
   const maxR = sheet.getMaxRows();
   if (maxR > lastRow) {
@@ -600,56 +568,6 @@ function trimPrintSheet_(sheet, lastRow) {
     try {
       sheet.hideRows(lastRow + 1, maxR - lastRow);
     } catch (err) {}
-  }
-}
-
-function applyA4PageSetup_(sheet, pageCount, breakRows) {
-  const pages = Math.max(1, pageCount || 1);
-  const ps = printSheetPageSetup_(sheet);
-  if (!ps) {
-    return;
-  }
-  const m = PRINT_MARGIN_IN_;
-  try {
-    ps.setPaperSize(SpreadsheetApp.PaperSize.A4);
-  } catch (err) {
-    Logger.log('%s setPaperSize: %s', CONFIG.logPrefix, err);
-  }
-  try {
-    ps.setPrintGridlines(false);
-  } catch (err2) {}
-  try {
-    if (typeof ps.setTopMargin === 'function') {
-      ps.setTopMargin(m.top);
-      ps.setBottomMargin(m.bottom);
-      ps.setLeftMargin(m.left);
-      ps.setRightMargin(m.right);
-    }
-  } catch (err3) {}
-  try {
-    if (typeof ps.setHeaderMargin === 'function') {
-      ps.setHeaderMargin(PRINT_HF_MARGIN_IN_);
-      ps.setFooterMargin(PRINT_HF_MARGIN_IN_);
-    }
-  } catch (err4) {}
-  try {
-    applyPrintFitScale_(ps, sheet, pages, breakRows || []);
-  } catch (err5) {}
-  trimPrintSheetColumns_(sheet);
-  forcePrintPortrait_(sheet);
-  SpreadsheetApp.flush();
-}
-
-/**
- * 各ページの実高さを測り、A4 に収まる倍率にする。
- * 1 枚なら Fit to page。複数枚なら「幅1 × 高さ枚数」が使えればそれを使い、無ければ縮小率。
- */
-function applyPrintFitScale_(ps, sheet, pageCount, breakRows) {
-  if (typeof ps.setFitToPage === 'function') {
-    ps.setFitToPage(false);
-  }
-  if (typeof ps.setScale === 'function') {
-    ps.setScale(100);
   }
 }
 

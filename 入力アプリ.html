@@ -648,10 +648,12 @@
       gap: 6px;
       align-items: stretch;
     }
-    .plate-wrap select {
+    .plate-wrap .combo {
       flex: 0 0 7.5em;
       min-width: 0;
     }
+    .plate-wrap .combo input { width: 100%; }
+    .plate-wrap .combo-list { z-index: 40; }
     .plate-wrap input { flex: 1; min-width: 0; }
     .combo { position: relative; }
     .combo input { width: 100%; }
@@ -747,7 +749,10 @@
         <div>
           <label>登録番号</label>
           <div class="plate-wrap">
-            <select id="plateArea"></select>
+            <div class="combo">
+              <input id="plateArea" placeholder="地名" autocomplete="off">
+              <div class="combo-list" hidden></div>
+            </div>
             <input id="plateNo" placeholder="130あ1111" autocomplete="off">
           </div>
         </div>
@@ -874,7 +879,7 @@
       <div class="foot-actions">
         <button type="button" id="btnSave">保存</button>
         <button type="button" id="btnSaveNew" class="sub" hidden>新規保存</button>
-        <button type="button" id="btnPrintSheet">印刷シートを作成</button>
+        <button type="button" id="btnPrintSheet">PDFを作成</button>
       </div>
     </div>
     <div class="foot-sum">
@@ -983,6 +988,7 @@
       typeSlotsByDept: {},
       allServiceTypes: [],
       receptionists: [],
+      plateAreas: ['苫小牧', '室蘭', '北九州'],
       templateNames: [],
       lineCount: 120
     };
@@ -1185,13 +1191,16 @@
     function initHeaderMasters() {
       fillHeaderSelect($('dept'), master.departments || [], $('dept').value);
       fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
-      fillHeaderSelect($('plateArea'), PLATE_AREAS, $('plateArea').value);
+      initPlateAreaCombo();
       if (master.templateNames && master.templateNames.length) {
         fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
       }
       applyDeptDefaults();
     }
-    var PLATE_AREAS = ['苫小牧', '室蘭', '北九州'];
+    var PLATE_AREAS_DEFAULT = ['苫小牧', '室蘭', '北九州'];
+    function plateAreas() {
+      return (master.plateAreas && master.plateAreas.length) ? master.plateAreas : PLATE_AREAS_DEFAULT;
+    }
     function joinPlate() {
       return String($('plateArea').value || '').trim() + String($('plateNo').value || '').trim();
     }
@@ -1199,17 +1208,74 @@
       var s = String(raw == null ? '' : raw).replace(/\u3000/g, ' ').trim();
       var i;
       var area = '';
-      for (i = 0; i < PLATE_AREAS.length; i++) {
-        if (s.indexOf(PLATE_AREAS[i]) === 0 && PLATE_AREAS[i].length > area.length) {
-          area = PLATE_AREAS[i];
+      var areas = plateAreas();
+      for (i = 0; i < areas.length; i++) {
+        if (s.indexOf(areas[i]) === 0 && areas[i].length > area.length) {
+          area = areas[i];
         }
       }
-      return { area: area, no: area ? s.slice(area.length).trim() : s };
+      if (area) return { area: area, no: s.slice(area.length).trim() };
+      var m = s.match(/^([^\d]+?)(\d.*)$/);
+      if (m) return { area: m[1].trim(), no: m[2] };
+      return { area: '', no: s };
     }
     function setPlateFields(raw) {
       var p = splitPlate(raw);
-      fillHeaderSelect($('plateArea'), PLATE_AREAS, p.area);
+      $('plateArea').value = p.area;
       $('plateNo').value = p.no;
+    }
+    function initPlateAreaCombo() {
+      var el = $('plateArea');
+      if (!el) return;
+      el.dataset.options = JSON.stringify([''].concat(plateAreas()));
+    }
+    function bindPlateAreaCombo() {
+      var el = $('plateArea');
+      if (!el || el.dataset.comboBound) return;
+      el.dataset.comboBound = '1';
+      initPlateAreaCombo();
+      el.addEventListener('focus', function () {
+        showComboList(el, false, true);
+      });
+      el.addEventListener('input', function () {
+        showComboList(el);
+      });
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          moveComboHighlight(el, 1);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          moveComboHighlight(el, -1);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          var list = comboListEl(el);
+          if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
+            el.value = comboDivValue(list.children[comboActiveIndex]);
+          }
+          hideComboLists();
+          $('plateNo').focus();
+        } else if (e.key === 'Escape') {
+          hideComboLists();
+        }
+      });
+      el.addEventListener('blur', function () {
+        setTimeout(function () {
+          if (document.activeElement === el) return;
+          hideComboLists();
+        }, 120);
+      });
+      var wrap = el.closest('.plate-wrap');
+      if (!wrap) return;
+      wrap.addEventListener('mousedown', function (e) {
+        var opt = e.target.closest('.combo-list div');
+        if (!opt) return;
+        e.preventDefault();
+        el.value = comboDivValue(opt);
+        hideComboLists();
+        comboIgnoreBlur = true;
+        $('plateNo').focus();
+      });
     }
     function clearHeaderFields() {
       $('userName').value = '';
@@ -1806,7 +1872,7 @@
     function runPrintSheet(mode) {
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
-        setStatus('印刷シートを作成するには K-No を入力してください。', true);
+        setStatus('PDFを作成するには K-No を入力してください。', true);
         return;
       }
       payload.saveMode = mode === 'overwrite' ? 'overwrite' : 'new';
@@ -1817,27 +1883,45 @@
         payload.expectedSavedAt = '';
       }
       setBusy(true);
-      setStatus(payload.saveMode === 'overwrite' ? '上書き保存して印刷シートを作成しています…' : '保存して印刷シートを作成しています…');
+      setStatus(payload.saveMode === 'overwrite' ? '上書き保存して PDF を作成しています…' : '保存して PDF を作成しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
-          var sheetName = (res.sheetNames && res.sheetNames[0]) || '';
           finishWorkJobAfterPrint();
-          if (res.sheetUrl) {
-            setSheetOpenLink(res.sheetUrl, '印刷シートを開く');
-            try { window.open(res.sheetUrl, '_blank'); } catch (err) {}
-          }
+          var opened = openPdfDownload(res);
           setStatus(
-            '印刷シート「' + sheetName + '」を作成しました（' +
+            'PDF「' + (res.pdfName || '請求書.pdf') + '」を作成しました（' +
             res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）。' +
-            (res.sheetUrl ? ' 別タブで開きます。開かないときはヘッダーの「印刷シートを開く」を押してください。' : '')
+            (opened ? ' ダウンロードします。' : ' ダウンロードできないときは、もう一度作成してください。')
           );
         })
         .withFailureHandler(function (err) {
           setBusy(false);
           setStatus(err.message || String(err), true);
         })
-        .publishPrintSheet(payload);
+        .publishInvoicePdf(payload);
+    }
+    function openPdfDownload(res) {
+      if (!res || !res.pdfBase64) return false;
+      try {
+        var bin = atob(res.pdfBase64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var blob = new Blob([bytes], { type: 'application/pdf' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = res.pdfName || '請求書.pdf';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        try { window.open(url, '_blank'); } catch (err) {}
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+        return true;
+      } catch (err2) {
+        return false;
+      }
     }
     var templateLoadSeq = 0;
     function onTemplatePicked() {
@@ -3458,7 +3542,7 @@
     $('btnPrintSheet').addEventListener('click', function () {
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
-        setStatus('印刷シートを作成するには K-No を入力してください。', true);
+        setStatus('PDFを作成するには K-No を入力してください。', true);
         return;
       }
       runPrintSheet(boundSaveId() ? 'overwrite' : 'new');
@@ -3477,6 +3561,7 @@
         refreshOptionCache();
         fillWorkerPicker();
         renderGrid();
+        bindPlateAreaCombo();
         initHeaderMasters();
         bindDateField('inDate', 'inDateCal');
         bindDateField('outDate', 'outDateCal', function (f) {

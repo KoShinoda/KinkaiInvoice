@@ -5,10 +5,14 @@
  *   B 整備種別1＝大型 / C 整備種別2＝小型 / D 整備種別3＝BP板金 / E 整備種別4＝部品販売
  *   F 受付担当
  *   G 値引技術% / H 値引部品%（2行目が新規入力の初期値。保存済みには使わない）
+ *   I 登録地名（請求入力の登録番号コンボ）
  */
 
 var SERVICE_ALL_HEADER_ = '全て';
 var SERVICE_RECV_HEADER_ = '受付担当';
+var SERVICE_PLATE_HEADER_ = '登録地名';
+var SERVICE_PLATE_ALIASES_ = ['登録地名', '地名', 'ナンバー地名', '運輸支局'];
+var SERVICE_PLATE_AREAS_DEFAULT_ = ['苫小牧', '室蘭', '北九州'];
 var SERVICE_TECH_PCT_HEADER_ = '値引技術%';
 var SERVICE_PART_PCT_HEADER_ = '値引部品%';
 var SERVICE_TECH_PCT_ALIASES_ = ['値引技術%', '技術値引%', '値引技術'];
@@ -45,6 +49,7 @@ function loadServiceInfo_() {
       sh = rebuildServiceInfoSheet_(ss, parsed);
     } else {
       ensureServiceInfoDiscCols_(sh, parsed);
+      ensureServiceInfoPlateCol_(sh, parsed);
     }
     return parseServiceInfoSheet_(sh);
   } catch (err) {
@@ -115,6 +120,7 @@ function emptyServiceInfo_() {
     typeSlotsByDept: typeSlotsByDept,
     allServiceTypes: SERVICE_ALL_TYPES_DEFAULT_.slice(),
     receptionists: [],
+    plateAreas: SERVICE_PLATE_AREAS_DEFAULT_.slice(),
     rows: [],
     techPct: defaultDiscPcts_().techPct,
     partPct: defaultDiscPcts_().partPct
@@ -217,6 +223,61 @@ function writeServiceInfoDiscCols_(sh, pct) {
   sh.getRange(1, 7).setNote('新規の請求入力に使う値引％の初期値。保存済みの請求書には影響しません。');
 }
 
+function applyPlateAreasFromValues_(out, values, header, startRow) {
+  if (!out || !values || !values.length) {
+    return;
+  }
+  const heads = header && header.length
+    ? header
+    : values[0].map(function (v) { return normalize_(v); });
+  const col = headerIndexAny_(heads, SERVICE_PLATE_ALIASES_);
+  if (col < 0) {
+    return;
+  }
+  const list = collectVerticalCol_(values, col, startRow == null ? 1 : startRow);
+  if (list.length) {
+    out.plateAreas = list;
+  }
+}
+
+function writeServiceInfoPlateCol_(sh, areas) {
+  const list = (areas && areas.length) ? areas.slice() : SERVICE_PLATE_AREAS_DEFAULT_.slice();
+  sh.getRange(1, 9).setValue(SERVICE_PLATE_HEADER_).setFontWeight('bold').setBackground('#e8f0ec');
+  sh.getRange(1, 9).setNote('請求入力の登録番号の地名候補。上からこの順。リストにない地名も手入力できます。');
+  sh.setColumnWidth(9, 120);
+  const last = Math.max(sh.getLastRow(), list.length + 2);
+  if (last >= 2) {
+    sh.getRange(2, 9, last - 1, 1).clearContent();
+  }
+  if (list.length) {
+    const body = list.map(function (v) { return [v]; });
+    sh.getRange(3, 9, body.length, 1).setValues(body);
+  }
+}
+
+function serviceInfoHasPlateCol_(sheet) {
+  if (!sheet) {
+    return false;
+  }
+  const header = normalize_(sheet.getRange(1, 9).getValue());
+  return SERVICE_PLATE_ALIASES_.indexOf(header) >= 0;
+}
+
+function ensureServiceInfoPlateCol_(sheet, parsed) {
+  if (serviceInfoHasPlateCol_(sheet)) {
+    const last = Math.max(sheet.getLastRow(), 2);
+    const vals = sheet.getRange(2, 9, last - 1, 1).getValues();
+    for (let i = 0; i < vals.length; i++) {
+      if (String(vals[i][0] || '').replace(/\u3000/g, ' ').trim()) {
+        return;
+      }
+    }
+  }
+  try {
+    writeServiceInfoPlateCol_(sheet, parsed && parsed.plateAreas);
+  } catch (err) {}
+}
+
 function serviceInfoHasDiscCols_(sheet) {
   if (!sheet) {
     return false;
@@ -242,7 +303,10 @@ function isServiceInfoSkipLabel_(value) {
   if (!t) {
     return true;
   }
-  if (t === SERVICE_ALL_HEADER_ || t === SERVICE_RECV_HEADER_ || t === '未選択') {
+  if (t === SERVICE_ALL_HEADER_ || t === SERVICE_RECV_HEADER_ || t === SERVICE_PLATE_HEADER_ || t === '未選択') {
+    return true;
+  }
+  if (SERVICE_PLATE_ALIASES_.indexOf(t) !== -1) {
     return true;
   }
   if (SERVICE_TECH_PCT_ALIASES_.indexOf(t) !== -1 || SERVICE_PART_PCT_ALIASES_.indexOf(t) !== -1) {
@@ -280,7 +344,7 @@ function collectVerticalCol_(values, colIndex, startRow) {
 function parseServiceInfoVertical_(sheet) {
   const out = emptyServiceInfo_();
   const last = Math.max(sheet.getLastRow(), 1);
-  const width = Math.max(sheet.getLastColumn(), 6);
+  const width = Math.max(sheet.getLastColumn(), 9);
   const values = sheet.getRange(1, 1, last, width).getValues();
   const header = values[0].map(function (v) {
     return normalize_(v);
@@ -309,13 +373,14 @@ function parseServiceInfoVertical_(sheet) {
     }
   }
   applyDiscPctsFromValues_(out, values);
+  applyPlateAreasFromValues_(out, values, header, 1);
   return out;
 }
 
 function parseServiceInfoOldVertical_(sheet) {
   const out = emptyServiceInfo_();
   const last = Math.max(sheet.getLastRow(), 1);
-  const width = Math.max(sheet.getLastColumn(), 5);
+  const width = Math.max(sheet.getLastColumn(), 9);
   const values = sheet.getRange(1, 1, last, width).getValues();
   const header = values[0].map(function (v) {
     return normalize_(v);
@@ -342,6 +407,7 @@ function parseServiceInfoOldVertical_(sheet) {
     }
   }
   applyDiscPctsFromValues_(out, values);
+  applyPlateAreasFromValues_(out, values, header, 1);
   return out;
 }
 
@@ -401,6 +467,7 @@ function parseServiceInfoLegacy_(sheet) {
   });
   out.allServiceTypes = mergeAllServiceTypes_([], out);
   applyDiscPctsFromValues_(out, values);
+  applyPlateAreasFromValues_(out, values, header, 1);
   return out;
 }
 
@@ -455,11 +522,15 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   const receptionists = (parsed && parsed.receptionists && parsed.receptionists.length)
     ? parsed.receptionists.slice()
     : [];
+  const plateAreas = (parsed && parsed.plateAreas && parsed.plateAreas.length)
+    ? parsed.plateAreas.slice()
+    : SERVICE_PLATE_AREAS_DEFAULT_.slice();
 
   const height = Math.max(
     allList.length,
     lists.reduce(function (n, a) { return Math.max(n, a.length); }, 0),
     receptionists.length,
+    plateAreas.length,
     8
   ) + 2;
   sh.clear();
@@ -492,12 +563,14 @@ function rebuildServiceInfoSheet_(ss, parsed) {
   sh.setColumnWidth(5, 140);
   sh.setColumnWidth(6, 120);
   writeServiceInfoDiscCols_(sh, parsed);
+  writeServiceInfoPlateCol_(sh, plateAreas);
   sh.getRange(1, 1).setNote(
     'A列「全て」＝整備部門が未選択のときの整備種別（上からこの順）。\n' +
     '既定: 車検大型→点検大型→一般大型→車検小型→点検小型→一般小型→構造変更→板金塗装→部品販売→特装→諸経費。\n' +
-    'B〜E＝部門別（2行目は部門名。消さない）。F＝受付担当。G・H＝新規入力の値引％初期値。'
+    'B〜E＝部門別（2行目は部門名。消さない）。F＝受付担当。G・H＝新規入力の値引％初期値。I＝登録地名。'
   );
   sh.getRange(1, 6).setNote('受付担当を縦に並べます。');
+  sh.getRange(1, 9).setNote('請求入力の登録番号の地名候補。上からこの順。リストにない地名も手入力できます。');
   return sh;
 }
 
@@ -522,5 +595,5 @@ function tidyServiceInfoSheet() {
   const sh = ss.getSheetByName(CONFIG.serviceInfo.sheetName);
   const parsed = parseServiceInfoSheet_(sh);
   rebuildServiceInfoSheet_(ss, parsed);
-  SpreadsheetApp.getActiveSpreadsheet().toast('整備情報シートを整理しました（全て列＋種別1〜4＋値引％）', '請求書入力', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('整備情報シートを整理しました（全て列＋種別1〜4＋値引％＋登録地名）', '請求書入力', 5);
 }

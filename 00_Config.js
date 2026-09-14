@@ -8,7 +8,7 @@
  * 01_Utils.js             … 文字列正規化・重複排除・順番ソート・内部書き込みガード。
  * 02_WorkListRepository.js… 作業リストのヘッダー解決とレコード化。
  * 05_Triggers.js          … onOpen / onEdit / メニュー。
- * 07_WebApp.js            … 入力 Web アプリと印刷シート作成の呼び出し。
+ * 07_WebApp.js            … 入力 Web アプリと PDF 出力の呼び出し。
  * 08_ServiceInfo.js       … 整備情報マスタ。
  * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
@@ -112,7 +112,7 @@ const CONFIG = {
   },
 
   serviceInfo: {
-    /** A＝全て（未選択時の種別順）。B〜E＝種別1〜4（大型／小型／BP板金／部品販売）。F＝受付担当。G・H＝値引％初期値。 */
+    /** A＝全て。B〜E＝種別1〜4。F＝受付担当。G・H＝値引％初期値。I＝登録地名。 */
     sheetName: '整備情報',
     defaultTechPct: 3,
     defaultPartPct: 10
@@ -165,13 +165,11 @@ const CONFIG = {
   },
 
   /**
-   * 印刷タブはユーザーごとに1枚を使い回す（人数分だけ増える）。
-   * 正本は請求書保存。日付_K-No の印刷タブは新規に作らない。
+   * 帳票は一時シートに書いて PDF（A4 縦）を出し、シートは消す。
+   * 正本は請求書保存。印刷タブは残さない。
    */
   print: {
     sheetName: '印刷',
-    /** 縦向きの印刷設定を引き継ぐための隠しタブ。手で触らない。 */
-    settingsSheetName: '_印刷設定',
     viewSheetName: '印刷_表示',
     sampleSheetName: '印刷原本',
     sheetNamePrefix: '印刷_',

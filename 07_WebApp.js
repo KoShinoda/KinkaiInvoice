@@ -86,6 +86,9 @@ function getInvoiceMaster() {
     typeSlotsByDept: service.typeSlotsByDept || {},
     allServiceTypes: service.allServiceTypes || [],
     receptionists: service.receptionists,
+    plateAreas: (service.plateAreas && service.plateAreas.length)
+      ? service.plateAreas
+      : ['苫小牧', '室蘭', '北九州'],
     defaultTechPct: clampInvoicePct_(service.techPct, 3),
     defaultPartPct: clampInvoicePct_(service.partPct, 10),
     operatorEmail: workJobUserKey_(),
@@ -411,32 +414,57 @@ function pickPartDisplay_(row) {
 }
 
 function publishPrintSheet(payload) {
+  return publishInvoicePdf(payload);
+}
+
+function publishInvoicePdf(payload) {
   if (!payload || !payload.header || !normalizeInvoiceKNo_(payload.header.kNo)) {
     throw new Error('K-No を入力してください。');
   }
   const saved = saveInvoiceDraft_(payload);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = printWorkingSheetName_();
-  const printed = publishInvoices(payload, sheetName);
-  const printedName = (printed.sheetNames && printed.sheetNames[0]) || sheetName;
-  setInvoicePrintSheetName_(saved.saveId, printedName);
-  const out = ss.getSheetByName(printedName);
-  let sheetUrl = ss.getUrl();
-  if (out) {
-    ss.setActiveSheet(out);
-    SpreadsheetApp.flush();
-    sheetUrl = ss.getUrl() + '#gid=' + out.getSheetId();
+  let prev = null;
+  try {
+    prev = ss.getActiveSheet();
+  } catch (err) {
+    prev = null;
   }
-  return invoiceJsonSafe_({
-    pageCount: printed.pageCount,
-    lineCount: printed.lineCount,
-    sheetNames: printed.sheetNames,
-    saveId: saved.saveId,
-    savedAt: saved.savedAt,
-    overwritten: !!saved.overwritten,
-    kNo: saved.kNo,
-    sheetUrl: sheetUrl
-  });
+  let tmp = null;
+  try {
+    const printed = publishInvoices(payload, pdfTempSheetName_());
+    const tmpName = (printed.sheetNames && printed.sheetNames[0]) || '';
+    tmp = printed.sheet || (tmpName ? ss.getSheetByName(tmpName) : null);
+    if (!tmp) {
+      throw new Error('PDF 用の帳票を作れませんでした。');
+    }
+    try {
+      tmp.showSheet();
+    } catch (errShow) {}
+    SpreadsheetApp.flush();
+    Utilities.sleep(400);
+    const pdfBase64 = exportSheetPdf_(ss, tmp);
+    return invoiceJsonSafe_({
+      pageCount: printed.pageCount,
+      lineCount: printed.lineCount,
+      saveId: saved.saveId,
+      savedAt: saved.savedAt,
+      overwritten: !!saved.overwritten,
+      kNo: saved.kNo,
+      pdfName: invoicePdfFileName_(payload),
+      pdfBase64: pdfBase64
+    });
+  } finally {
+    if (tmp) {
+      try {
+        ss.deleteSheet(tmp);
+      } catch (err2) {}
+    }
+    if (prev) {
+      try {
+        ss.setActiveSheet(prev);
+      } catch (err3) {}
+    }
+  }
 }
 
 /**
@@ -461,7 +489,8 @@ function publishInvoices(payload, sheetName) {
   return {
     pageCount: printed.pageCount,
     lineCount: filled.length,
-    sheetNames: printed.sheetNames
+    sheetNames: printed.sheetNames,
+    sheet: printed.sheet
   };
 }
 
