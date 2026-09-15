@@ -4,8 +4,9 @@
  * ヘッダー初期値（ユーザー・登録番号・整備部門など）は同じ名前のうち最初の値。
  */
 
+var INVOICE_TEMPLATE_NAME_HEADER_ = 'テンプレート名';
 var INVOICE_TEMPLATE_LINE_HEADERS_ = [
-  'テンプレート名', '大項目', '中項目', '技術料', '作業者コード',
+  '大項目', '中項目', '技術料', '作業者コード',
   '部品_大項目', '部品_中項目', '単価', '数量', '値引額'
 ];
 var INVOICE_TEMPLATE_META_HEADERS_ = [
@@ -16,6 +17,10 @@ var INVOICE_TEMPLATE_META_KEYS_ = [
   'userName', 'plate', 'dept', 'serviceType', 'receptionist',
   'inDate', 'outDate', 'billDate', 'techPct', 'partPct'
 ];
+
+function invoiceTemplateColumnHeaders_() {
+  return [INVOICE_TEMPLATE_NAME_HEADER_].concat(INVOICE_TEMPLATE_META_HEADERS_).concat(INVOICE_TEMPLATE_LINE_HEADERS_);
+}
 
 function findInvoiceTemplateSheet_(ss) {
   ss = ss || SpreadsheetApp.getActiveSpreadsheet();
@@ -111,11 +116,75 @@ function isInvoiceTemplateLayout_(sheet) {
   if (!sheet) {
     return false;
   }
-  const lastCol = Math.max(sheet.getLastColumn(), INVOICE_TEMPLATE_LINE_HEADERS_.length);
+  const lastCol = Math.max(sheet.getLastColumn(), invoiceTemplateColumnHeaders_().length);
   const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (v) {
     return normalize_(v);
   });
   return header.indexOf('テンプレート名') !== -1;
+}
+
+function invoiceTemplateHeaderCol_(sh, logicalKey) {
+  const last = Math.max(sh.getLastColumn(), 1);
+  const headers = sh.getRange(1, 1, 1, last).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
+  return cols[logicalKey] || 0;
+}
+
+function moveSheetColumn_(sh, from1, to1) {
+  if (!from1 || !to1 || from1 === to1) {
+    return;
+  }
+  const rows = sh.getMaxRows();
+  const width = sh.getColumnWidth(from1);
+  if (from1 > to1) {
+    sh.insertColumnBefore(to1);
+    sh.getRange(1, from1 + 1, rows, 1).moveTo(sh.getRange(1, to1));
+    sh.deleteColumn(from1 + 1);
+  } else {
+    sh.insertColumnAfter(to1);
+    sh.getRange(1, from1, rows, 1).moveTo(sh.getRange(1, to1 + 1));
+    sh.deleteColumn(from1);
+  }
+  try {
+    sh.setColumnWidth(to1, width);
+  } catch (err) {
+    // 列幅は必須ではない。
+  }
+}
+
+function ensureHeaderTitleAt_(sh, logicalKey, title, dest1, width) {
+  let from = invoiceTemplateHeaderCol_(sh, logicalKey);
+  if (!from) {
+    if (dest1 <= 1) {
+      sh.insertColumnBefore(1);
+    } else {
+      sh.insertColumnAfter(dest1 - 1);
+    }
+    sh.getRange(1, dest1).setValue(title).setFontWeight('bold').setBackground('#e8f0ec');
+    if (width) {
+      sh.setColumnWidth(dest1, width);
+    }
+    return;
+  }
+  if (from !== dest1) {
+    moveSheetColumn_(sh, from, dest1);
+  }
+  sh.getRange(1, dest1).setFontWeight('bold').setBackground('#e8f0ec');
+  if (width) {
+    sh.setColumnWidth(dest1, width);
+  }
+}
+
+function invoiceTemplateMetaInPlace_(sh) {
+  if (invoiceTemplateHeaderCol_(sh, 'name') !== 1) {
+    return false;
+  }
+  for (let i = 0; i < INVOICE_TEMPLATE_META_KEYS_.length; i++) {
+    if (invoiceTemplateHeaderCol_(sh, INVOICE_TEMPLATE_META_KEYS_[i]) !== i + 2) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function ensureInvoiceTemplateHeaderCols_(sh) {
@@ -123,24 +192,15 @@ function ensureInvoiceTemplateHeaderCols_(sh) {
     return;
   }
   try {
-    const lastCol = Math.max(sh.getLastColumn(), 1);
-    const headerRow = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-    const cols = resolveColumns_(headerRow, CONFIG.invoiceTemplate.headers);
-    const missing = [];
-    INVOICE_TEMPLATE_META_KEYS_.forEach(function (key, i) {
-      if (!cols[key]) {
-        missing.push({ key: key, title: INVOICE_TEMPLATE_META_HEADERS_[i] });
-      }
-    });
-    if (!missing.length) {
+    if (invoiceTemplateMetaInPlace_(sh)) {
       return;
     }
-    const startCol = sh.getLastColumn() + 1;
-    sh.insertColumnsAfter(sh.getLastColumn(), missing.length);
-    missing.forEach(function (item, i) {
-      const col = startCol + i;
-      sh.getRange(1, col).setValue(item.title).setFontWeight('bold').setBackground('#e8f0ec');
-      sh.setColumnWidth(col, item.key === 'plate' || item.key === 'userName' ? 120 : 90);
+    ensureHeaderTitleAt_(sh, 'name', INVOICE_TEMPLATE_NAME_HEADER_, 1, 160);
+    INVOICE_TEMPLATE_META_KEYS_.forEach(function (key, i) {
+      const title = INVOICE_TEMPLATE_META_HEADERS_[i];
+      const dest = i + 2;
+      const width = (key === 'plate' || key === 'userName') ? 120 : 90;
+      ensureHeaderTitleAt_(sh, key, title, dest, width);
     });
     sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
   } catch (err) {
@@ -292,45 +352,46 @@ function invoiceTemplateSheetNote_() {
 
 function writeInvoiceTemplateSample_(sh) {
   sh.clear();
-  const headers = [INVOICE_TEMPLATE_LINE_HEADERS_.concat(INVOICE_TEMPLATE_META_HEADERS_)];
+  const headers = [invoiceTemplateColumnHeaders_()];
   const colCount = headers[0].length;
   sh.getRange(1, 1, 1, colCount).setValues(headers);
   sh.getRange(1, 1, 1, colCount).setFontWeight('bold').setBackground('#e8f0ec');
 
   const body = defaultInvoiceTemplateRows_().map(function (r) {
     return [
-      r.name, r.major || '', r.mid || '', r.fee === '' || r.fee == null ? '' : r.fee, r.workerCode || '',
-      r.partMajor || '', r.partMid || '', r.unitPrice === '' || r.unitPrice == null ? '' : r.unitPrice,
-      r.qty === '' || r.qty == null ? '' : r.qty,
-      r.discYen === '' || r.discYen == null ? '' : r.discYen,
+      r.name,
       r.userName || '', r.plate || '', r.dept || '', r.serviceType || '', r.receptionist || '',
       r.inDate || '', r.outDate || '', r.billDate || '',
       r.techPct === '' || r.techPct == null ? '' : r.techPct,
-      r.partPct === '' || r.partPct == null ? '' : r.partPct
+      r.partPct === '' || r.partPct == null ? '' : r.partPct,
+      r.major || '', r.mid || '', r.fee === '' || r.fee == null ? '' : r.fee, r.workerCode || '',
+      r.partMajor || '', r.partMid || '', r.unitPrice === '' || r.unitPrice == null ? '' : r.unitPrice,
+      r.qty === '' || r.qty == null ? '' : r.qty,
+      r.discYen === '' || r.discYen == null ? '' : r.discYen
     ];
   });
   sh.getRange(2, 1, body.length, colCount).setValues(body);
   sh.setFrozenRows(1);
   sh.setColumnWidth(1, 160);
-  sh.setColumnWidth(2, 100);
-  sh.setColumnWidth(3, 220);
-  sh.setColumnWidth(4, 80);
+  sh.setColumnWidth(2, 120);
+  sh.setColumnWidth(3, 140);
+  sh.setColumnWidth(4, 90);
   sh.setColumnWidth(5, 100);
-  sh.setColumnWidth(6, 110);
-  sh.setColumnWidth(7, 160);
-  sh.setColumnWidth(8, 80);
-  sh.setColumnWidth(9, 60);
-  sh.setColumnWidth(10, 80);
-  sh.setColumnWidth(11, 120);
-  sh.setColumnWidth(12, 140);
-  sh.setColumnWidth(13, 90);
-  sh.setColumnWidth(14, 100);
-  sh.setColumnWidth(15, 90);
-  sh.setColumnWidth(16, 90);
-  sh.setColumnWidth(17, 90);
-  sh.setColumnWidth(18, 90);
-  sh.setColumnWidth(19, 90);
-  sh.setColumnWidth(20, 90);
+  sh.setColumnWidth(6, 90);
+  sh.setColumnWidth(7, 90);
+  sh.setColumnWidth(8, 90);
+  sh.setColumnWidth(9, 90);
+  sh.setColumnWidth(10, 90);
+  sh.setColumnWidth(11, 90);
+  sh.setColumnWidth(12, 100);
+  sh.setColumnWidth(13, 220);
+  sh.setColumnWidth(14, 80);
+  sh.setColumnWidth(15, 100);
+  sh.setColumnWidth(16, 110);
+  sh.setColumnWidth(17, 160);
+  sh.setColumnWidth(18, 80);
+  sh.setColumnWidth(19, 60);
+  sh.setColumnWidth(20, 80);
   sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
 }
 

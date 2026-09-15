@@ -231,6 +231,7 @@ function loadPartCatalog_(workRows) {
     ensurePartsSetHeader_(sh);
     const parsed = parsePartsSheetValues_(sh.getDataRange().getValues());
     parsed.rows.forEach(function (row) {
+      row.fromParts = true;
       partLines.push(coercePartMeasure_(row));
     });
   }
@@ -239,7 +240,7 @@ function loadPartCatalog_(workRows) {
   const seenPart = {};
   const uniquePartLines = [];
   sortWorkListRecords_(partLines).forEach(function (r) {
-    const key = [r.major, r.mid, r.content, r.qty, r.unitPrice].join('\t');
+    const key = [r.major, r.mid, r.set || '', r.content, r.qty, r.unitPrice].join('\t');
     if (seenPart[key]) {
       return;
     }
@@ -355,7 +356,9 @@ function readPartsListRow_(raw, cols, carry, sourceIndex) {
     carry.set = rawSet;
   }
   const major = rawMajor || carry.major;
-  const mid = rawSet || carry.set || rawGroup || carry.group;
+  const group = rawGroup || carry.group;
+  const setName = rawSet || carry.set;
+  const mid = group || setName;
   let content = cols.name ? normalize_(cell_(raw, cols.name)) : '';
   let qty = cols.qty ? cell_(raw, cols.qty) : '';
   let unitPrice = cols.unitPrice ? cell_(raw, cols.unitPrice) : '';
@@ -376,14 +379,19 @@ function readPartsListRow_(raw, cols, carry, sourceIndex) {
       unitPrice = unitPrice !== '' && unitPrice != null ? unitPrice : (raw.length > setIdx + 2 ? raw[setIdx + 2] : '');
     }
   }
+  if (setName) {
+    content = setName;
+  }
   return {
     major: major,
     mid: mid,
+    set: setName,
     content: content,
     qty: qty,
     unitPrice: unitPrice,
     order: cols.order ? cell_(raw, cols.order) : '',
-    sourceIndex: sourceIndex
+    sourceIndex: sourceIndex,
+    fromParts: true
   };
 }
 

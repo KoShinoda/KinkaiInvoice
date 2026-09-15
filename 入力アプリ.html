@@ -621,6 +621,12 @@
     .grid.header-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+    .header-grid .header-template {
+      grid-column: 1 / -1;
+    }
+    .header-grid .header-template select {
+      max-width: 420px;
+    }
     .date-wrap {
       display: flex;
       gap: 4px;
@@ -730,7 +736,7 @@
         <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
       </div>
       <div class="grid header-grid">
-        <div>
+        <div class="header-template">
           <label>テンプレート</label>
           <select id="invoiceTemplate"></select>
         </div>
@@ -2351,7 +2357,11 @@
     }
 
     function midsFor(major) {
-      if (!major) return [];
+      if (!major) {
+        return ((master.allMids || []).filter(function (m) {
+          return !!String(m || '').trim();
+        }));
+      }
       return ((master.midsByMajor && master.midsByMajor[major]) || []).filter(function (m) {
         return !!String(m || '').trim();
       });
@@ -2403,19 +2413,21 @@
     function linesForPartMid(major, mid) {
       var m = foldKey(mid);
       var seen = {};
-      var out = [];
-      function add(r) {
+      var fromParts = [];
+      var fromOther = [];
+      function add(r, bucket) {
         if (!r) return;
-        var key = [r.sourceIndex || '', r.major || '', r.mid || '', r.partMid || '', r.content || '', r.qty || '', r.unitPrice || ''].join('\t');
+        var key = [r.sourceIndex || '', r.major || '', r.mid || '', r.set || '', r.partMid || '', r.content || '', r.qty || '', r.unitPrice || ''].join('\t');
         if (seen[key]) return;
         seen[key] = true;
-        out.push(r);
+        bucket.push(r);
       }
       (master.partLines || []).forEach(function (r) {
         if (foldKey(r.mid) !== m) return;
         if (major && r.major && foldKey(r.major) !== foldKey(major)) return;
-        add(r);
+        add(r, r.fromParts ? fromParts : fromOther);
       });
+      if (fromParts.length) return sortMasterLines(fromParts);
       (master.workLines || []).forEach(function (r) {
         if (foldKey(r.partMid) !== m) return;
         if (major && r.partMajor && foldKey(r.partMajor) !== foldKey(major)) return;
@@ -2429,21 +2441,24 @@
           unitPrice: r.unitPrice,
           order: r.order,
           sourceIndex: r.sourceIndex
-        });
+        }, fromOther);
       });
-      return sortMasterLines(out);
+      return sortMasterLines(fromOther);
     }
     function partLineName(w, setMid) {
+      var setName = String(w && w.set != null ? w.set : '').replace(/\u3000/g, ' ').trim();
       var c = String(w && w.content != null ? w.content : '').replace(/\u3000/g, ' ').trim();
       var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
       var qn = String(w && w.qty != null ? w.qty : '').replace(/\u3000/g, ' ').trim();
-      var set = String(setMid || '').trim();
-      if (c && !numericCell(c) && foldKey(c) !== foldKey(set)) return c;
-      if (qn && !numericCell(qn) && foldKey(qn) !== foldKey(set)) return qn;
-      if (pm && !numericCell(pm) && foldKey(pm) !== foldKey(set)) return pm;
+      var selected = String(setMid || '').trim();
+      if (setName && !numericCell(setName) && foldKey(setName) !== foldKey(selected)) return setName;
+      if (c && !numericCell(c) && foldKey(c) !== foldKey(selected)) return c;
+      if (qn && !numericCell(qn) && foldKey(qn) !== foldKey(selected)) return qn;
+      if (pm && !numericCell(pm) && foldKey(pm) !== foldKey(selected)) return pm;
+      if (setName && !numericCell(setName)) return setName;
       if (c && !numericCell(c)) return c;
       if (pm && !numericCell(pm)) return pm;
-      return set;
+      return selected;
     }
 
     var optHtml = { major: '', partMajor: '' };
