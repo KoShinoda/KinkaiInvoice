@@ -10,7 +10,7 @@
  * 05_Triggers.js          … onOpen / onEdit / メニュー。
  * 07_WebApp.js            … 入力 Web アプリと PDF 出力の呼び出し。
  * 08_ServiceInfo.js       … 整備情報マスタ。
- * 09_InvoiceTemplate.js   … 明細テンプレートシートの読込とサンプル作成。
+ * 09_InvoiceTemplate.js   … テンプレートリストシートの読込とサンプル作成。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
  * 12_InvoiceSave.js       … 請求書の保存・呼び出し。
  * 13_InvoiceSearch.js     … 旧シート「請求書検索」の図形ボタンを入力アプリへ誘導。
@@ -120,11 +120,12 @@ const CONFIG = {
   },
 
   /**
-   * 入力アプリの明細テンプレート。
+   * 入力アプリのテンプレート。
    * 同じ「テンプレート名」の行が、選んだときの明細になる。
+   * ヘッダー初期値は同じ名前のうち最初に入っている値。空欄の項目は上書きしない。
    */
   invoiceTemplate: {
-    sheetName: '明細テンプレート',
+    sheetName: 'テンプレートリスト',
     headerRow: 1,
     headers: {
       name: ['テンプレート名', 'テンプレ名', 'テンプレート'],
@@ -136,7 +137,17 @@ const CONFIG = {
       partMid: ['部品_中項目', '部品名'],
       unitPrice: ['単価'],
       qty: ['数量'],
-      discYen: ['値引額', '値引']
+      discYen: ['値引額', '値引'],
+      userName: ['ユーザー', 'ユーザー名', '顧客'],
+      plate: ['登録番号', 'ナンバー'],
+      dept: ['整備部門', '部門'],
+      serviceType: ['整備種別', '種別'],
+      receptionist: ['受付担当', '受付'],
+      inDate: ['入庫日'],
+      outDate: ['出庫日'],
+      billDate: ['請求日'],
+      techPct: ['値引技術%', '技術値引%'],
+      partPct: ['値引部品%', '部品値引%']
     }
   },
 

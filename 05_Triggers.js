@@ -15,7 +15,7 @@ function onOpen() {
     .addSeparator()
     .addItem('リストのプルダウンを設定', 'setupInputDropdowns')
     .addItem('整備情報シートを整理', 'tidyServiceInfoSheet')
-    .addItem('明細テンプレート（サンプル）を用意', 'ensureInvoiceTemplateSheet')
+    .addItem('テンプレートリスト（サンプル）を用意', 'ensureInvoiceTemplateSheet')
     .addItem('請求書保存（サンプル3件）を用意', 'ensureInvoiceSaveSamples')
     .addItem('リストを更新（順番・選択肢）', 'refreshAllMasterLists')
     .addSeparator()

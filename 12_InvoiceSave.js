@@ -676,6 +676,10 @@ function invoicePayloadFromTemplate_(templateName, header, techPct, partPct) {
     if (src.name !== templateName) {
       return;
     }
+    if (!src.major && !src.mid && !isFilled_(src.fee) && !src.partMajor && !src.partMid &&
+      !isFilled_(src.qty) && !isFilled_(src.unitPrice) && !isFilled_(src.discYen)) {
+      return;
+    }
     const qty = src.qty == null || src.qty === '' ? '' : src.qty;
     const price = src.unitPrice == null || src.unitPrice === '' ? '' : src.unitPrice;
     const list = (qty !== '' && price !== '') ? Number(qty) * Number(price) : 0;

@@ -702,14 +702,6 @@
       color: #fff;
     }
     button:disabled { opacity: .5; cursor: wait; }
-    .template-bar {
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-    .template-bar > div { min-width: 280px; max-width: 420px; }
-    .template-bar label { margin-bottom: 3px; }
     #status { color: var(--muted); font-size: 13px; }
     #status.err { color: var(--danger); }
   </style>
@@ -738,6 +730,10 @@
         <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
       </div>
       <div class="grid header-grid">
+        <div>
+          <label>テンプレート</label>
+          <select id="invoiceTemplate"></select>
+        </div>
         <div><label>ユーザー</label><input id="userName"></div>
         <div>
           <label>K-No</label>
@@ -786,12 +782,6 @@
       <div class="card-head">
         <h2>明細</h2>
         <button type="button" class="ghost" id="btnClearItems">明細全消去</button>
-      </div>
-      <div class="template-bar">
-        <div>
-          <label>明細テンプレート</label>
-          <select id="invoiceTemplate"></select>
-        </div>
       </div>
       <div class="table-wrap">
         <table>
@@ -1351,6 +1341,105 @@
       padItems();
       renderGrid();
       if (!quiet) setStatus('テンプレート「' + name + '」から明細 ' + items.filter(function (r) { return !rowIsEmpty(r); }).length + ' 行を作成しました');
+    }
+    function templateResult(data) {
+      if (Array.isArray(data)) {
+        return { lines: data, header: {}, summary: {} };
+      }
+      return {
+        lines: (data && data.lines) || [],
+        header: (data && data.header) || {},
+        summary: (data && data.summary) || {}
+      };
+    }
+    function templateValueFilled(v) {
+      return String(v == null ? '' : v).replace(/\u3000/g, ' ').trim() !== '';
+    }
+    function applyTemplateHeader(header, summary) {
+      var h = header || {};
+      var s = summary || {};
+      var applied = false;
+      if (templateValueFilled(h.userName)) {
+        $('userName').value = h.userName;
+        applied = true;
+      }
+      if (templateValueFilled(h.plate)) {
+        setPlateFields(h.plate);
+        applied = true;
+      }
+      if (templateValueFilled(h.dept)) {
+        fillHeaderSelect($('dept'), master.departments || [], h.dept);
+        applyDeptDefaults();
+        applied = true;
+      }
+      if (templateValueFilled(h.serviceType)) {
+        var types = typesForDept($('dept').value);
+        var type = h.serviceType;
+        if (types.indexOf(type) === -1) {
+          fillHeaderSelect($('serviceType'), types.concat([type]), type);
+        } else {
+          fillHeaderSelect($('serviceType'), types, type);
+        }
+        $('serviceType').value = type;
+        applied = true;
+      }
+      if (templateValueFilled(h.receptionist)) {
+        fillHeaderSelect($('receptionist'), master.receptionists || [], h.receptionist);
+        applied = true;
+      }
+      if (templateValueFilled(h.inDate)) {
+        applyDateField('inDate', 'inDateCal', formatYmd(h.inDate));
+        applied = true;
+      }
+      if (templateValueFilled(h.outDate || h.doneDate)) {
+        applyDateField('outDate', 'outDateCal', formatYmd(h.outDate || h.doneDate));
+        applied = true;
+      }
+      if (templateValueFilled(h.billDate)) {
+        applyDateField('billDate', 'billDateCal', formatYmd(h.billDate));
+        applied = true;
+      }
+      if (s.techPct != null && s.techPct !== '') {
+        $('techPct').value = clampPct(s.techPct);
+        applied = true;
+      }
+      if (s.partPct != null && s.partPct !== '') {
+        $('partPct').value = clampPct(s.partPct);
+        applied = true;
+      }
+      return applied;
+    }
+    function applyTemplateData(data, name, quiet) {
+      var t = templateResult(data);
+      var headerApplied = applyTemplateHeader(t.header, t.summary);
+      applyTemplateLines(t.lines, name, true);
+      if (!quiet) {
+        var n = items.filter(function (r) { return !rowIsEmpty(r); }).length;
+        setStatus('テンプレート「' + name + '」から明細 ' + n + ' 行' + (headerApplied ? 'とヘッダー初期値' : '') + 'を入れました');
+      }
+    }
+    function mergeTemplateIntoPayload(payload, data) {
+      var t = templateResult(data);
+      var next = payload || { header: {}, items: [], summary: {} };
+      next.header = next.header || {};
+      next.summary = next.summary || {};
+      next.items = JSON.parse(JSON.stringify(itemsFromTemplateLines(t.lines)));
+      var h = t.header || {};
+      var s = t.summary || {};
+      if (templateValueFilled(h.userName)) next.header.userName = h.userName;
+      if (templateValueFilled(h.plate)) next.header.plate = h.plate;
+      if (templateValueFilled(h.dept)) next.header.dept = h.dept;
+      if (templateValueFilled(h.serviceType)) next.header.serviceType = h.serviceType;
+      if (templateValueFilled(h.receptionist)) next.header.receptionist = h.receptionist;
+      if (templateValueFilled(h.inDate)) next.header.inDate = formatYmd(h.inDate);
+      if (templateValueFilled(h.outDate || h.doneDate)) {
+        next.header.outDate = formatYmd(h.outDate || h.doneDate);
+        next.header.doneDate = next.header.outDate;
+      }
+      if (templateValueFilled(h.billDate)) next.header.billDate = formatYmd(h.billDate);
+      if (s.techPct != null && s.techPct !== '') next.summary.techPct = s.techPct;
+      if (s.partPct != null && s.partPct !== '') next.summary.partPct = s.partPct;
+      return next;
     }
     function normalizeKNo(v) {
       var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
@@ -2088,7 +2177,7 @@
     function onTemplatePicked() {
       var name = $('invoiceTemplate').value;
       if (!name) return;
-      if (gridHasContent() && !window.confirm('現在の明細をテンプレート「' + name + '」で置き換えますか？')) {
+      if (gridHasContent() && !window.confirm('現在の明細をテンプレート「' + name + '」で置き換えますか？シートに書いたヘッダー初期値があれば入ります。')) {
         var job = findWorkJob(workJobId);
         $('invoiceTemplate').value = (job && job.templateName) || '';
         return;
@@ -2097,17 +2186,16 @@
       var seq = ++templateLoadSeq;
       setStatus('テンプレート「' + name + '」を読み込んでいます…');
       google.script.run
-        .withSuccessHandler(function (lines) {
+        .withSuccessHandler(function (data) {
           if (workJobId === jobId && seq !== templateLoadSeq) return;
           var job = findWorkJob(jobId);
           if (!job) return;
           if (workJobId === jobId) {
-            applyTemplateLines(lines || [], name);
+            applyTemplateData(data, name);
             snapshotActiveJob();
             return;
           }
-          job.payload = job.payload || { header: {}, items: [], summary: {} };
-          job.payload.items = JSON.parse(JSON.stringify(itemsFromTemplateLines(lines || [])));
+          job.payload = mergeTemplateIntoPayload(job.payload, data);
           job.templateName = name;
           persistWorkJobs();
           renderDraftTabs();
@@ -3546,11 +3634,13 @@
 
     var headerGrid = document.querySelector('#viewInput .header-grid');
     if (headerGrid) {
-      headerGrid.addEventListener('input', function () {
+      headerGrid.addEventListener('input', function (e) {
+        if (e.target && e.target.id === 'invoiceTemplate') return;
         updateSaveChrome();
         snapshotActiveJob(false);
       });
-      headerGrid.addEventListener('change', function () {
+      headerGrid.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'invoiceTemplate') return;
         updateSaveChrome();
         snapshotActiveJob(false);
       });
