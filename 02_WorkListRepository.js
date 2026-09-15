@@ -69,14 +69,18 @@ function loadContext_() {
 function buildWorkIndex_(rows) {
   const midsByMajor = {};
   const recordsByMajorMid = {};
+  const majorSet = {};
+  for (let i = 0; i < rows.length; i++) {
+    const name = normalize_(rows[i].major);
+    if (name) {
+      majorSet[name] = true;
+    }
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (!midsByMajor[row.major]) {
       midsByMajor[row.major] = [];
-    }
-    if (row.mid && midsByMajor[row.major].indexOf(row.mid) === -1) {
-      midsByMajor[row.major].push(row.mid);
     }
     const key = row.major + '\t' + row.mid;
     if (!recordsByMajorMid[key]) {
@@ -87,12 +91,41 @@ function buildWorkIndex_(rows) {
 
   Object.keys(recordsByMajorMid).forEach(function (key) {
     recordsByMajorMid[key] = recordsByMajorMid[key].slice().sort(compareMidGroupRows_);
+    const parts = key.split('\t');
+    const major = parts[0] || '';
+    const mid = parts.slice(1).join('\t');
+    if (!mid || !midsByMajor[major]) {
+      return;
+    }
+    if (midsByMajor[major].indexOf(mid) !== -1) {
+      return;
+    }
+    const group = recordsByMajorMid[key];
+    const midKey = normalize_(mid);
+    const otherMajor = majorSet[midKey] && midKey !== normalize_(major);
+    if (otherMajor && !workGroupHasSubstance_(group)) {
+      return;
+    }
+    midsByMajor[major].push(mid);
   });
 
   return {
     midsByMajor: midsByMajor,
     recordsByMajorMid: recordsByMajorMid
   };
+}
+
+function workGroupHasSubstance_(group) {
+  if (!group || !group.length) {
+    return false;
+  }
+  for (let i = 0; i < group.length; i++) {
+    const row = group[i];
+    if (hasWorkContent_(row) || hasPartFields_(row) || isFilled_(row.fee)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -134,6 +167,13 @@ function resolveColumns_(headerRow, aliasesByKey) {
 function parseWorkList_(values, cols) {
   const headerIndex = CONFIG.workList.headerRow - 1;
   const rows = [];
+  const majorNames = {};
+  for (let i = headerIndex + 1; i < values.length; i++) {
+    const name = normalize_(cell_(values[i], cols.major));
+    if (name) {
+      majorNames[name] = true;
+    }
+  }
   let carryMajor = '';
   let carryMid = '';
 
@@ -144,6 +184,27 @@ function parseWorkList_(values, cols) {
     const content = cell_(raw, cols.content);
     const partMajor = cell_(raw, cols.partMajor);
     const partMid = cell_(raw, cols.partMid);
+    const fee = cell_(raw, cols.fee);
+
+    if (!rawMajor && rawMid && majorNames[rawMid] && rawMid !== carryMajor &&
+        !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid) && !isFilled_(fee)) {
+      carryMajor = rawMid;
+      carryMid = '';
+      rows.push({
+        sourceIndex: i + 1,
+        major: carryMajor,
+        mid: '',
+        content: content,
+        fee: fee,
+        workerCode: cell_(raw, cols.workerCode),
+        order: cell_(raw, cols.order),
+        partMajor: partMajor,
+        partMid: partMid,
+        qty: cell_(raw, cols.qty),
+        unitPrice: cell_(raw, cols.unitPrice)
+      });
+      continue;
+    }
 
     if (rawMajor) {
       carryMajor = rawMajor;
@@ -167,11 +228,11 @@ function parseWorkList_(values, cols) {
       major: major,
       mid: mid,
       content: content,
-      fee: cell_(raw, cols.fee),
+      fee: fee,
       workerCode: cell_(raw, cols.workerCode),
       order: cell_(raw, cols.order),
-      partMajor: cell_(raw, cols.partMajor),
-      partMid: cell_(raw, cols.partMid),
+      partMajor: partMajor,
+      partMid: partMid,
       qty: cell_(raw, cols.qty),
       unitPrice: cell_(raw, cols.unitPrice)
     });

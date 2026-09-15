@@ -211,7 +211,6 @@ function loadPartCatalog_(workRows) {
   workRows.forEach(function (row) {
     const partMajor = normalize_(row.partMajor);
     const partMid = normalize_(row.partMid);
-    const workMid = normalize_(row.mid);
     const content = normalize_(row.content);
     if (partMid) {
       partLines.push(coercePartMeasure_({
@@ -224,76 +223,16 @@ function loadPartCatalog_(workRows) {
         unitPrice: row.unitPrice
       }));
     }
-    if (workMid && (content || partMid || partMajor || isFilled_(row.qty) || isFilled_(row.unitPrice))) {
-      partLines.push(coercePartMeasure_({
-        major: partMajor || normalize_(row.major),
-        mid: workMid,
-        content: content,
-        order: row.order,
-        sourceIndex: 'w' + (row.sourceIndex || ''),
-        qty: row.qty,
-        unitPrice: row.unitPrice
-      }));
-    }
   });
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.parts.sheetName);
   if (sh) {
-    const vals = sh.getDataRange().getValues();
-    let start = 0;
-    if (vals.length) {
-      const h = normalize_(vals[0][0]) + (vals[0].length > 1 ? normalize_(vals[0][1]) : '');
-      if (h.indexOf('大項目') !== -1 || h.indexOf('部品') !== -1 || h.indexOf('中項目') !== -1) {
-        start = 1;
-      }
-    }
-    const cols = start === 1 && vals.length ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
-    let carryMajor = '';
-    let carryMid = '';
-    for (let i = start; i < vals.length; i++) {
-      const rawMajor = cols.major ? normalize_(cell_(vals[i], cols.major)) : normalize_(vals[i][0]);
-      const rawMid = cols.mid ? normalize_(cell_(vals[i], cols.mid)) : (vals[i].length > 1 ? normalize_(vals[i][1]) : '');
-      if (rawMajor) {
-        carryMajor = rawMajor;
-      }
-      if (rawMid) {
-        carryMid = rawMid;
-      }
-      const major = rawMajor || carryMajor;
-      const mid = rawMid || carryMid;
-      if (!major && !mid) {
-        continue;
-      }
-      let content = cols.name ? normalize_(cell_(vals[i], cols.name)) : '';
-      let qty = cols.qty ? cell_(vals[i], cols.qty) : '';
-      let unitPrice = cols.unitPrice ? cell_(vals[i], cols.unitPrice) : '';
-      if (!content && cols.mid && cols.qty && cols.qty > cols.mid + 1) {
-        content = normalize_(cell_(vals[i], cols.mid + 1));
-      }
-      if (!cols.name && !cols.qty && !cols.unitPrice) {
-        if (!rawMid) {
-          qty = vals[i].length > 1 && isProbablyNumber_(vals[i][1]) ? vals[i][1] : '';
-          unitPrice = vals[i].length > 2 ? vals[i][2] : '';
-        } else if (vals[i].length > 2 && !isProbablyNumber_(vals[i][2])) {
-          content = content || normalize_(vals[i][2]);
-          qty = vals[i].length > 3 ? vals[i][3] : '';
-          unitPrice = vals[i].length > 4 ? vals[i][4] : '';
-        } else {
-          qty = qty !== '' && qty != null ? qty : (vals[i].length > 2 ? vals[i][2] : '');
-          unitPrice = unitPrice !== '' && unitPrice != null ? unitPrice : (vals[i].length > 3 ? vals[i][3] : '');
-        }
-      }
-      partLines.push(coercePartMeasure_({
-        major: major,
-        mid: mid,
-        content: content,
-        qty: qty,
-        unitPrice: unitPrice,
-        order: cols.order ? cell_(vals[i], cols.order) : '',
-        sourceIndex: i + 1
-      }));
-    }
+    ensurePartsSetHeader_(sh);
+    const parsed = parsePartsSheetValues_(sh.getDataRange().getValues());
+    parsed.rows.forEach(function (row) {
+      partLines.push(coercePartMeasure_(row));
+    });
   }
 
   assignEmptyOrdersInGroups_(partLines);
@@ -350,36 +289,105 @@ function loadPartListDropdowns_() {
   if (!sh) {
     return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
   }
-  const vals = sh.getDataRange().getValues();
-  if (!vals.length) {
-    return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
+  ensurePartsSetHeader_(sh);
+  const parsed = parsePartsSheetValues_(sh.getDataRange().getValues());
+  parsed.rows.forEach(function (row) {
+    addMajor(row.major);
+    addMid(row.major, row.mid);
+  });
+  return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
+}
+
+function ensurePartsSetHeader_(sheet) {
+  if (!sheet) {
+    return;
   }
-  let start = 0;
-  const h = normalize_(vals[0][0]) + (vals[0].length > 1 ? normalize_(vals[0][1]) : '');
-  if (h.indexOf('大項目') !== -1 || h.indexOf('部品') !== -1 || h.indexOf('中項目') !== -1) {
-    start = 1;
+  const last = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, last).getValues()[0];
+  for (let c = 0; c < headers.length; c++) {
+    if (normalize_(headers[c]) === '部品') {
+      sheet.getRange(1, c + 1).setValue('部品_セット');
+    }
   }
+}
+
+function parsePartsSheetValues_(vals) {
+  const rows = [];
+  if (!vals || !vals.length) {
+    return { rows: rows };
+  }
+  const joined = (vals[0] || []).map(function (v) {
+    return normalize_(v);
+  }).join(' ');
+  const start = (joined.indexOf('大項目') !== -1 || joined.indexOf('部品') !== -1 ||
+    joined.indexOf('中項目') !== -1 || joined.indexOf('セット') !== -1) ? 1 : 0;
   const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
-  let carryMajor = '';
-  let carryMid = '';
+  const carry = { major: '', set: '', group: '' };
   for (let i = start; i < vals.length; i++) {
-    const rawMajor = cols.major ? normalize_(cell_(vals[i], cols.major)) : normalize_(vals[i][0]);
-    const rawMid = cols.mid ? normalize_(cell_(vals[i], cols.mid)) : (vals[i].length > 1 ? normalize_(vals[i][1]) : '');
-    if (rawMajor) {
-      carryMajor = rawMajor;
-    }
-    if (rawMid) {
-      carryMid = rawMid;
-    }
-    const major = rawMajor || carryMajor;
-    const mid = rawMid || carryMid;
-    if (!major && !mid) {
+    const rec = readPartsListRow_(vals[i], cols, carry, i + 1);
+    if (!rec.major && !rec.mid) {
       continue;
     }
-    addMajor(major);
-    addMid(major, mid);
+    rows.push(rec);
   }
-  return { partMajors: majors, allPartMids: allMids, partMidsByMajor: byMajor };
+  return { rows: rows, cols: cols };
+}
+
+function readPartsListRow_(raw, cols, carry, sourceIndex) {
+  const rawMajor = cols.major ? normalize_(cell_(raw, cols.major)) : normalize_(raw[0]);
+  const rawSet = cols.set ? normalize_(cell_(raw, cols.set)) : '';
+  let rawGroup = '';
+  if (cols.mid) {
+    rawGroup = normalize_(cell_(raw, cols.mid));
+  } else if (!cols.set && raw.length > 1) {
+    rawGroup = normalize_(raw[1]);
+  }
+  if (rawMajor) {
+    carry.major = rawMajor;
+  }
+  if (rawGroup) {
+    if (rawGroup !== carry.group && !rawSet) {
+      carry.set = '';
+    }
+    carry.group = rawGroup;
+  }
+  if (rawSet) {
+    carry.set = rawSet;
+  }
+  const major = rawMajor || carry.major;
+  const mid = rawSet || carry.set || rawGroup || carry.group;
+  let content = cols.name ? normalize_(cell_(raw, cols.name)) : '';
+  let qty = cols.qty ? cell_(raw, cols.qty) : '';
+  let unitPrice = cols.unitPrice ? cell_(raw, cols.unitPrice) : '';
+  if (!content && cols.set && cols.qty && cols.qty > cols.set + 1) {
+    content = normalize_(cell_(raw, cols.set + 1));
+  }
+  if (!content && !cols.name && cols.mid && cols.qty && cols.qty > cols.mid + 1) {
+    const between = normalize_(cell_(raw, cols.mid + 1));
+    if (between && (!cols.set || cols.mid + 1 !== cols.set)) {
+      content = between;
+    }
+  }
+  if (!cols.name && !cols.qty && !cols.unitPrice) {
+    const setIdx = cols.set ? cols.set - 1 : (cols.mid ? cols.mid : 1);
+    if (raw.length > setIdx + 1 && !isProbablyNumber_(raw[setIdx + 1])) {
+      content = content || normalize_(raw[setIdx + 1]);
+      qty = raw.length > setIdx + 2 ? raw[setIdx + 2] : '';
+      unitPrice = raw.length > setIdx + 3 ? raw[setIdx + 3] : '';
+    } else {
+      qty = qty !== '' && qty != null ? qty : (raw.length > setIdx + 1 ? raw[setIdx + 1] : '');
+      unitPrice = unitPrice !== '' && unitPrice != null ? unitPrice : (raw.length > setIdx + 2 ? raw[setIdx + 2] : '');
+    }
+  }
+  return {
+    major: major,
+    mid: mid,
+    content: content,
+    qty: qty,
+    unitPrice: unitPrice,
+    order: cols.order ? cell_(raw, cols.order) : '',
+    sourceIndex: sourceIndex
+  };
 }
 
 function isProbablyNumber_(value) {

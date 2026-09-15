@@ -2264,11 +2264,18 @@
 
     function midsFor(major) {
       if (!major) return master.allMids || [];
-      return (master.midsByMajor && master.midsByMajor[major]) || [];
+      var list = (master.midsByMajor && master.midsByMajor[major]) || [];
+      var majors = master.majors || [];
+      return list.filter(function (m) {
+        if (!String(m || '').trim()) return false;
+        if (m === major) return true;
+        if (majors.indexOf(m) === -1) return true;
+        return linesForMid(major, m).some(function (r) { return filled(r.content) || filled(r.fee); });
+      });
     }
     function partMidsFor(major) {
       if (!major) return master.allPartMids || [];
-      return (master.partMidsByMajor && master.partMidsByMajor[major]) || master.allPartMids || [];
+      return (master.partMidsByMajor && master.partMidsByMajor[major]) || [];
     }
     function sortMasterLines(arr) {
       var list = (arr || []).slice();
@@ -2327,11 +2334,10 @@
         add(r);
       });
       (master.workLines || []).forEach(function (r) {
-        var partHit = foldKey(r.partMid) === m;
-        var midHit = foldKey(r.mid) === m;
-        if (!partHit && !midHit) return;
+        if (foldKey(r.partMid) !== m) return;
+        if (major && r.partMajor && foldKey(r.partMajor) !== foldKey(major)) return;
         add({
-          major: r.partMajor || r.major || '',
+          major: r.partMajor || '',
           mid: mid,
           content: r.content || '',
           partMajor: r.partMajor || '',
@@ -2810,9 +2816,9 @@
         renderGrid();
         return;
       }
-      if (alreadyExpanded('part:' + rowIndex + ':' + foldKey(mid))) return;
-      var group = linesForPartMid('', mid);
-      if (!group.length) group = linesForPartMid(it.partMajor, mid);
+      if (alreadyExpanded('part:' + rowIndex + ':' + foldKey(it.partMajor || '') + ':' + foldKey(mid))) return;
+      var group = linesForPartMid(it.partMajor, mid);
+      if (!group.length) group = linesForPartMid('', mid);
       var works = group.filter(function (r) {
         var name = partLineName(r, mid);
         return filled(name) && foldKey(name) !== foldKey(mid);
@@ -2832,8 +2838,6 @@
       if (!named.length) {
         var only = group[0];
         if (only) {
-          var oneName = partLineName(only, mid);
-          if (oneName && foldKey(oneName) !== foldKey(mid)) it.partMid = oneName;
           it.qty = measureQty(only.qty);
           it.unitPrice = measurePrice(only.unitPrice);
           it.discYen = 0;

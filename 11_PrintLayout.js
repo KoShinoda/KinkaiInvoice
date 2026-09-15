@@ -17,10 +17,10 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート印刷のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** No. の下の空行。各ページの高さを印刷可能高さに揃える（余りを埋める）。
- * 最終ページ直前はフッター＋明細3行分短くし、最終ページは最小にしてフッター／No.が次用紙へ落ちないようにする。 */
+/** No. の下の空行。途中ページは印刷可能高さに揃え、次ページの明細が食い込まないようにする。
+ * 最終ページは最小のままにして、フッター／No. が次用紙へ落ちないようにする。 */
 var PRINT_PAD_MIN_ = 12;
-var PRINT_PAD_FILL_ = 1;
+var PRINT_PAGE_SAFETY_PX_ = 16;
 var PRINT_PX_PER_IN_ = 96;
 var PRINT_FONT_MAX_ = 12;
 var PRINT_FONT_MIN_ = 6;
@@ -82,7 +82,7 @@ function exportSheetPdf_(ss, sheet) {
   const url = 'https://docs.google.com/spreadsheets/d/' + id + '/export?exportFormat=pdf&format=pdf'
     + '&size=A4'
     + '&portrait=true'
-    + '&fitw=true'
+    + '&fitw=false'
     + '&scale=1'
     + '&sheetnames=false'
     + '&printtitle=false'
@@ -394,7 +394,6 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
       serialOffset: serial,
       showHeader: p === 0,
       showFooter: p === pageCount - 1,
-      padBeforeFooterPage: pageCount > 1 && p === pageCount - 2,
       summary: payload.summary || {},
       slotH: slotH
     });
@@ -748,17 +747,18 @@ function printDataRowHeight_() {
   return Math.max(21, Math.floor((inner - chrome) / CONFIG.print.linesPerPage));
 }
 
-function printPadHeight_(showHeader, showFooter, slotH, padBeforeFooterPage) {
+function printPadHeight_(showHeader, showFooter, slotH) {
   const inner = printTargetInnerPx_();
   const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
   let leftover = inner - used;
-  if (padBeforeFooterPage) {
-    leftover -= PRINT_FOOTER_H_ * 5 + slotH * 3;
-  }
-  if (showFooter || leftover <= 0) {
+  if (showFooter) {
     return PRINT_PAD_MIN_;
   }
-  return Math.max(PRINT_PAD_MIN_, Math.floor(leftover * PRINT_PAD_FILL_));
+  leftover -= PRINT_PAGE_SAFETY_PX_;
+  if (leftover <= 0) {
+    return PRINT_PAD_MIN_;
+  }
+  return leftover;
 }
 
 function fillPrintPage_(sheet, start, header, lines, opts) {
@@ -776,7 +776,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
     .setVerticalAlignment('middle')
     .setWrap(false);
 
-  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan, !!opts.padBeforeFooterPage);
+  applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan);
   mergePrintPage_(sheet, start, L, showHeader, showFooter);
 
   if (showHeader && L.title != null) {
@@ -993,8 +993,8 @@ function setPrintRowHeights_(sheet, row, count, h) {
   sheet.setRowHeights(row, count, n);
 }
 
-function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan, padBeforeFooterPage) {
-  const padH = printPadHeight_(showHeader, showFooter, slotH, padBeforeFooterPage);
+function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan) {
+  const padH = printPadHeight_(showHeader, showFooter, slotH);
   if (showHeader && L.title != null) {
     setPrintRowHeight_(sheet, start + L.title, PRINT_TITLE_H_);
     setPrintRowHeight_(sheet, start + L.metaL1, PRINT_META_LABEL_H_);

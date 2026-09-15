@@ -115,6 +115,7 @@ function ensureListMasterSheets_() {
   }
   const parts = ss.getSheetByName(CONFIG.parts.sheetName);
   if (parts) {
+    ensurePartsSetHeader_(parts);
     ensureOrderColumnOnSheet_(parts);
   }
   const workers = ss.getSheetByName(CONFIG.workers.sheetName);
@@ -345,6 +346,9 @@ function refreshMasterListSheet_(sheet) {
     ensureWorkListPartColumns_(sheet);
     layoutWorkListColumns_(sheet);
   }
+  if (sheet.getName() === CONFIG.parts.sheetName) {
+    ensurePartsSetHeader_(sheet);
+  }
   ensureOrderColumnOnSheet_(sheet);
   if (sheet.getName() === CONFIG.workList.sheetName) {
     layoutWorkListColumns_(sheet);
@@ -422,19 +426,22 @@ function fillWorkListGroupOrders_(data, formulas, orders, cols) {
     const raw = data[i];
     const rawMajor = normalize_(cell_(raw, cols.major));
     const rawMid = normalize_(cell_(raw, cols.mid));
+    const rawSet = cols.set ? normalize_(cell_(raw, cols.set)) : '';
     if (rawMajor) {
       carryMajor = rawMajor;
-      if (!rawMid) {
+      if (!rawMid && !rawSet) {
         carryMid = '';
       }
     }
-    if (rawMid) {
+    if (rawSet) {
+      carryMid = rawSet;
+    } else if (rawMid) {
       carryMid = rawMid;
     }
     const rec = {
       i: i,
       major: rawMajor || carryMajor,
-      mid: rawMid || carryMid,
+      mid: rawSet || rawMid || carryMid,
       content: cols.content ? cell_(raw, cols.content) : '',
       partMajor: cols.partMajor ? cell_(raw, cols.partMajor) : '',
       partMid: cols.partMid ? cell_(raw, cols.partMid) : '',
@@ -815,11 +822,12 @@ function partMidsForDropdown_(workSheet) {
       const header = vals[0].map(function (v) {
         return normalize_(v);
       }).join('');
-      if (header.indexOf('大項目') !== -1 || header.indexOf('部品') !== -1 || header.indexOf('中項目') !== -1) {
+      if (header.indexOf('大項目') !== -1 || header.indexOf('部品') !== -1 ||
+          header.indexOf('中項目') !== -1 || header.indexOf('セット') !== -1) {
         start = 1;
       }
       const cols = start === 1 ? resolveColumns_(vals[0], CONFIG.parts.headers) : {};
-      const midCol = cols.mid || 2;
+      const midCol = cols.set || cols.mid || 2;
       for (let i = start; i < vals.length; i++) {
         add(cell_(vals[i], midCol));
       }
