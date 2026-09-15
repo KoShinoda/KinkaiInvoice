@@ -44,10 +44,6 @@ function ensureInvoiceTemplateSheet() {
 }
 
 function getInvoiceTemplateNames() {
-  const sh = findInvoiceTemplateSheet_();
-  if (sh) {
-    ensureInvoiceTemplateHeaderCols_(sh);
-  }
   return listInvoiceTemplateNamesFast_();
 }
 
@@ -64,7 +60,11 @@ function listInvoiceTemplateNamesFast_() {
   if (last < 2) {
     return [];
   }
-  const vals = sh.getRange(2, 1, last - 1, 1).getValues();
+  const lastCol = Math.max(sh.getLastColumn(), 1);
+  const header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(header, CONFIG.invoiceTemplate.headers);
+  const nameCol = cols.name || 1;
+  const vals = sh.getRange(2, nameCol, last - 1, 1).getValues();
   return uniqueValues_(vals.map(function (row) {
     return row[0];
   }));
@@ -123,11 +123,14 @@ function isInvoiceTemplateLayout_(sheet) {
   return header.indexOf('テンプレート名') !== -1;
 }
 
-function invoiceTemplateHeaderCol_(sh, logicalKey) {
+function invoiceTemplateHeaderMap_(sh) {
   const last = Math.max(sh.getLastColumn(), 1);
   const headers = sh.getRange(1, 1, 1, last).getValues()[0];
-  const cols = resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
-  return cols[logicalKey] || 0;
+  return resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
+}
+
+function invoiceTemplateHeaderCol_(sh, logicalKey) {
+  return invoiceTemplateHeaderMap_(sh)[logicalKey] || 0;
 }
 
 function moveSheetColumn_(sh, from1, to1) {
@@ -176,11 +179,12 @@ function ensureHeaderTitleAt_(sh, logicalKey, title, dest1, width) {
 }
 
 function invoiceTemplateMetaInPlace_(sh) {
-  if (invoiceTemplateHeaderCol_(sh, 'name') !== 1) {
+  const cols = invoiceTemplateHeaderMap_(sh);
+  if (cols.name !== 1) {
     return false;
   }
   for (let i = 0; i < INVOICE_TEMPLATE_META_KEYS_.length; i++) {
-    if (invoiceTemplateHeaderCol_(sh, INVOICE_TEMPLATE_META_KEYS_[i]) !== i + 2) {
+    if (cols[INVOICE_TEMPLATE_META_KEYS_[i]] !== i + 2) {
       return false;
     }
   }

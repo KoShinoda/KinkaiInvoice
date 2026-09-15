@@ -103,6 +103,7 @@ function refreshActiveMasterList() {
 
 function ensureListMasterSheets_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  unprotectListMasterSheets_(ss);
   const work = ss.getSheetByName(CONFIG.workList.sheetName);
   if (work) {
     ensureWorkListWorkerCodeColumn_(work);
@@ -123,6 +124,73 @@ function ensureListMasterSheets_() {
     removeWorkerOrderColumn_(workers);
     assignMissingWorkerCodes_(workers);
   }
+}
+
+function listMasterSheetSpecs_() {
+  return [
+    { name: CONFIG.workList.sheetName, label: '作業リスト' },
+    { name: CONFIG.parts.sheetName, label: '部品リスト' },
+    { name: CONFIG.workers.sheetName, label: '作業者リスト' },
+    { name: CONFIG.invoiceTemplate.sheetName, label: 'テンプレート' },
+    { name: CONFIG.serviceInfo.sheetName, label: '整備情報' }
+  ];
+}
+
+function listMasterSheetLinks_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const base = String(ss.getUrl() || '').replace(/#.*$/, '');
+  const out = [];
+  listMasterSheetSpecs_().forEach(function (spec) {
+    const sh = ss.getSheetByName(spec.name);
+    if (!sh) {
+      return;
+    }
+    out.push({
+      name: spec.name,
+      label: spec.label,
+      url: base + '#gid=' + sh.getSheetId()
+    });
+  });
+  return out;
+}
+
+function unprotectListMasterSheets() {
+  const n = unprotectListMasterSheets_();
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    n
+      ? ('リスト ' + n + ' シートの保護を外しました。ファイルを「編集者」で共有すると、開いた人が直せます。')
+      : '外せる保護はありませんでした。ファイルの共有を「編集者」にしてください。',
+    '請求書入力',
+    8
+  );
+}
+
+function unprotectListMasterSheets_(ss) {
+  ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+  let count = 0;
+  listMasterSheetSpecs_().forEach(function (spec) {
+    const sh = ss.getSheetByName(spec.name);
+    if (!sh) {
+      return;
+    }
+    let removed = false;
+    sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (p) {
+      if (p.canEdit()) {
+        p.remove();
+        removed = true;
+      }
+    });
+    sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function (p) {
+      if (p.canEdit()) {
+        p.remove();
+        removed = true;
+      }
+    });
+    if (removed) {
+      count++;
+    }
+  });
+  return count;
 }
 
 function lastDataHeaderCol_(headers) {

@@ -18,6 +18,7 @@ function onOpen() {
     .addItem('テンプレートリスト（サンプル）を用意', 'ensureInvoiceTemplateSheet')
     .addItem('請求書保存（サンプル3件）を用意', 'ensureInvoiceSaveSamples')
     .addItem('リストを更新（順番・選択肢）', 'refreshAllMasterLists')
+    .addItem('リストシートの保護を外す', 'unprotectListMasterSheets')
     .addSeparator()
     .addItem('作業リストの列マップをログ出力', 'logWorkListColumnMap')
     .addItem('編集トリガーを作成', 'createInstallableOnEditTrigger')

@@ -41,6 +41,13 @@
       text-decoration: underline;
     }
     header a.sheet-link:hover { opacity: 1; }
+    .list-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px 10px;
+      margin-top: 2px;
+    }
+    .list-links[hidden] { display: none; }
     .header-lead { display: flex; flex-direction: column; gap: 2px; }
     .app-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
     button.tab {
@@ -718,6 +725,7 @@
       <h1 id="appTitle">車検 請求入力</h1>
       <span id="appSub"></span>
       <a class="sheet-link" id="sheetOpenLink" href="#" target="_blank" rel="noopener" hidden>スプレッドシートを開く</a>
+      <div class="list-links" id="listSheetLinks" hidden></div>
     </div>
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
@@ -1595,6 +1603,22 @@
       a.hidden = false;
       a.textContent = label || 'スプレッドシートを開く';
     }
+    function setListSheetLinks(links) {
+      var box = $('listSheetLinks');
+      if (!box) return;
+      box.innerHTML = '';
+      (links || []).forEach(function (row) {
+        if (!row || !row.url) return;
+        var a = document.createElement('a');
+        a.className = 'sheet-link';
+        a.href = row.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = row.label || row.name;
+        box.appendChild(a);
+      });
+      box.hidden = !box.children.length;
+    }
     function warnIfOthersWorking_(saveId) {
       if (!saveId) return;
       google.script.run
@@ -2183,7 +2207,7 @@
     function onTemplatePicked() {
       var name = $('invoiceTemplate').value;
       if (!name) return;
-      if (gridHasContent() && !window.confirm('現在の明細をテンプレート「' + name + '」で置き換えますか？シートに書いたヘッダー初期値があれば入ります。')) {
+      if (gridHasContent() && !window.confirm('現在の明細を「' + name + '」で上書きします')) {
         var job = findWorkJob(workJobId);
         $('invoiceTemplate').value = (job && job.templateName) || '';
         return;
@@ -3882,6 +3906,7 @@
           setWorkOperatorLabel();
         }
         if (master.spreadsheetUrl) setSheetOpenLink(master.spreadsheetUrl, 'スプレッドシートを開く');
+        setListSheetLinks(master.listSheetLinks);
         refreshOptionCache();
         fillWorkerPicker();
         renderGrid();
@@ -3928,15 +3953,6 @@
       .getInvoiceMaster();
 
     showAppView(START_VIEW === 'search' ? 'search' : 'input');
-
-    google.script.run
-      .withSuccessHandler(function (names) {
-        master.templateNames = names || [];
-        if ($('invoiceTemplate')) {
-          fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
-        }
-      })
-      .getInvoiceTemplateNames();
   </script>
 </body>
 </html>
