@@ -124,6 +124,11 @@ function ensureListMasterSheets_() {
     removeWorkerOrderColumn_(workers);
     assignMissingWorkerCodes_(workers);
   }
+  const tmpl = findInvoiceTemplateSheet_(ss);
+  if (tmpl) {
+    ensureInvoiceTemplateHeaderCols_(tmpl);
+    applyInvoiceTemplateDropdowns_(tmpl);
+  }
 }
 
 function listMasterSheetSpecs_() {

@@ -1363,16 +1363,7 @@
     }
     function applyTemplateHeader(header, summary) {
       var h = header || {};
-      var s = summary || {};
       var applied = false;
-      if (templateValueFilled(h.userName)) {
-        $('userName').value = h.userName;
-        applied = true;
-      }
-      if (templateValueFilled(h.plate)) {
-        setPlateFields(h.plate);
-        applied = true;
-      }
       if (templateValueFilled(h.dept)) {
         fillHeaderSelect($('dept'), master.departments || [], h.dept);
         applyDeptDefaults();
@@ -1387,30 +1378,6 @@
           fillHeaderSelect($('serviceType'), types, type);
         }
         $('serviceType').value = type;
-        applied = true;
-      }
-      if (templateValueFilled(h.receptionist)) {
-        fillHeaderSelect($('receptionist'), master.receptionists || [], h.receptionist);
-        applied = true;
-      }
-      if (templateValueFilled(h.inDate)) {
-        applyDateField('inDate', 'inDateCal', formatYmd(h.inDate));
-        applied = true;
-      }
-      if (templateValueFilled(h.outDate || h.doneDate)) {
-        applyDateField('outDate', 'outDateCal', formatYmd(h.outDate || h.doneDate));
-        applied = true;
-      }
-      if (templateValueFilled(h.billDate)) {
-        applyDateField('billDate', 'billDateCal', formatYmd(h.billDate));
-        applied = true;
-      }
-      if (s.techPct != null && s.techPct !== '') {
-        $('techPct').value = clampPct(s.techPct);
-        applied = true;
-      }
-      if (s.partPct != null && s.partPct !== '') {
-        $('partPct').value = clampPct(s.partPct);
         applied = true;
       }
       return applied;
@@ -1431,20 +1398,8 @@
       next.summary = next.summary || {};
       next.items = JSON.parse(JSON.stringify(itemsFromTemplateLines(t.lines)));
       var h = t.header || {};
-      var s = t.summary || {};
-      if (templateValueFilled(h.userName)) next.header.userName = h.userName;
-      if (templateValueFilled(h.plate)) next.header.plate = h.plate;
       if (templateValueFilled(h.dept)) next.header.dept = h.dept;
       if (templateValueFilled(h.serviceType)) next.header.serviceType = h.serviceType;
-      if (templateValueFilled(h.receptionist)) next.header.receptionist = h.receptionist;
-      if (templateValueFilled(h.inDate)) next.header.inDate = formatYmd(h.inDate);
-      if (templateValueFilled(h.outDate || h.doneDate)) {
-        next.header.outDate = formatYmd(h.outDate || h.doneDate);
-        next.header.doneDate = next.header.outDate;
-      }
-      if (templateValueFilled(h.billDate)) next.header.billDate = formatYmd(h.billDate);
-      if (s.techPct != null && s.techPct !== '') next.summary.techPct = s.techPct;
-      if (s.partPct != null && s.partPct !== '') next.summary.partPct = s.partPct;
       return next;
     }
     function normalizeKNo(v) {

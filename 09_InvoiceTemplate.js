@@ -1,7 +1,7 @@
 /**
  * 入力アプリ用のテンプレート。
  * シート「テンプレートリスト」：同じテンプレート名の行＝1つの明細セット。
- * ヘッダー初期値（ユーザー・登録番号・整備部門など）は同じ名前のうち最初の値。
+ * ヘッダー初期値は整備部門・整備種別。同じ名前のうち最初の値。
  */
 
 var INVOICE_TEMPLATE_NAME_HEADER_ = 'テンプレート名';
@@ -10,12 +10,14 @@ var INVOICE_TEMPLATE_LINE_HEADERS_ = [
   '部品_大項目', '部品_中項目', '単価', '数量', '値引額'
 ];
 var INVOICE_TEMPLATE_META_HEADERS_ = [
-  'ユーザー', '登録番号', '整備部門', '整備種別', '受付担当',
-  '入庫日', '出庫日', '請求日', '値引技術%', '値引部品%'
+  '整備部門', '整備種別'
 ];
 var INVOICE_TEMPLATE_META_KEYS_ = [
-  'userName', 'plate', 'dept', 'serviceType', 'receptionist',
-  'inDate', 'outDate', 'billDate', 'techPct', 'partPct'
+  'dept', 'serviceType'
+];
+var INVOICE_TEMPLATE_OBSOLETE_HEADERS_ = [
+  'ユーザー', 'ユーザー名', '顧客', '登録番号', 'ナンバー', '受付担当',
+  '入庫日', '出庫日', '請求日', '値引技術%', '技術値引%', '値引部品%', '部品値引%'
 ];
 
 function invoiceTemplateColumnHeaders_() {
@@ -37,7 +39,7 @@ function findInvoiceTemplateSheet_(ss) {
 function ensureInvoiceTemplateSheet() {
   const sh = ensureInvoiceTemplateSheet_();
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    'シート「' + sh.getName() + '」を用意しました（ヘッダー初期値の列も含みます）',
+    'シート「' + sh.getName() + '」を用意しました',
     '請求書入力',
     5
   );
@@ -95,6 +97,7 @@ function ensureInvoiceTemplateSheet_() {
   if (!sh) {
     sh = ss.insertSheet(sheetName);
     writeInvoiceTemplateSample_(sh);
+    applyInvoiceTemplateDropdowns_(sh);
     return sh;
   }
   if (sh.getName() !== sheetName) {
@@ -109,6 +112,7 @@ function ensureInvoiceTemplateSheet_() {
   } else {
     ensureInvoiceTemplateHeaderCols_(sh);
   }
+  applyInvoiceTemplateDropdowns_(sh);
   return sh;
 }
 
@@ -191,22 +195,43 @@ function invoiceTemplateMetaInPlace_(sh) {
   return true;
 }
 
+function removeObsoleteInvoiceTemplateCols_(sh) {
+  const drop = {};
+  INVOICE_TEMPLATE_OBSOLETE_HEADERS_.forEach(function (title) {
+    drop[normalize_(title)] = true;
+  });
+  const last = Math.max(sh.getLastColumn(), 1);
+  const headers = sh.getRange(1, 1, 1, last).getValues()[0];
+  for (let i = headers.length - 1; i >= 0; i--) {
+    if (drop[normalize_(headers[i])]) {
+      sh.deleteColumn(i + 1);
+    }
+  }
+}
+
 function ensureInvoiceTemplateHeaderCols_(sh) {
   if (!sh || !isInvoiceTemplateLayout_(sh)) {
     return;
   }
   try {
+    const lastColBefore = sh.getLastColumn();
+    removeObsoleteInvoiceTemplateCols_(sh);
+    const removed = sh.getLastColumn() < lastColBefore;
     if (invoiceTemplateMetaInPlace_(sh)) {
+      if (removed) {
+        applyInvoiceTemplateDropdowns_(sh);
+      }
       return;
     }
     ensureHeaderTitleAt_(sh, 'name', INVOICE_TEMPLATE_NAME_HEADER_, 1, 160);
     INVOICE_TEMPLATE_META_KEYS_.forEach(function (key, i) {
       const title = INVOICE_TEMPLATE_META_HEADERS_[i];
       const dest = i + 2;
-      const width = (key === 'plate' || key === 'userName') ? 120 : 90;
+      const width = key === 'serviceType' ? 100 : 90;
       ensureHeaderTitleAt_(sh, key, title, dest, width);
     });
     sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
+    applyInvoiceTemplateDropdowns_(sh);
   } catch (err) {
     // 保護などで列を足せないときは、既存の列だけで読む。
   }
@@ -271,16 +296,8 @@ function parseInvoiceTemplateSheet_() {
 
 function pickTemplateHeader_(raw, cols) {
   const h = {};
-  takeTemplateText_(h, 'userName', raw, cols);
-  takeTemplateText_(h, 'plate', raw, cols);
   takeTemplateText_(h, 'dept', raw, cols);
   takeTemplateText_(h, 'serviceType', raw, cols);
-  takeTemplateText_(h, 'receptionist', raw, cols);
-  takeTemplateDate_(h, 'inDate', raw, cols);
-  takeTemplateDate_(h, 'outDate', raw, cols);
-  takeTemplateDate_(h, 'billDate', raw, cols);
-  takeTemplatePct_(h, 'techPct', raw, cols);
-  takeTemplatePct_(h, 'partPct', raw, cols);
   return h;
 }
 
@@ -288,30 +305,6 @@ function takeTemplateText_(h, key, raw, cols) {
   const v = normalize_(cell_(raw, cols[key]));
   if (v) {
     h[key] = v;
-  }
-}
-
-function takeTemplateDate_(h, key, raw, cols) {
-  if (!cols[key]) {
-    return;
-  }
-  const v = formatInvoiceYmd_(cell_(raw, cols[key]));
-  if (v) {
-    h[key] = v;
-  }
-}
-
-function takeTemplatePct_(h, key, raw, cols) {
-  if (!cols[key]) {
-    return;
-  }
-  const v = cell_(raw, cols[key]);
-  if (!isFilled_(v)) {
-    return;
-  }
-  const n = Number(String(v).replace(/,/g, '').replace(/%/g, '').trim());
-  if (isFinite(n)) {
-    h[key] = n;
   }
 }
 
@@ -326,7 +319,7 @@ function mergeTemplateHeaderFirstWins_(dst, src) {
 function templateHeaderForClient_(header) {
   const h = header || {};
   const out = {};
-  ['userName', 'plate', 'dept', 'serviceType', 'receptionist', 'inDate', 'outDate', 'billDate'].forEach(function (key) {
+  ['dept', 'serviceType'].forEach(function (key) {
     if (h[key] !== undefined && h[key] !== '') {
       out[key] = h[key];
     }
@@ -335,20 +328,12 @@ function templateHeaderForClient_(header) {
 }
 
 function templateSummaryForClient_(header) {
-  const h = header || {};
-  const out = {};
-  if (h.techPct !== undefined && h.techPct !== '') {
-    out.techPct = h.techPct;
-  }
-  if (h.partPct !== undefined && h.partPct !== '') {
-    out.partPct = h.partPct;
-  }
-  return out;
+  return {};
 }
 
 function invoiceTemplateSheetNote_() {
   return '同じテンプレート名の行が、入力アプリで選んだときの明細になります。\n' +
-    'ヘッダー初期値（ユーザー〜請求日、値引％）は同じ名前のうち最初に入っている値を使います。空欄の項目は画面の値を残します。\n' +
+    '整備部門・整備種別は同じ名前のうち最初に入っている値をヘッダー初期値にします。空欄は画面の値を残します。\n' +
     '中項目列には、画面の中項目（作業内容）を書いてください。\n' +
     '部品は同じ行に横並びでも、作業だけの行／部品だけの行に分けても構いません。\n' +
     '合計は数量×単価から自動計算します。値引額は円（空欄可）。';
@@ -364,10 +349,7 @@ function writeInvoiceTemplateSample_(sh) {
   const body = defaultInvoiceTemplateRows_().map(function (r) {
     return [
       r.name,
-      r.userName || '', r.plate || '', r.dept || '', r.serviceType || '', r.receptionist || '',
-      r.inDate || '', r.outDate || '', r.billDate || '',
-      r.techPct === '' || r.techPct == null ? '' : r.techPct,
-      r.partPct === '' || r.partPct == null ? '' : r.partPct,
+      r.dept || '', r.serviceType || '',
       r.major || '', r.mid || '', r.fee === '' || r.fee == null ? '' : r.fee, r.workerCode || '',
       r.partMajor || '', r.partMid || '', r.unitPrice === '' || r.unitPrice == null ? '' : r.unitPrice,
       r.qty === '' || r.qty == null ? '' : r.qty,
@@ -377,25 +359,17 @@ function writeInvoiceTemplateSample_(sh) {
   sh.getRange(2, 1, body.length, colCount).setValues(body);
   sh.setFrozenRows(1);
   sh.setColumnWidth(1, 160);
-  sh.setColumnWidth(2, 120);
-  sh.setColumnWidth(3, 140);
-  sh.setColumnWidth(4, 90);
-  sh.setColumnWidth(5, 100);
-  sh.setColumnWidth(6, 90);
-  sh.setColumnWidth(7, 90);
-  sh.setColumnWidth(8, 90);
-  sh.setColumnWidth(9, 90);
-  sh.setColumnWidth(10, 90);
-  sh.setColumnWidth(11, 90);
-  sh.setColumnWidth(12, 100);
-  sh.setColumnWidth(13, 220);
-  sh.setColumnWidth(14, 80);
-  sh.setColumnWidth(15, 100);
-  sh.setColumnWidth(16, 110);
-  sh.setColumnWidth(17, 160);
-  sh.setColumnWidth(18, 80);
-  sh.setColumnWidth(19, 60);
-  sh.setColumnWidth(20, 80);
+  sh.setColumnWidth(2, 90);
+  sh.setColumnWidth(3, 100);
+  sh.setColumnWidth(4, 100);
+  sh.setColumnWidth(5, 220);
+  sh.setColumnWidth(6, 80);
+  sh.setColumnWidth(7, 100);
+  sh.setColumnWidth(8, 110);
+  sh.setColumnWidth(9, 160);
+  sh.setColumnWidth(10, 80);
+  sh.setColumnWidth(11, 60);
+  sh.setColumnWidth(12, 80);
   sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
 }
 
@@ -416,4 +390,122 @@ function defaultInvoiceTemplateRows_() {
     { name: '部品交換サンプル', major: '', mid: '', fee: '', partMajor: '油脂', partMid: 'ｼｬｼｸﾞﾚｰ', unitPrice: 15000, qty: 1 },
     { name: '部品交換サンプル', major: '', mid: '', fee: '', partMajor: '油脂', partMid: 'ｽﾓｰﾙ･ﾊﾟｰﾂ', unitPrice: 2500, qty: 1, discYen: 100 }
   ];
+}
+
+function templateServiceTypeChoices_(dept) {
+  let info = emptyServiceInfo_();
+  try {
+    info = loadServiceInfo_() || info;
+  } catch (err) {
+    Logger.log('%s templateServiceTypeChoices_: %s', CONFIG.logPrefix, err);
+  }
+  const raw = normalize_(dept);
+  const key = raw === '車検' ? '大型' : raw === '一般整備' ? '小型' : raw === '板金塗装' ? 'BP板金' : raw;
+  const types = key && info.typesByDept ? info.typesByDept[key] : [];
+  if (types && types.length) {
+    return types;
+  }
+  return info.allServiceTypes || [];
+}
+
+function templatePartMidChoices_(partMajor) {
+  const out = [];
+  const seen = {};
+  function add(v) {
+    const key = normalize_(v);
+    if (!key || seen[key] || out.length >= 500) {
+      return;
+    }
+    seen[key] = true;
+    out.push(String(v));
+  }
+  try {
+    const drop = loadPartListDropdowns_();
+    const mids = partMajor && drop.partMidsByMajor && drop.partMidsByMajor[partMajor]
+      ? drop.partMidsByMajor[partMajor]
+      : (drop.allPartMids || []);
+    (mids || []).forEach(add);
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.parts.sheetName);
+    if (sh) {
+      parsePartsSheetValues_(sh.getDataRange().getValues()).rows.forEach(function (row) {
+        if (partMajor && row.major && row.major !== partMajor) {
+          return;
+        }
+        if (row.set) {
+          add(row.set);
+        }
+      });
+    }
+  } catch (err) {
+    Logger.log('%s templatePartMidChoices_: %s', CONFIG.logPrefix, err);
+  }
+  return out;
+}
+
+function applyInvoiceTemplateDropdowns_(sh) {
+  sh = sh || findInvoiceTemplateSheet_();
+  if (!sh) {
+    return;
+  }
+  const cols = invoiceTemplateHeaderMap_(sh);
+  const lastData = Math.max(sh.getLastRow(), 2);
+  const rows = Math.max(lastData + 80, 200) - 1;
+  let service = emptyServiceInfo_();
+  let partsDrop = { partMajors: [], allPartMids: [] };
+  try {
+    service = loadServiceInfo_() || service;
+  } catch (err) {
+    Logger.log('%s applyInvoiceTemplateDropdowns_ service: %s', CONFIG.logPrefix, err);
+  }
+  try {
+    partsDrop = loadPartListDropdowns_() || partsDrop;
+  } catch (err) {
+    Logger.log('%s applyInvoiceTemplateDropdowns_ parts: %s', CONFIG.logPrefix, err);
+  }
+  if (cols.dept) {
+    applyOpenListValidation_(sh.getRange(2, cols.dept, rows, 1), service.departments || []);
+  }
+  if (cols.serviceType) {
+    applyOpenListValidation_(sh.getRange(2, cols.serviceType, rows, 1), service.allServiceTypes || []);
+  }
+  if (cols.workerCode) {
+    applyOpenListValidation_(sh.getRange(2, cols.workerCode, rows, 1), workerCodesForDropdown_());
+  }
+  if (cols.partMajor) {
+    applyOpenListValidation_(sh.getRange(2, cols.partMajor, rows, 1), partsDrop.partMajors || []);
+  }
+  if (cols.partMid) {
+    applyOpenListValidation_(sh.getRange(2, cols.partMid, rows, 1), templatePartMidChoices_(''));
+  }
+}
+
+function applyInvoiceTemplateRowDropdowns_(sh, fromRow, toRow) {
+  if (!sh) {
+    return;
+  }
+  const cols = invoiceTemplateHeaderMap_(sh);
+  const last = Math.max(sh.getLastRow(), 2);
+  const from = Math.max(fromRow || 2, 2);
+  const to = Math.min(toRow || last, last);
+  if (to < from) {
+    return;
+  }
+  const height = to - from + 1;
+  const depts = cols.dept ? sh.getRange(from, cols.dept, height, 1).getValues() : [];
+  const partMajors = cols.partMajor ? sh.getRange(from, cols.partMajor, height, 1).getValues() : [];
+  for (let i = 0; i < height; i++) {
+    const row = from + i;
+    if (cols.serviceType) {
+      applyOpenListValidation_(
+        sh.getRange(row, cols.serviceType),
+        templateServiceTypeChoices_(depts[i] ? depts[i][0] : '')
+      );
+    }
+    if (cols.partMid) {
+      applyOpenListValidation_(
+        sh.getRange(row, cols.partMid),
+        templatePartMidChoices_(partMajors[i] ? partMajors[i][0] : '')
+      );
+    }
+  }
 }

@@ -138,6 +138,16 @@ function handleEdit_(e) {
     return;
   }
 
+  if (sheetName === CONFIG.invoiceTemplate.sheetName || sheetName === '明細テンプレート') {
+    if (e.range.getLastRow() < 2) {
+      return;
+    }
+    writeInternal_(function () {
+      applyInvoiceTemplateRowDropdowns_(sheet, e.range.getRow(), e.range.getLastRow());
+    });
+    return;
+  }
+
   if (sheetName === CONFIG.workList.sheetName) {
     writeInternal_(function () {
       fillWorkListWorkerCodesFromEdit_(sheet, e.range);
