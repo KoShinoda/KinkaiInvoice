@@ -359,14 +359,11 @@ function readPartsListRow_(raw, cols, carry, sourceIndex) {
   let content = cols.name ? normalize_(cell_(raw, cols.name)) : '';
   let qty = cols.qty ? cell_(raw, cols.qty) : '';
   let unitPrice = cols.unitPrice ? cell_(raw, cols.unitPrice) : '';
-  if (!content && cols.set && cols.qty && cols.qty > cols.set + 1) {
-    content = normalize_(cell_(raw, cols.set + 1));
-  }
-  if (!content && !cols.name && cols.mid && cols.qty && cols.qty > cols.mid + 1) {
-    const between = normalize_(cell_(raw, cols.mid + 1));
-    if (between && (!cols.set || cols.mid + 1 !== cols.set)) {
-      content = between;
+  if (content && isProbablyNumber_(content)) {
+    if (!isFilled_(unitPrice)) {
+      unitPrice = content;
     }
+    content = '';
   }
   if (!cols.name && !cols.qty && !cols.unitPrice) {
     const setIdx = cols.set ? cols.set - 1 : (cols.mid ? cols.mid : 1);

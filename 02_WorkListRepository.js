@@ -94,7 +94,7 @@ function buildWorkIndex_(rows) {
     const parts = key.split('\t');
     const major = parts[0] || '';
     const mid = parts.slice(1).join('\t');
-    if (!mid || !midsByMajor[major]) {
+    if (!normalize_(major) || !mid || !midsByMajor[major]) {
       return;
     }
     if (midsByMajor[major].indexOf(mid) !== -1) {
@@ -186,6 +186,12 @@ function parseWorkList_(values, cols) {
     const partMid = cell_(raw, cols.partMid);
     const fee = cell_(raw, cols.fee);
 
+    if (!rawMajor && !rawMid && !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid) && !isFilled_(fee)) {
+      carryMajor = '';
+      carryMid = '';
+      continue;
+    }
+
     if (!rawMajor && rawMid && majorNames[rawMid] && rawMid !== carryMajor &&
         !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid) && !isFilled_(fee)) {
       carryMajor = rawMid;
@@ -219,7 +225,7 @@ function parseWorkList_(values, cols) {
     const major = rawMajor || carryMajor;
     const mid = rawMid || carryMid;
 
-    if (!major && !mid && !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid)) {
+    if (!rawMajor && !rawMid && !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid)) {
       continue;
     }
 

@@ -2263,14 +2263,9 @@
     }
 
     function midsFor(major) {
-      if (!major) return master.allMids || [];
-      var list = (master.midsByMajor && master.midsByMajor[major]) || [];
-      var majors = master.majors || [];
-      return list.filter(function (m) {
-        if (!String(m || '').trim()) return false;
-        if (m === major) return true;
-        if (majors.indexOf(m) === -1) return true;
-        return linesForMid(major, m).some(function (r) { return filled(r.content) || filled(r.fee); });
+      if (!major) return [];
+      return ((master.midsByMajor && master.midsByMajor[major]) || []).filter(function (m) {
+        return !!String(m || '').trim();
       });
     }
     function partMidsFor(major) {
@@ -2355,10 +2350,12 @@
       var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
       var qn = String(w && w.qty != null ? w.qty : '').replace(/\u3000/g, ' ').trim();
       var set = String(setMid || '').trim();
-      if (c && foldKey(c) !== foldKey(set)) return c;
+      if (c && !numericCell(c) && foldKey(c) !== foldKey(set)) return c;
       if (qn && !numericCell(qn) && foldKey(qn) !== foldKey(set)) return qn;
-      if (pm && foldKey(pm) !== foldKey(set)) return pm;
-      return c || (!numericCell(qn) ? qn : '') || pm;
+      if (pm && !numericCell(pm) && foldKey(pm) !== foldKey(set)) return pm;
+      if (c && !numericCell(c)) return c;
+      if (pm && !numericCell(pm)) return pm;
+      return set;
     }
 
     var optHtml = { major: '', partMajor: '' };
@@ -2827,7 +2824,7 @@
       var seenName = {};
       works.forEach(function (w) {
         var name = partLineName(w, mid);
-        if (!name || foldKey(name) === foldKey(mid) || seenName[foldKey(name)]) return;
+        if (!name || numericCell(name) || foldKey(name) === foldKey(mid) || seenName[foldKey(name)]) return;
         seenName[foldKey(name)] = true;
         named.push(w);
       });
@@ -3368,6 +3365,7 @@
           e.target.select();
         } else {
           showComboList(e.target);
+          try { e.target.select(); } catch (err) {}
         }
         if (isMidTextarea(e.target)) fitMidHeight(e.target);
       }
@@ -3735,6 +3733,38 @@
         return;
       }
       runPrintSheet(boundSaveId() ? 'overwrite' : 'new');
+    });
+
+    function isSelectAllField(el) {
+      if (!el) return false;
+      var tag = el.tagName;
+      if (tag === 'TEXTAREA') return true;
+      if (tag !== 'INPUT') return false;
+      var t = String(el.type || 'text').toLowerCase();
+      return t === 'text' || t === 'search' || t === 'tel' || t === 'number' || t === 'email' || t === '';
+    }
+    var selectAllPending = null;
+    document.addEventListener('mousedown', function (e) {
+      var el = e.target;
+      if (!isSelectAllField(el)) return;
+      if (document.activeElement !== el) selectAllPending = el;
+    }, true);
+    document.addEventListener('mouseup', function (e) {
+      if (!selectAllPending) return;
+      var el = selectAllPending;
+      selectAllPending = null;
+      if (e.target !== el) return;
+      window.setTimeout(function () {
+        try { el.select(); } catch (err) {}
+      }, 0);
+    }, true);
+    document.addEventListener('focusin', function (e) {
+      var el = e.target;
+      if (!isSelectAllField(el)) return;
+      if (selectAllPending === el) return;
+      window.setTimeout(function () {
+        try { el.select(); } catch (err) {}
+      }, 0);
     });
 
     google.script.run
