@@ -41,13 +41,6 @@
       text-decoration: underline;
     }
     header a.sheet-link:hover { opacity: 1; }
-    .list-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 2px 10px;
-      margin-top: 2px;
-    }
-    .list-links[hidden] { display: none; }
     .header-lead { display: flex; flex-direction: column; gap: 2px; }
     .app-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
     button.tab {
@@ -725,7 +718,6 @@
       <h1 id="appTitle">車検 請求入力</h1>
       <span id="appSub"></span>
       <a class="sheet-link" id="sheetOpenLink" href="#" target="_blank" rel="noopener" hidden>スプレッドシートを開く</a>
-      <div class="list-links" id="listSheetLinks" hidden></div>
     </div>
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
@@ -1602,22 +1594,6 @@
       a.href = url;
       a.hidden = false;
       a.textContent = label || 'スプレッドシートを開く';
-    }
-    function setListSheetLinks(links) {
-      var box = $('listSheetLinks');
-      if (!box) return;
-      box.innerHTML = '';
-      (links || []).forEach(function (row) {
-        if (!row || !row.url) return;
-        var a = document.createElement('a');
-        a.className = 'sheet-link';
-        a.href = row.url;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.textContent = row.label || row.name;
-        box.appendChild(a);
-      });
-      box.hidden = !box.children.length;
     }
     function warnIfOthersWorking_(saveId) {
       if (!saveId) return;
@@ -2614,11 +2590,11 @@
     }
 
     function rowHtml(i) {
-      var ins = i < lineCount() - 1;
+      var insBelow = i < lineCount() - 1;
       return '<tr>' +
         '<td class="no side-work"><span class="no-n">' + (i + 1) + '</span>' +
-          (i === 0 ? '<button type="button" class="side-ins side-ins-top" data-at="0" data-side="work" tabindex="-1" title="先頭に技術側の空行を挿入">+</button>' : '') +
-          (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
+          '<button type="button" class="side-ins side-ins-top" data-at="' + i + '" data-side="work" tabindex="-1" title="この行の上に技術側の空行を挿入">+</button>' +
+          (insBelow ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="work" tabindex="-1" title="この行の下に技術側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="major side-work"><select data-i="' + i + '" data-k="major" data-filled="1">' + optHtml.major + '</select></td>' +
         '<td class="mid side-work"><div class="combo">' +
@@ -2633,8 +2609,8 @@
         '</div></td>' +
         '<td class="del side-work"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
         '<td class="ins side-part">' +
-          (i === 0 ? '<button type="button" class="side-ins side-ins-top" data-at="0" data-side="part" tabindex="-1" title="先頭に部品側の空行を挿入">+</button>' : '') +
-          (ins ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
+          '<button type="button" class="side-ins side-ins-top" data-at="' + i + '" data-side="part" tabindex="-1" title="この行の上に部品側の空行を挿入">+</button>' +
+          (insBelow ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
         '</td>' +
         '<td class="part-major side-part"><select data-i="' + i + '" data-k="partMajor" data-filled="1">' + optHtml.partMajor + '</select></td>' +
         '<td class="part-mid side-part"><div class="combo">' +
@@ -3906,7 +3882,6 @@
           setWorkOperatorLabel();
         }
         if (master.spreadsheetUrl) setSheetOpenLink(master.spreadsheetUrl, 'スプレッドシートを開く');
-        setListSheetLinks(master.listSheetLinks);
         refreshOptionCache();
         fillWorkerPicker();
         renderGrid();

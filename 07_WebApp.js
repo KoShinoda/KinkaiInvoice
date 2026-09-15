@@ -95,7 +95,6 @@ function getInvoiceMaster() {
     operatorEmail: workJobUserKey_(),
     spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl(),
     templateNames: listInvoiceTemplateNamesFast_(),
-    listSheetLinks: listMasterSheetLinks_(),
     lineCount: CONFIG.app.lineCount || 120,
     linesPerPage: CONFIG.print.linesPerPage,
     ordersPending: !!ctx.ordersPending

@@ -136,24 +136,6 @@ function listMasterSheetSpecs_() {
   ];
 }
 
-function listMasterSheetLinks_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const base = String(ss.getUrl() || '').replace(/#.*$/, '');
-  const out = [];
-  listMasterSheetSpecs_().forEach(function (spec) {
-    const sh = ss.getSheetByName(spec.name);
-    if (!sh) {
-      return;
-    }
-    out.push({
-      name: spec.name,
-      label: spec.label,
-      url: base + '#gid=' + sh.getSheetId()
-    });
-  });
-  return out;
-}
-
 function unprotectListMasterSheets() {
   const n = unprotectListMasterSheets_();
   SpreadsheetApp.getActiveSpreadsheet().toast(
