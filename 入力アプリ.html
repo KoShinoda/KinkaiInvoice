@@ -1608,8 +1608,10 @@
       while (d.length < 4) d = '0' + d;
       return d;
     }
-    function collectPayload() {
-      var summary = recalc();
+    function collectPayload(opts) {
+      var summary = (opts && opts.skipRecalc)
+        ? { techPct: $('techPct').value, partPct: $('partPct').value }
+        : recalc();
       var kNo = normalizeKNo($('kNo').value);
       $('kNo').value = kNo;
       return {
@@ -1630,7 +1632,37 @@
         summary: summary
       };
     }
-    function applySavedPayload(data, quiet) {
+    function copyItemRow(src) {
+      var row = emptyRow();
+      if (!src) return row;
+      row.major = src.major || '';
+      row.mid = src.mid || '';
+      row.fee = src.fee == null ? '' : src.fee;
+      row.workerCode = src.workerCode || '';
+      row.workerName = src.workerName || '';
+      row.partMajor = src.partMajor || '';
+      row.partMid = src.partMid || '';
+      row.qty = src.qty == null ? '' : src.qty;
+      row.unitPrice = src.unitPrice == null ? '' : src.unitPrice;
+      row.amount = src.amount == null || src.amount === '' ? '' : src.amount;
+      row.discYen = src.discYen == null || src.discYen === '' ? 0 : src.discYen;
+      row.kind = src.kind || '';
+      return row;
+    }
+    function applyJobItems(lines) {
+      var n = lineCount();
+      var src = lines || [];
+      var prevFilled = lastFilledIndex(items);
+      var next = [];
+      var i;
+      var lim = Math.min(src.length, n);
+      for (i = 0; i < lim; i++) next.push(copyItemRow(src[i]));
+      while (next.length < n) next.push(emptyRow());
+      items = next;
+      gridPaintedUntil = Math.max(gridPaintedUntil, prevFilled);
+      renderGrid();
+    }
+    function applySavedPayload(data, quiet, fromJob) {
       data = data || {};
       var h = data.header || {};
       $('userName').value = h.userName || '';
@@ -1661,7 +1693,8 @@
       } else {
         $('partPct').value = defaultPartPct();
       }
-      applyTemplateLines(data.items || [], h.kNo || '保存データ', quiet);
+      if (fromJob) applyJobItems(data.items || []);
+      else applyTemplateLines(data.items || [], h.kNo || '保存データ', quiet);
     }
     function setBusy(busy) {
       $('btnSave').disabled = busy;
@@ -1679,7 +1712,7 @@
       });
     }
     function showAppView(view) {
-      if (workJobs.length && view !== 'input') snapshotActiveJob(true);
+      if (workJobs.length && view !== 'input') snapshotActiveJob(false);
       var lists = view === 'lists';
       var search = view === 'search';
       $('viewInput').hidden = view !== 'input';
@@ -1801,9 +1834,11 @@
     var workOperator = String(OPERATOR_EMAIL || '');
     var workIsolated = !!workOperator;
     function cloneJobPayload(data) {
+      var last = lastFilledIndex((data && data.items) || []);
+      var itemsCopy = last < 0 ? [] : ((data && data.items) || []).slice(0, last + 1);
       return JSON.parse(JSON.stringify({
         header: (data && data.header) || {},
-        items: (data && data.items) || [],
+        items: itemsCopy,
         summary: (data && data.summary) || {},
         saveId: (data && data.saveId) || ''
       }));
@@ -2079,14 +2114,13 @@
       if (workJobHydrating) return;
       var job = findWorkJob(workJobId);
       if (!job) return;
-      job.payload = cloneJobPayload(collectPayload());
+      job.payload = cloneJobPayload(collectPayload({ skipRecalc: true }));
       job.saveId = currentSaveId;
       job.boundKNo = boundKNo;
       job.templateName = $('invoiceTemplate').value;
       job.savedAt = boundSavedAt;
       job.touchedAt = Date.now();
       persistWorkJobs(immediate !== false);
-      updateSaveChrome();
     }
     function syncActiveTabKNo() {
       var job = findWorkJob(workJobId);
@@ -2103,7 +2137,7 @@
       workJobHydrating = true;
       try {
         workJobId = id;
-        applySavedPayload(job.payload || {}, true);
+        applySavedPayload(job.payload || {}, true, true);
         $('invoiceTemplate').value = job.templateName || '';
         bindCurrentSave(
           job.saveId,
@@ -2115,7 +2149,7 @@
       } finally {
         workJobHydrating = false;
       }
-      persistWorkJobs(true);
+      persistWorkJobs(false);
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
     }
     function renderDraftTabs() {
@@ -2461,7 +2495,7 @@
     }
 
     function paintDiscWarn(tr, it) {
-      var el = tr.querySelector('[data-k="discYen"]');
+      var el = (tr && tr._cells && tr._cells.discYen) || (tr && tr.querySelector && tr.querySelector('[data-k="discYen"]'));
       if (!el) return;
       el.classList.toggle('warn-neg', num(it.discYen) < 0);
     }
@@ -2685,6 +2719,7 @@
     var midsJsonByMajor = {};
     var partMidsJsonByMajor = {};
     var gridReady = false;
+    var gridPaintedUntil = -1;
 
     function htmlEscape(s) {
       return String(s == null ? '' : s)
@@ -2707,6 +2742,7 @@
       midsJsonByMajor = {};
       partMidsJsonByMajor = {};
       gridReady = false;
+      gridPaintedUntil = -1;
     }
     function withBlankFirst(values) {
       var out = [''];
@@ -2789,12 +2825,20 @@
       if (c.workerCode) c.workerCode.value = workerInputValue(it);
       if (c.mid) {
         c.mid.value = it.mid || '';
-        c.mid.dataset.options = midsJson(it.major);
+        var midKey = it.major || '';
+        if (c.mid.dataset.optKey !== midKey) {
+          c.mid.dataset.options = midsJson(midKey);
+          c.mid.dataset.optKey = midKey;
+        }
         fitMidHeight(c.mid);
       }
       if (c.partMid) {
         c.partMid.value = it.partMid || '';
-        c.partMid.dataset.options = partMidsJson(it.partMajor);
+        var partKey = it.partMajor || '';
+        if (c.partMid.dataset.optKey !== partKey) {
+          c.partMid.dataset.options = partMidsJson(partKey);
+          c.partMid.dataset.optKey = partKey;
+        }
         fitMidHeight(c.partMid);
       }
       c.fee.value = it.fee == null ? '' : it.fee;
@@ -2869,7 +2913,11 @@
         if (!optHtml.major) refreshOptionCache();
         buildGrid();
       }
-      for (var i = 0; i < n; i++) refreshRowSelects(i);
+      var filled = lastFilledIndex(items);
+      var until = Math.max(filled, gridPaintedUntil, 0);
+      var i;
+      for (i = 0; i <= until && i < n; i++) refreshRowSelects(i);
+      gridPaintedUntil = filled;
       recalc();
       applyPendingFocus();
     }
@@ -2892,6 +2940,14 @@
     function rowIsEmpty(r) {
       return !r || (!r.major && !r.mid && !filled(r.fee) && !r.workerCode && !r.workerName && !r.partMajor && !r.partMid &&
         !filled(r.qty) && !filled(r.unitPrice) && !filled(r.amount));
+    }
+    function lastFilledIndex(rows) {
+      var last = -1;
+      var i;
+      for (i = 0; i < (rows || []).length; i++) {
+        if (!rowIsEmpty(rows[i])) last = i;
+      }
+      return last;
     }
     function padItems() {
       var n = lineCount();
@@ -3206,7 +3262,13 @@
     }
     function fitMidHeight(el) {
       if (!isMidTextarea(el)) return;
+      var v = el.value || '';
       el.style.whiteSpace = 'pre-wrap';
+      if (!v || v.indexOf('\n') === -1) {
+        el.style.height = '28px';
+        el.style.overflow = 'hidden';
+        return;
+      }
       el.style.height = 'auto';
       var minH = 28;
       var maxH = 160;
@@ -3240,6 +3302,24 @@
     function comboOptions(input) {
       try { return JSON.parse(input.dataset.options || '[]'); } catch (e) { return []; }
     }
+    function ensureMidOptions(input) {
+      if (!input || (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid')) return;
+      var i = Number(input.dataset.i);
+      var it = items[i] || emptyRow();
+      if (input.dataset.k === 'mid') {
+        var midKey = it.major || '';
+        if (input.dataset.optKey !== midKey || !input.dataset.options) {
+          input.dataset.options = midsJson(midKey);
+          input.dataset.optKey = midKey;
+        }
+      } else {
+        var partKey = it.partMajor || '';
+        if (input.dataset.optKey !== partKey || !input.dataset.options) {
+          input.dataset.options = partMidsJson(partKey);
+          input.dataset.optKey = partKey;
+        }
+      }
+    }
     function comboListEl(input) {
       return input.parentNode.querySelector('.combo-list');
     }
@@ -3253,6 +3333,7 @@
     function showComboList(input, keepActive, unfiltered) {
       var list = comboListEl(input);
       if (!list) return;
+      ensureMidOptions(input);
       var q = unfiltered ? '' : String(input.value || '').toLowerCase();
       list.innerHTML = '';
       var opts = [];
@@ -4060,6 +4141,19 @@
         return true;
       });
     }
+    function listWorkMajorsForMid(mid) {
+      var seen = {};
+      var majors = [];
+      if (!mid) return majors;
+      (master.workLines || []).forEach(function (r) {
+        if (String(r.mid || '') !== String(mid)) return;
+        var maj = String(r.major || '').replace(/\u3000/g, ' ').trim();
+        if (!maj || seen[maj]) return;
+        seen[maj] = true;
+        majors.push(maj);
+      });
+      return majors;
+    }
     function listPartPackExists(major, mid) {
       if (!mid) return false;
       var m = foldKey(mid);
@@ -4069,6 +4163,21 @@
         if (major && r.major && foldKey(r.major) !== foldKey(major)) return false;
         return true;
       });
+    }
+    function listPartMajorsForMid(mid) {
+      var seen = {};
+      var majors = [];
+      if (!mid) return majors;
+      var m = foldKey(mid);
+      (master.partLines || []).forEach(function (r) {
+        if (!r.fromParts) return;
+        if (foldKey(r.mid) !== m) return;
+        var maj = String(r.major || '').replace(/\u3000/g, ' ').trim();
+        if (!maj || seen[foldKey(maj)]) return;
+        seen[foldKey(maj)] = true;
+        majors.push(maj);
+      });
+      return majors;
     }
     function refreshListDatalists() {
       fillDatalist('listWorkMajorOpts', master.majors);
@@ -4086,10 +4195,12 @@
         'partMidsByMajor', 'partLines', 'workers', 'workerHeaders', 'workerCodes', 'ordersPending'].forEach(function (k) {
         if (m[k] !== undefined) master[k] = m[k];
       });
+      listDatalistsReady = false;
       refreshOptionCache();
       fillWorkerPicker();
       if (gridReady) renderGrid();
       refreshListDatalists();
+      listDatalistsReady = true;
     }
     function listWorkRowsFromMaster(major, mid) {
       var lines = linesForMid(major, mid);
@@ -4206,10 +4317,13 @@
       if ($('listPanelWork')) $('listPanelWork').hidden = listKind !== 'work';
       if ($('listPanelParts')) $('listPanelParts').hidden = listKind !== 'parts';
       if ($('listPanelWorkers')) $('listPanelWorkers').hidden = listKind !== 'workers';
-      refreshListDatalists();
     }
+    var listDatalistsReady = false;
     function initListAddView() {
-      refreshListDatalists();
+      if (!listDatalistsReady) {
+        refreshListDatalists();
+        listDatalistsReady = true;
+      }
       if (!listWorkRows.length) {
         listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
         renderListWorkTable();
@@ -4219,11 +4333,27 @@
         renderListPartTable();
       }
       showListKind(listKind);
-      setListStatus('');
     }
     function tryLoadWorkPack() {
-      var major = $('listWorkMajor').value.replace(/\u3000/g, ' ').trim();
+      var majorEl = $('listWorkMajor');
+      var major = majorEl ? majorEl.value.replace(/\u3000/g, ' ').trim() : '';
       var mid = $('listWorkMid').value.replace(/\u3000/g, ' ').trim();
+      if (mid && !major) {
+        var workMajors = listWorkMajorsForMid(mid);
+        if (workMajors.length === 1) {
+          major = workMajors[0];
+          if (majorEl) majorEl.value = major;
+        } else if (workMajors.length > 1) {
+          fillDatalist('listWorkMidOpts', midsFor(''));
+          if (listWorkLoadedKey) {
+            listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+            listWorkLoadedKey = '';
+            renderListWorkTable();
+          }
+          setListStatus('中項目「' + mid + '」は大項目が複数あります（' + workMajors.join('、') + '）。大項目を選んでください。', true);
+          return;
+        }
+      }
       fillDatalist('listWorkMidOpts', midsFor(major));
       var key = major + '\t' + mid;
       if (major && mid && listWorkPackExists(major, mid)) {
@@ -4231,7 +4361,7 @@
         listWorkRows = listWorkRowsFromMaster(major, mid);
         listWorkLoadedKey = key;
         renderListWorkTable();
-        setListStatus('既存の作業「' + (major ? major + ' / ' : '') + mid + '」を読みました。保存すると上書きします。');
+        setListStatus('既存の作業「' + major + ' / ' + mid + '」を読みました。保存すると上書きします。');
         return;
       }
       if (listWorkLoadedKey && listWorkLoadedKey !== key) {
@@ -4244,8 +4374,25 @@
       updateListWorkPreview();
     }
     function tryLoadPartPack() {
-      var major = $('listPartMajor').value.replace(/\u3000/g, ' ').trim();
+      var majorEl = $('listPartMajor');
+      var major = majorEl ? majorEl.value.replace(/\u3000/g, ' ').trim() : '';
       var mid = $('listPartMid').value.replace(/\u3000/g, ' ').trim();
+      if (mid && !major) {
+        var partMajors = listPartMajorsForMid(mid);
+        if (partMajors.length === 1) {
+          major = partMajors[0];
+          if (majorEl) majorEl.value = major;
+        } else if (partMajors.length > 1) {
+          fillDatalist('listPartMidOpts', partMidsFor(''));
+          if (listPartLoadedKey) {
+            listPartRows = [emptyListPartRow(), emptyListPartRow()];
+            listPartLoadedKey = '';
+            renderListPartTable();
+          }
+          setListStatus('中項目「' + mid + '」は大項目が複数あります（' + partMajors.join('、') + '）。大項目を選んでください。', true);
+          return;
+        }
+      }
       fillDatalist('listPartMidOpts', partMidsFor(major));
       var key = major + '\t' + mid;
       if (major && mid && listPartPackExists(major, mid)) {
@@ -4253,7 +4400,7 @@
         listPartRows = listPartRowsFromMaster(major, mid);
         listPartLoadedKey = key;
         renderListPartTable();
-        setListStatus('既存の部品「' + (major ? major + ' / ' : '') + mid + '」を読みました。保存すると上書きします。');
+        setListStatus('既存の部品「' + major + ' / ' + mid + '」を読みました。保存すると上書きします。');
         return;
       }
       if (listPartLoadedKey && listPartLoadedKey !== key) {
@@ -4642,7 +4789,7 @@
       if (!tab) return;
       var id = tab.getAttribute('data-job-id');
       if (!id || id === workJobId) return;
-      snapshotActiveJob(true);
+      snapshotActiveJob(false);
       loadWorkJob(id);
     });
     $('btnDraftAdd').addEventListener('click', addBlankWorkJob);
