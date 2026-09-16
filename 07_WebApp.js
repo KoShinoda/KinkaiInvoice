@@ -10,9 +10,8 @@ function invoiceAppOutput_(startView) {
   const html = raw
     .replace("var START_VIEW = 'input'; // kinkai:startView", "var START_VIEW = " + JSON.stringify(view) + "; // kinkai:startView")
     .replace("var OPERATOR_EMAIL = ''; // kinkai:operatorEmail", "var OPERATOR_EMAIL = " + JSON.stringify(email) + "; // kinkai:operatorEmail");
-  const title = view === 'search' ? '請求書検索' : '車検 請求入力';
   return HtmlService.createHtmlOutput(html)
-    .setTitle(title)
+    .setTitle('車検 請求入力')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -34,7 +33,7 @@ function openInvoiceSearchApp() {
   const html = invoiceAppOutput_('search')
     .setWidth(1900)
     .setHeight(860);
-  SpreadsheetApp.getUi().showModalDialog(html, '請求書検索');
+  SpreadsheetApp.getUi().showModalDialog(html, '車検 請求入力');
 }
 
 /**

@@ -79,6 +79,9 @@
       font-size: 12px;
       flex: 0 0 auto;
     }
+    .search-result tbody tr { cursor: pointer; }
+    .search-result tbody tr:hover { background: #f4f8f6; }
+    .search-result tbody tr.on { background: #e8f0ec; }
     #searchStatus { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
     #searchStatus.err { color: var(--danger); }
     .search-popup-back {
@@ -768,7 +771,12 @@
     .list-pack col.c-price { width: 10%; }
     .list-pack col.c-qty { width: 10%; }
     .list-pack col.c-del { width: 36px; }
-    .list-pack col.c-set { width: 46%; }
+    .list-pack col.c-ins { width: 28px; }
+    .list-pack col.c-set { width: 42%; }
+    .list-pack td.ins { overflow: visible; padding: 8px 0; }
+    .list-pack tr:hover .side-ins,
+    .list-pack .side-ins:hover,
+    .list-pack .side-ins:focus { opacity: 1; }
     .list-pack input { padding: 5px 6px; font-size: 12px; }
     .list-worker-grid { max-width: 520px; }
   </style>
@@ -782,7 +790,6 @@
     </div>
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
-      <button type="button" id="navSearch" class="tab">請求書検索</button>
       <button type="button" id="navLists" class="tab">リスト追加</button>
     </nav>
   </header>
@@ -895,44 +902,6 @@
       </div>
     </section>
   </main>
-  <main id="viewSearch" hidden>
-    <section class="card">
-      <div class="card-head">
-        <h2>請求書検索</h2>
-      </div>
-      <div class="kno-wrap" style="max-width: 420px">
-        <input id="searchKNo" placeholder="K-No" autocomplete="off">
-        <button type="button" id="btnSearchApp" class="sub">検索</button>
-      </div>
-      <p id="searchStatus"></p>
-      <div id="searchEmpty" class="invoice-empty" hidden></div>
-      <div class="search-table-wrap">
-        <table class="search-result" id="searchResultTable" hidden>
-          <colgroup>
-            <col class="c-date">
-            <col class="c-user">
-            <col class="c-plate">
-            <col class="c-bill">
-            <col class="c-mid">
-            <col class="c-n">
-            <col class="c-act">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>保存日</th>
-              <th>ユーザー</th>
-              <th>登録番号</th>
-              <th>請求日</th>
-              <th>中項目</th>
-              <th>明細</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="searchResultBody"></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
   <main id="viewLists" hidden>
     <section class="card">
       <div class="card-head">
@@ -968,6 +937,7 @@
               <col class="c-pmid">
               <col class="c-price">
               <col class="c-qty">
+              <col class="c-ins">
               <col class="c-del">
             </colgroup>
             <thead>
@@ -978,6 +948,7 @@
                 <th>部品_中項目</th>
                 <th>単価</th>
                 <th>数量</th>
+                <th class="ins-h"></th>
                 <th></th>
               </tr>
             </thead>
@@ -1011,6 +982,7 @@
               <col class="c-set">
               <col class="c-price">
               <col class="c-qty">
+              <col class="c-ins">
               <col class="c-del">
             </colgroup>
             <thead>
@@ -1018,6 +990,7 @@
                 <th>部品_セット</th>
                 <th>単価</th>
                 <th>数量</th>
+                <th class="ins-h"></th>
                 <th></th>
               </tr>
             </thead>
@@ -1119,6 +1092,7 @@
           <button type="button" id="btnPopupSearch" class="sub">検索</button>
         </div>
         <p id="popupSearchStatus"></p>
+        <p class="list-hint" id="popupSearchHint" hidden>↑↓で選んで Enter で開きます</p>
         <div id="popupSearchEmpty" class="invoice-empty" hidden></div>
         <div class="search-table-wrap">
           <table class="search-result" id="popupSearchTable" hidden>
@@ -1650,7 +1624,6 @@
       if ($('btnSaveTemplate')) $('btnSaveTemplate').disabled = busy;
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
-      if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
       if ($('btnPopupSearch')) $('btnPopupSearch').disabled = busy;
       if ($('btnDraftAdd')) $('btnDraftAdd').disabled = busy;
       ['btnListWorkSave', 'btnListPartSave', 'btnListWorkerSave',
@@ -1660,41 +1633,28 @@
     }
     function showAppView(view) {
       if (workJobs.length && view !== 'input') snapshotActiveJob(true);
-      var search = view === 'search';
       var lists = view === 'lists';
       $('viewInput').hidden = view !== 'input';
-      $('viewSearch').hidden = !search;
       if ($('viewLists')) $('viewLists').hidden = !lists;
       $('appFooter').hidden = view !== 'input';
       if ($('draftBar')) $('draftBar').hidden = view !== 'input';
       $('navInput').classList.toggle('on', view === 'input');
-      $('navSearch').classList.toggle('on', search);
       if ($('navLists')) $('navLists').classList.toggle('on', lists);
-      $('appTitle').textContent = lists ? 'リスト追加' : (search ? '請求書検索' : '車検 請求入力');
+      $('appTitle').textContent = lists ? 'リスト追加' : '車検 請求入力';
       $('appSub').textContent = '';
-      if (search && workJobId) searchReturnJobId = workJobId;
       if (lists) initListAddView();
     }
-    function searchUi(kind) {
-      if (kind === 'popup') {
-        return {
-          kNo: $('popupSearchKNo'),
-          status: $('popupSearchStatus'),
-          empty: $('popupSearchEmpty'),
-          table: $('popupSearchTable'),
-          body: $('popupSearchBody')
-        };
-      }
+    function searchUi() {
       return {
-        kNo: $('searchKNo'),
-        status: $('searchStatus'),
-        empty: $('searchEmpty'),
-        table: $('searchResultTable'),
-        body: $('searchResultBody')
+        kNo: $('popupSearchKNo'),
+        status: $('popupSearchStatus'),
+        empty: $('popupSearchEmpty'),
+        table: $('popupSearchTable'),
+        body: $('popupSearchBody')
       };
     }
     function activeSearchKind() {
-      return ($('searchPopup') && !$('searchPopup').hidden) ? 'popup' : 'page';
+      return 'popup';
     }
     function isSearchPopupOpen() {
       return !!( $('searchPopup') && !$('searchPopup').hidden );
@@ -1708,6 +1668,9 @@
       $('popupSearchEmpty').hidden = true;
       $('popupSearchTable').hidden = true;
       $('popupSearchBody').innerHTML = '';
+      if ($('popupSearchHint')) $('popupSearchHint').hidden = true;
+      searchSelectIndex = -1;
+      lastSearchKNo = '';
       if (k) {
         runAppSearch('popup');
       } else {
@@ -3872,7 +3835,7 @@
             if (ok) {
               setSearchStatus('呼び出しました（K-No ' + k + '）');
               closeSearchPopup();
-              if (goInput) showAppView('input');
+              showAppView('input');
               warnIfOthersWorking_(saveId);
             }
           } catch (err) {
@@ -3888,9 +3851,42 @@
         })
         .loadInvoiceDraft(saveId);
     }
+    var searchSelectIndex = -1;
+    var lastSearchKNo = '';
+    function searchResultRows() {
+      var body = $('popupSearchBody');
+      return body ? body.querySelectorAll('tr[data-save-id]') : [];
+    }
+    function highlightSearchRow(idx) {
+      var rows = searchResultRows();
+      if (!rows.length) {
+        searchSelectIndex = -1;
+        return;
+      }
+      if (idx < 0) idx = rows.length - 1;
+      if (idx >= rows.length) idx = 0;
+      searchSelectIndex = idx;
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.toggle('on', i === idx);
+      }
+      if (rows[idx] && rows[idx].scrollIntoView) {
+        rows[idx].scrollIntoView({ block: 'nearest' });
+      }
+    }
+    function confirmSearchSelection() {
+      var rows = searchResultRows();
+      if (searchSelectIndex < 0 || !rows[searchSelectIndex]) return false;
+      var saveId = rows[searchSelectIndex].getAttribute('data-save-id');
+      if (!saveId) return false;
+      restoreInvoice(saveId, false);
+      return true;
+    }
     function fillSearchResults(list, kNo, kind) {
       var ui = searchUi(kind || activeSearchKind());
       ui.body.innerHTML = '';
+      searchSelectIndex = -1;
+      lastSearchKNo = kNo;
+      if ($('popupSearchHint')) $('popupSearchHint').hidden = true;
       if (!list || !list.length) {
         ui.empty.hidden = false;
         ui.empty.textContent = 'K-No「' + kNo + '」の保存はありません';
@@ -3901,6 +3897,7 @@
       ui.empty.hidden = true;
       ui.table.hidden = false;
       setSearchStatus('K-No ' + kNo + ' ／ ' + list.length + ' 件', false, kind);
+      if ($('popupSearchHint')) $('popupSearchHint').hidden = false;
       list.forEach(function (row) {
         var tr = document.createElement('tr');
         tr.setAttribute('data-save-id', row.saveId || '');
@@ -3911,10 +3908,11 @@
           '<td class="clip" title="' + htmlEscape(row.firstMid || '') + '">' + htmlEscape(row.firstMid || '') + '</td>' +
           '<td>' + htmlEscape(String(row.lineCount || 0)) + '行</td>' +
           '<td><div class="row-actions">' +
-            '<button type="button" data-act="edit">編集</button>' +
+            '<button type="button" data-act="edit">開く</button>' +
           '</div></td>';
         ui.body.appendChild(tr);
       });
+      highlightSearchRow(0);
     }
     function runAppSearch(kind) {
       kind = kind || activeSearchKind();
@@ -4052,6 +4050,7 @@
       if (!tb) return;
       if (!listWorkRows.length) listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
       tb.innerHTML = listWorkRows.map(function (r, i) {
+        var last = i === listWorkRows.length - 1;
         return '<tr>' +
           '<td><input data-list-work="' + i + '" data-k="content" value=""></td>' +
           '<td><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
@@ -4059,6 +4058,10 @@
           '<td><input data-list-work="' + i + '" data-k="partMid" list="listWorkPartMidOpts" value=""></td>' +
           '<td><input data-list-work="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
           '<td><input data-list-work="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
+          '<td class="ins">' +
+            '<button type="button" class="side-ins side-ins-top" data-list-work-ins="' + i + '" tabindex="-1" title="この行の上に追加">+</button>' +
+            (last ? '<button type="button" class="side-ins" data-list-work-ins="' + (i + 1) + '" tabindex="-1" title="この行の下に追加">+</button>' : '') +
+          '</td>' +
           '<td><button type="button" class="row-del" data-list-work-del="' + i + '" title="行を削除">×</button></td>' +
           '</tr>';
       }).join('');
@@ -4074,10 +4077,15 @@
       if (!tb) return;
       if (!listPartRows.length) listPartRows = [emptyListPartRow(), emptyListPartRow()];
       tb.innerHTML = listPartRows.map(function (r, i) {
+        var last = i === listPartRows.length - 1;
         return '<tr>' +
           '<td><input data-list-part="' + i + '" data-k="set" value=""></td>' +
           '<td><input data-list-part="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
           '<td><input data-list-part="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
+          '<td class="ins">' +
+            '<button type="button" class="side-ins side-ins-top" data-list-part-ins="' + i + '" tabindex="-1" title="この行の上に追加">+</button>' +
+            (last ? '<button type="button" class="side-ins" data-list-part-ins="' + (i + 1) + '" tabindex="-1" title="この行の下に追加">+</button>' : '') +
+          '</td>' +
           '<td><button type="button" class="row-del" data-list-part-del="' + i + '" title="行を削除">×</button></td>' +
           '</tr>';
       }).join('');
@@ -4301,12 +4309,6 @@
     $('navInput').addEventListener('click', function () {
       showAppView('input');
     });
-    $('navSearch').addEventListener('click', function () {
-      var k = normalizeKNo($('kNo').value);
-      if (k) $('searchKNo').value = k;
-      showAppView('search');
-      $('searchKNo').focus();
-    });
     if ($('navLists')) {
       $('navLists').addEventListener('click', function () {
         showAppView('lists');
@@ -4366,6 +4368,14 @@
         updateListWorkPreview();
       });
       $('listWorkBody').addEventListener('click', function (e) {
+        var ins = e.target.closest('[data-list-work-ins]');
+        if (ins) {
+          collectListWorkRows();
+          var at = Number(ins.getAttribute('data-list-work-ins'));
+          listWorkRows.splice(at, 0, emptyListWorkRow());
+          renderListWorkTable();
+          return;
+        }
         var btn = e.target.closest('[data-list-work-del]');
         if (!btn) return;
         collectListWorkRows();
@@ -4386,6 +4396,14 @@
         updateListPartPreview();
       });
       $('listPartBody').addEventListener('click', function (e) {
+        var ins = e.target.closest('[data-list-part-ins]');
+        if (ins) {
+          collectListPartRows();
+          var at = Number(ins.getAttribute('data-list-part-ins'));
+          listPartRows.splice(at, 0, emptyListPartRow());
+          renderListPartTable();
+          return;
+        }
         var btn = e.target.closest('[data-list-part-del]');
         if (!btn) return;
         collectListPartRows();
@@ -4398,24 +4416,7 @@
     $('btnLoad').addEventListener('click', function () {
       openSearchPopup();
     });
-    $('btnSearchApp').addEventListener('click', function () { runAppSearch('page'); });
-    $('searchKNo').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        runAppSearch('page');
-      }
-    });
-    $('searchKNo').addEventListener('blur', function () {
-      var n = normalizeKNo($('searchKNo').value);
-      if (n || !$('searchKNo').value.trim()) $('searchKNo').value = n;
-    });
     $('btnPopupSearch').addEventListener('click', function () { runAppSearch('popup'); });
-    $('popupSearchKNo').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        runAppSearch('popup');
-      }
-    });
     $('popupSearchKNo').addEventListener('blur', function () {
       var n = normalizeKNo($('popupSearchKNo').value);
       if (n || !$('popupSearchKNo').value.trim()) $('popupSearchKNo').value = n;
@@ -4425,24 +4426,53 @@
       if (e.target === $('searchPopup')) closeSearchPopup();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && isSearchPopupOpen()) {
+      if (!isSearchPopupOpen()) return;
+      if (e.key === 'Escape') {
         e.preventDefault();
         closeSearchPopup();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlightSearchRow(searchSelectIndex < 0 ? 0 : searchSelectIndex + 1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlightSearchRow(searchSelectIndex < 0 ? 0 : searchSelectIndex - 1);
+        return;
+      }
+      if (e.key !== 'Enter' || e.repeat) return;
+      if (e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'A')) return;
+      e.preventDefault();
+      var k = normalizeKNo($('popupSearchKNo').value);
+      if (searchResultRows().length && searchSelectIndex >= 0 && k === lastSearchKNo) {
+        confirmSearchSelection();
+      } else {
+        runAppSearch('popup');
       }
     });
     function onSearchResultEdit(e) {
-      var btn = e.target.closest('button[data-act]');
-      if (!btn) return;
       var tr = e.target.closest('tr[data-save-id]');
       if (!tr) return;
-      var saveId = tr.getAttribute('data-save-id');
-      if (!saveId) return;
-      if (btn.getAttribute('data-act') === 'edit') {
-        restoreInvoice(saveId, !isSearchPopupOpen());
+      var rows = searchResultRows();
+      var idx = -1;
+      var i;
+      for (i = 0; i < rows.length; i++) {
+        if (rows[i] === tr) idx = i;
+      }
+      if (idx >= 0) highlightSearchRow(idx);
+      var btn = e.target.closest('button[data-act]');
+      if (btn && btn.getAttribute('data-act') === 'edit') {
+        restoreInvoice(tr.getAttribute('data-save-id'), false);
       }
     }
-    $('searchResultBody').addEventListener('click', onSearchResultEdit);
     $('popupSearchBody').addEventListener('click', onSearchResultEdit);
+    $('popupSearchBody').addEventListener('dblclick', function (e) {
+      var tr = e.target.closest('tr[data-save-id]');
+      if (!tr) return;
+      restoreInvoice(tr.getAttribute('data-save-id'), false);
+    });
     $('draftTabs').addEventListener('click', function (e) {
       var closeId = e.target.getAttribute && e.target.getAttribute('data-close-id');
       if (closeId) {
@@ -4558,7 +4588,8 @@
       })
       .getInvoiceMaster();
 
-    showAppView(START_VIEW === 'search' ? 'search' : 'input');
+    showAppView('input');
+    if (START_VIEW === 'search') openSearchPopup();
   </script>
 </body>
 </html>
