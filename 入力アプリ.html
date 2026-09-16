@@ -4120,6 +4120,14 @@
         el.appendChild(o);
       });
     }
+    function resetListTextInput(el) {
+      if (!el) return;
+      var listId = el.getAttribute('list');
+      el.value = '';
+      if (!listId) return;
+      el.removeAttribute('list');
+      el.setAttribute('list', listId);
+    }
     function emptyListWorkRow() {
       return { content: '', fee: '', workerCode: '', partMid: '', unitPrice: '', qty: '' };
     }
@@ -4541,24 +4549,26 @@
         listPartRows.some(listPartRowHasContent);
     }
     function clearListWorkForm() {
-      if ($('listWorkMajor')) $('listWorkMajor').value = '';
-      if ($('listWorkMid')) $('listWorkMid').value = '';
+      resetListTextInput($('listWorkMajor'));
+      resetListTextInput($('listWorkMid'));
       listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
       listWorkLoadedKey = '';
+      fillDatalist('listWorkMidOpts', midsFor(''));
       renderListWorkTable();
       setListStatus('入力を消去しました');
     }
     function clearListPartForm() {
-      if ($('listPartMajor')) $('listPartMajor').value = '';
-      if ($('listPartMid')) $('listPartMid').value = '';
+      resetListTextInput($('listPartMajor'));
+      resetListTextInput($('listPartMid'));
       listPartRows = [emptyListPartRow(), emptyListPartRow()];
       listPartLoadedKey = '';
+      fillDatalist('listPartMidOpts', partMidsFor(''));
       renderListPartTable();
       setListStatus('入力を消去しました');
     }
     function clearListWorkerForm() {
-      if ($('listWorkerCode')) $('listWorkerCode').value = '';
-      if ($('listWorkerName')) $('listWorkerName').value = '';
+      resetListTextInput($('listWorkerCode'));
+      resetListTextInput($('listWorkerName'));
       setListStatus('入力を消去しました');
     }
 
