@@ -790,6 +790,7 @@
     </div>
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
+      <button type="button" id="navSearch" class="tab">請求書検索</button>
       <button type="button" id="navLists" class="tab">リスト追加</button>
     </nav>
   </header>
@@ -1017,6 +1018,45 @@
         <div class="list-actions">
           <button type="button" id="btnListWorkerSave">作業者リストに保存</button>
         </div>
+      </div>
+    </section>
+  </main>
+  <main id="viewSearch" hidden>
+    <section class="card">
+      <div class="card-head">
+        <h2>請求書を検索</h2>
+      </div>
+      <div class="kno-wrap" style="max-width: 420px">
+        <input id="searchKNo" placeholder="K-No" autocomplete="off">
+        <button type="button" id="btnSearchApp" class="sub">検索</button>
+      </div>
+      <p id="searchStatus"></p>
+      <p class="list-hint" id="searchHint" hidden>↑↓で選んで Enter で開きます。今の入力はそのまま別タブで残ります。</p>
+      <div id="searchEmpty" class="invoice-empty" hidden></div>
+      <div class="search-table-wrap">
+        <table class="search-result" id="searchTable" hidden>
+          <colgroup>
+            <col class="c-date">
+            <col class="c-user">
+            <col class="c-plate">
+            <col class="c-bill">
+            <col class="c-mid">
+            <col class="c-n">
+            <col class="c-act">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>保存日</th>
+              <th>ユーザー</th>
+              <th>登録番号</th>
+              <th>請求日</th>
+              <th>中項目</th>
+              <th>明細</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="searchBody"></tbody>
+        </table>
       </div>
     </section>
   </main>
@@ -1625,6 +1665,7 @@
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
       if ($('btnPopupSearch')) $('btnPopupSearch').disabled = busy;
+      if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
       if ($('btnDraftAdd')) $('btnDraftAdd').disabled = busy;
       ['btnListWorkSave', 'btnListPartSave', 'btnListWorkerSave',
         'btnListWorkAddRow', 'btnListPartAddRow'].forEach(function (id) {
@@ -1634,27 +1675,55 @@
     function showAppView(view) {
       if (workJobs.length && view !== 'input') snapshotActiveJob(true);
       var lists = view === 'lists';
+      var search = view === 'search';
       $('viewInput').hidden = view !== 'input';
       if ($('viewLists')) $('viewLists').hidden = !lists;
+      if ($('viewSearch')) $('viewSearch').hidden = !search;
       $('appFooter').hidden = view !== 'input';
       if ($('draftBar')) $('draftBar').hidden = view !== 'input';
       $('navInput').classList.toggle('on', view === 'input');
+      if ($('navSearch')) $('navSearch').classList.toggle('on', search);
       if ($('navLists')) $('navLists').classList.toggle('on', lists);
-      $('appTitle').textContent = lists ? 'リスト追加' : '車検 請求入力';
+      $('appTitle').textContent = lists ? 'リスト追加' : (search ? '請求書検索' : '車検 請求入力');
       $('appSub').textContent = '';
       if (lists) initListAddView();
+      if (search) {
+        closeSearchPopup();
+        searchReturnJobId = workJobId;
+        var kno = $('searchKNo');
+        if (kno) {
+          setTimeout(function () { kno.focus(); }, 0);
+        }
+      }
     }
-    function searchUi() {
+    function searchUi(kind) {
+      kind = kind || activeSearchKind();
+      if (kind === 'app') {
+        return {
+          kNo: $('searchKNo'),
+          status: $('searchStatus'),
+          empty: $('searchEmpty'),
+          table: $('searchTable'),
+          body: $('searchBody'),
+          hint: $('searchHint')
+        };
+      }
       return {
         kNo: $('popupSearchKNo'),
         status: $('popupSearchStatus'),
         empty: $('popupSearchEmpty'),
         table: $('popupSearchTable'),
-        body: $('popupSearchBody')
+        body: $('popupSearchBody'),
+        hint: $('popupSearchHint')
       };
     }
     function activeSearchKind() {
+      if (isSearchPopupOpen()) return 'popup';
+      if ($('viewSearch') && !$('viewSearch').hidden) return 'app';
       return 'popup';
+    }
+    function isSearchKeyboardActive() {
+      return isSearchPopupOpen() || ($('viewSearch') && !$('viewSearch').hidden);
     }
     function isSearchPopupOpen() {
       return !!( $('searchPopup') && !$('searchPopup').hidden );
@@ -3854,7 +3923,7 @@
     var searchSelectIndex = -1;
     var lastSearchKNo = '';
     function searchResultRows() {
-      var body = $('popupSearchBody');
+      var body = searchUi().body;
       return body ? body.querySelectorAll('tr[data-save-id]') : [];
     }
     function highlightSearchRow(idx) {
@@ -3886,7 +3955,7 @@
       ui.body.innerHTML = '';
       searchSelectIndex = -1;
       lastSearchKNo = kNo;
-      if ($('popupSearchHint')) $('popupSearchHint').hidden = true;
+      if (ui.hint) ui.hint.hidden = true;
       if (!list || !list.length) {
         ui.empty.hidden = false;
         ui.empty.textContent = 'K-No「' + kNo + '」の保存はありません';
@@ -3897,7 +3966,7 @@
       ui.empty.hidden = true;
       ui.table.hidden = false;
       setSearchStatus('K-No ' + kNo + ' ／ ' + list.length + ' 件', false, kind);
-      if ($('popupSearchHint')) $('popupSearchHint').hidden = false;
+      if (ui.hint) ui.hint.hidden = false;
       list.forEach(function (row) {
         var tr = document.createElement('tr');
         tr.setAttribute('data-save-id', row.saveId || '');
@@ -4309,6 +4378,11 @@
     $('navInput').addEventListener('click', function () {
       showAppView('input');
     });
+    if ($('navSearch')) {
+      $('navSearch').addEventListener('click', function () {
+        showAppView('search');
+      });
+    }
     if ($('navLists')) {
       $('navLists').addEventListener('click', function () {
         showAppView('lists');
@@ -4421,15 +4495,26 @@
       var n = normalizeKNo($('popupSearchKNo').value);
       if (n || !$('popupSearchKNo').value.trim()) $('popupSearchKNo').value = n;
     });
+    if ($('btnSearchApp')) {
+      $('btnSearchApp').addEventListener('click', function () { runAppSearch('app'); });
+    }
+    if ($('searchKNo')) {
+      $('searchKNo').addEventListener('blur', function () {
+        var n = normalizeKNo($('searchKNo').value);
+        if (n || !$('searchKNo').value.trim()) $('searchKNo').value = n;
+      });
+    }
     $('searchPopupClose').addEventListener('click', closeSearchPopup);
     $('searchPopup').addEventListener('click', function (e) {
       if (e.target === $('searchPopup')) closeSearchPopup();
     });
     document.addEventListener('keydown', function (e) {
-      if (!isSearchPopupOpen()) return;
+      if (!isSearchKeyboardActive()) return;
       if (e.key === 'Escape') {
-        e.preventDefault();
-        closeSearchPopup();
+        if (isSearchPopupOpen()) {
+          e.preventDefault();
+          closeSearchPopup();
+        }
         return;
       }
       if (e.key === 'ArrowDown') {
@@ -4445,11 +4530,12 @@
       if (e.key !== 'Enter' || e.repeat) return;
       if (e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'A')) return;
       e.preventDefault();
-      var k = normalizeKNo($('popupSearchKNo').value);
+      var kind = activeSearchKind();
+      var k = normalizeKNo(searchUi(kind).kNo.value);
       if (searchResultRows().length && searchSelectIndex >= 0 && k === lastSearchKNo) {
         confirmSearchSelection();
       } else {
-        runAppSearch('popup');
+        runAppSearch(kind);
       }
     });
     function onSearchResultEdit(e) {
@@ -4473,6 +4559,14 @@
       if (!tr) return;
       restoreInvoice(tr.getAttribute('data-save-id'), false);
     });
+    if ($('searchBody')) {
+      $('searchBody').addEventListener('click', onSearchResultEdit);
+      $('searchBody').addEventListener('dblclick', function (e) {
+        var tr = e.target.closest('tr[data-save-id]');
+        if (!tr) return;
+        restoreInvoice(tr.getAttribute('data-save-id'), false);
+      });
+    }
     $('draftTabs').addEventListener('click', function (e) {
       var closeId = e.target.getAttribute && e.target.getAttribute('data-close-id');
       if (closeId) {
@@ -4588,8 +4682,7 @@
       })
       .getInvoiceMaster();
 
-    showAppView('input');
-    if (START_VIEW === 'search') openSearchPopup();
+    showAppView(START_VIEW === 'search' ? 'search' : 'input');
   </script>
 </body>
 </html>
