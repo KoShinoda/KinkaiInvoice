@@ -766,17 +766,17 @@
       text-align: left;
     }
     .list-pack th { color: var(--muted); font-weight: 600; }
-    .list-pack col.c-content { width: 22%; }
-    .list-pack col.c-fee { width: 10%; }
-    .list-pack col.c-worker { width: 16%; }
-    .list-pack col.c-pmid { width: 18%; }
-    .list-pack col.c-price { width: 10%; }
-    .list-pack col.c-qty { width: 10%; }
+    .list-pack col.c-content { width: 20%; }
+    .list-pack col.c-fee { width: 9%; }
+    .list-pack col.c-worker { width: 14%; }
+    .list-pack col.c-pmid { width: 16%; }
+    .list-pack col.c-price { width: 9%; }
+    .list-pack col.c-qty { width: 9%; }
     .list-pack col.c-del { width: 36px; }
     .list-pack col.c-ins { width: 28px; }
     .list-pack col.c-set { width: 42%; }
-    .list-pack td.ins { overflow: visible; padding: 8px 0; }
-    .list-pack tr:hover .side-ins,
+    .list-pack td.ins { text-align: center; overflow: visible; padding: 8px 0; }
+    .list-pack td.del { text-align: center; padding: 2px 0; }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
     .list-pack input { padding: 5px 6px; font-size: 12px; }
@@ -934,25 +934,29 @@
         <div class="table-wrap list-pack-wrap">
           <table class="list-pack">
             <colgroup>
+              <col class="c-ins">
               <col class="c-content">
               <col class="c-fee">
               <col class="c-worker">
+              <col class="c-del">
+              <col class="c-ins">
               <col class="c-pmid">
               <col class="c-price">
               <col class="c-qty">
-              <col class="c-ins">
               <col class="c-del">
             </colgroup>
             <thead>
               <tr>
+                <th class="ins-h"></th>
                 <th>作業内容</th>
                 <th>技術料</th>
                 <th>作業者コード</th>
+                <th class="del-h" title="技術側">削</th>
+                <th class="ins-h"></th>
                 <th>部品_中項目</th>
                 <th>単価</th>
                 <th>数量</th>
-                <th class="ins-h"></th>
-                <th></th>
+                <th class="del-h" title="部品側">削</th>
               </tr>
             </thead>
             <tbody id="listWorkBody"></tbody>
@@ -983,19 +987,19 @@
         <div class="table-wrap list-pack-wrap">
           <table class="list-pack">
             <colgroup>
+              <col class="c-ins">
               <col class="c-set">
               <col class="c-price">
               <col class="c-qty">
-              <col class="c-ins">
               <col class="c-del">
             </colgroup>
             <thead>
               <tr>
+                <th class="ins-h"></th>
                 <th>部品_セット</th>
                 <th>単価</th>
                 <th>数量</th>
-                <th class="ins-h"></th>
-                <th></th>
+                <th class="del-h">削</th>
               </tr>
             </thead>
             <tbody id="listPartBody"></tbody>
@@ -4134,12 +4138,78 @@
     function emptyListPartRow() {
       return { set: '', unitPrice: '', qty: '' };
     }
+    function listWorkHasWork(r) {
+      return !!(r && (filled(r.content) || filled(r.fee) || filled(r.workerCode)));
+    }
+    function listWorkHasPart(r) {
+      return !!(r && (filled(r.partMid) || filled(r.unitPrice) || filled(r.qty)));
+    }
     function listWorkRowHasContent(r) {
-      return !!(r && (filled(r.content) || filled(r.fee) || filled(r.workerCode) ||
-        filled(r.partMid) || filled(r.unitPrice) || filled(r.qty)));
+      return listWorkHasWork(r) || listWorkHasPart(r);
     }
     function listPartRowHasContent(r) {
       return !!(r && (filled(r.set) || filled(r.unitPrice) || filled(r.qty)));
+    }
+    function copyListWorkSide(to, from) {
+      to.content = from.content;
+      to.fee = from.fee;
+      to.workerCode = from.workerCode;
+    }
+    function copyListWorkPartSide(to, from) {
+      to.partMid = from.partMid;
+      to.unitPrice = from.unitPrice;
+      to.qty = from.qty;
+    }
+    function clearListWorkSide(r) {
+      r.content = '';
+      r.fee = '';
+      r.workerCode = '';
+    }
+    function clearListWorkPartSide(r) {
+      r.partMid = '';
+      r.unitPrice = '';
+      r.qty = '';
+    }
+    function listInsButtons(attr, i, side, label) {
+      var what = label ? (label + 'の空行') : '空行';
+      return '<button type="button" class="side-ins side-ins-top" ' + attr + '="' + i + '" data-side="' + side + '" tabindex="-1" title="この行の上に' + what + 'を挿入">+</button>' +
+        '<button type="button" class="side-ins" ' + attr + '="' + (i + 1) + '" data-side="' + side + '" tabindex="-1" title="この行の下に' + what + 'を挿入">+</button>';
+    }
+    function insertListWorkSide(at, side) {
+      if (at < 0) at = 0;
+      if (at > listWorkRows.length) at = listWorkRows.length;
+      if (at === listWorkRows.length) {
+        listWorkRows.push(emptyListWorkRow());
+        renderListWorkTable();
+        return;
+      }
+      var last = listWorkRows[listWorkRows.length - 1];
+      var lastHas = side === 'work' ? listWorkHasWork(last) : listWorkHasPart(last);
+      if (lastHas) listWorkRows.push(emptyListWorkRow());
+      var j;
+      for (j = listWorkRows.length - 1; j > at; j--) {
+        if (side === 'work') copyListWorkSide(listWorkRows[j], listWorkRows[j - 1]);
+        else copyListWorkPartSide(listWorkRows[j], listWorkRows[j - 1]);
+      }
+      if (side === 'work') clearListWorkSide(listWorkRows[at]);
+      else clearListWorkPartSide(listWorkRows[at]);
+      renderListWorkTable();
+    }
+    function deleteListWorkSide(i, side) {
+      if (i < 0 || i >= listWorkRows.length) return;
+      var j;
+      for (j = i; j < listWorkRows.length - 1; j++) {
+        if (side === 'work') copyListWorkSide(listWorkRows[j], listWorkRows[j + 1]);
+        else copyListWorkPartSide(listWorkRows[j], listWorkRows[j + 1]);
+      }
+      var last = listWorkRows[listWorkRows.length - 1];
+      if (side === 'work') clearListWorkSide(last);
+      else clearListWorkPartSide(last);
+      while (listWorkRows.length > 2 && !listWorkRowHasContent(listWorkRows[listWorkRows.length - 1])) {
+        listWorkRows.pop();
+      }
+      if (!listWorkRows.length) listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+      renderListWorkTable();
     }
     function listWorkPackExists(major, mid) {
       if (!mid) return false;
@@ -4245,19 +4315,17 @@
       if (!tb) return;
       if (!listWorkRows.length) listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
       tb.innerHTML = listWorkRows.map(function (r, i) {
-        var last = i === listWorkRows.length - 1;
         return '<tr>' +
-          '<td><input data-list-work="' + i + '" data-k="content" value=""></td>' +
-          '<td><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
-          '<td><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
-          '<td><input data-list-work="' + i + '" data-k="partMid" list="listWorkPartMidOpts" value=""></td>' +
-          '<td><input data-list-work="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
-          '<td><input data-list-work="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
-          '<td class="ins">' +
-            '<button type="button" class="side-ins side-ins-top" data-list-work-ins="' + i + '" tabindex="-1" title="この行の上に追加">+</button>' +
-            (last ? '<button type="button" class="side-ins" data-list-work-ins="' + (i + 1) + '" tabindex="-1" title="この行の下に追加">+</button>' : '') +
-          '</td>' +
-          '<td><button type="button" class="row-del" data-list-work-del="' + i + '" title="行を削除">×</button></td>' +
+          '<td class="ins side-work">' + listInsButtons('data-list-work-ins', i, 'work', '技術側') + '</td>' +
+          '<td class="side-work"><input data-list-work="' + i + '" data-k="content" value=""></td>' +
+          '<td class="side-work"><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
+          '<td class="side-work"><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
+          '<td class="del side-work"><button type="button" class="row-del" data-list-work-del="' + i + '" data-side="work" title="この行の技術側を削除して詰める">×</button></td>' +
+          '<td class="ins side-part">' + listInsButtons('data-list-work-ins', i, 'part', '部品側') + '</td>' +
+          '<td class="side-part"><input data-list-work="' + i + '" data-k="partMid" list="listWorkPartMidOpts" value=""></td>' +
+          '<td class="side-part"><input data-list-work="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
+          '<td class="side-part"><input data-list-work="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
+          '<td class="del side-part"><button type="button" class="row-del" data-list-work-del="' + i + '" data-side="part" title="この行の部品側を削除して詰める">×</button></td>' +
           '</tr>';
       }).join('');
       Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work]'), function (inp) {
@@ -4272,16 +4340,12 @@
       if (!tb) return;
       if (!listPartRows.length) listPartRows = [emptyListPartRow(), emptyListPartRow()];
       tb.innerHTML = listPartRows.map(function (r, i) {
-        var last = i === listPartRows.length - 1;
         return '<tr>' +
-          '<td><input data-list-part="' + i + '" data-k="set" value=""></td>' +
-          '<td><input data-list-part="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
-          '<td><input data-list-part="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
-          '<td class="ins">' +
-            '<button type="button" class="side-ins side-ins-top" data-list-part-ins="' + i + '" tabindex="-1" title="この行の上に追加">+</button>' +
-            (last ? '<button type="button" class="side-ins" data-list-part-ins="' + (i + 1) + '" tabindex="-1" title="この行の下に追加">+</button>' : '') +
-          '</td>' +
-          '<td><button type="button" class="row-del" data-list-part-del="' + i + '" title="行を削除">×</button></td>' +
+          '<td class="ins side-part">' + listInsButtons('data-list-part-ins', i, 'part', '') + '</td>' +
+          '<td class="side-part"><input data-list-part="' + i + '" data-k="set" value=""></td>' +
+          '<td class="side-part"><input data-list-part="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
+          '<td class="side-part"><input data-list-part="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
+          '<td class="del side-part"><button type="button" class="row-del" data-list-part-del="' + i + '" title="行を削除">×</button></td>' +
           '</tr>';
       }).join('');
       Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-part]'), function (inp) {
@@ -4665,18 +4729,13 @@
         var ins = e.target.closest('[data-list-work-ins]');
         if (ins) {
           collectListWorkRows();
-          var at = Number(ins.getAttribute('data-list-work-ins'));
-          listWorkRows.splice(at, 0, emptyListWorkRow());
-          renderListWorkTable();
+          insertListWorkSide(Number(ins.getAttribute('data-list-work-ins')), ins.getAttribute('data-side') || 'work');
           return;
         }
         var btn = e.target.closest('[data-list-work-del]');
         if (!btn) return;
         collectListWorkRows();
-        var i = Number(btn.getAttribute('data-list-work-del'));
-        listWorkRows.splice(i, 1);
-        if (!listWorkRows.length) listWorkRows.push(emptyListWorkRow());
-        renderListWorkTable();
+        deleteListWorkSide(Number(btn.getAttribute('data-list-work-del')), btn.getAttribute('data-side') || 'work');
       });
     }
     if ($('listPartBody')) {
