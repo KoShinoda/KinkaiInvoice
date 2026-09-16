@@ -935,43 +935,107 @@ function invoiceTemplateSetCell_(row, col1, val) {
   row[col1 - 1] = val == null ? '' : val;
 }
 
-function invoiceTemplateFindNameRows_(sh, cols, name) {
-  const key = normalize_(name);
-  const last = sh.getLastRow();
-  const lastCol = Math.max(sh.getLastColumn(), 1);
-  const out = { rows: [], minOrder: Number.POSITIVE_INFINITY };
-  if (last < 2 || !cols.name) {
-    return out;
+function invoiceTemplateWorkerWriteFast_(raw) {
+  if (raw === '' || raw == null) {
+    return '';
   }
-  const vals = sh.getRange(2, 1, last - 1, lastCol).getValues();
-  for (let i = 0; i < vals.length; i++) {
-    if (normalize_(cell_(vals[i], cols.name)) !== key) {
-      continue;
-    }
-    out.rows.push(i + 2);
-    const o = toOrderNumber_(cell_(vals[i], cols.order));
-    if (o < out.minOrder) {
-      out.minOrder = o;
-    }
+  if (typeof raw === 'number' && isFinite(raw)) {
+    return Math.round(raw);
   }
-  return out;
+  const s = normalize_(raw);
+  if (!s) {
+    return '';
+  }
+  const m = s.match(/^(\d+)/);
+  return m ? templateWorkerCodeWriteValue_(m[1]) : s;
 }
 
-function invoiceTemplateNextGlobalOrder_(sh, cols) {
-  const step = invoiceTemplateOrderStep_();
-  const last = sh.getLastRow();
-  if (last < 2 || !cols.order) {
-    return step;
-  }
-  const orders = sh.getRange(2, cols.order, last - 1, 1).getValues();
-  let max = 0;
-  for (let i = 0; i < orders.length; i++) {
-    const n = toOrderNumber_(orders[i][0]);
-    if (isFinite(n) && n > max) {
-      max = n;
+function invoiceTemplateScanNameOrders_(block, cols) {
+  const nameCol = cols.name || 1;
+  const orderCol = cols.order || 0;
+  const byName = {};
+  let maxOrder = 0;
+  const emptyIdx = [];
+  for (let i = 0; i < (block || []).length; i++) {
+    const name = normalize_(block[i][nameCol - 1]);
+    if (!name) {
+      continue;
+    }
+    const o = orderCol ? toOrderNumber_(block[i][orderCol - 1]) : Number.POSITIVE_INFINITY;
+    if (isFinite(o)) {
+      if (o > maxOrder) {
+        maxOrder = o;
+      }
+    } else {
+      emptyIdx.push(i);
+    }
+    if (!byName[name]) {
+      byName[name] = { rows: [], minOrder: Number.POSITIVE_INFINITY };
+    }
+    byName[name].rows.push(i + 2);
+    if (o < byName[name].minOrder) {
+      byName[name].minOrder = o;
     }
   }
-  return max > 0 ? max + step : step;
+  return { byName: byName, maxOrder: maxOrder, emptyIdx: emptyIdx };
+}
+
+function invoiceTemplateFillEmptyOrdersInBlock_(block, cols, emptyIdx, maxOrder) {
+  const orderCol = cols.order;
+  const step = invoiceTemplateOrderStep_();
+  if (!orderCol || !emptyIdx.length) {
+    return maxOrder;
+  }
+  let next = maxOrder > 0 ? maxOrder + step : step;
+  emptyIdx.forEach(function (i) {
+    block[i][orderCol - 1] = next;
+    if (next > maxOrder) {
+      maxOrder = next;
+    }
+    next += step;
+  });
+  return maxOrder;
+}
+
+function writeInvoiceTemplateBlock_(sh, existingRows, body, width) {
+  const nNew = body.length;
+  if (!existingRows || !existingRows.length) {
+    let start = Math.max(sh.getLastRow(), 1) + 1;
+    if (start < 2) {
+      start = 2;
+    }
+    sh.getRange(start, 1, nNew, width).setValues(body);
+    return;
+  }
+  const first = existingRows[0];
+  const last = existingRows[existingRows.length - 1];
+  const nOld = existingRows.length;
+  let contiguous = last - first + 1 === nOld;
+  if (contiguous) {
+    for (let i = 1; i < nOld; i++) {
+      if (existingRows[i] !== first + i) {
+        contiguous = false;
+        break;
+      }
+    }
+  }
+  if (contiguous) {
+    if (nNew > nOld) {
+      sh.insertRowsAfter(last, nNew - nOld);
+    } else if (nNew < nOld) {
+      sh.deleteRows(first + nNew, nOld - nNew);
+    }
+    sh.getRange(first, 1, nNew, width).setValues(body);
+    return;
+  }
+  for (let i = nOld - 1; i >= 0; i--) {
+    sh.deleteRow(existingRows[i]);
+  }
+  const after = sh.getLastRow();
+  if (first <= after) {
+    sh.insertRowsAfter(first - 1, nNew);
+  }
+  sh.getRange(first, 1, nNew, width).setValues(body);
 }
 
 function invoiceTemplateBodyRows_(cols, lastCol, name, header, items, startOrder, step) {
@@ -991,8 +1055,7 @@ function invoiceTemplateBodyRows_(cols, lastCol, name, header, items, startOrder
     invoiceTemplateSetCell_(row, cols.major, normalize_(item.major));
     invoiceTemplateSetCell_(row, cols.mid, normalize_(item.mid));
     invoiceTemplateSetCell_(row, cols.fee, invoiceTemplateNumericCell_(item.fee));
-    const worker = parseTemplateWorkerCodeCell_(item.workerCode);
-    invoiceTemplateSetCell_(row, cols.workerCode, worker ? templateWorkerCodeWriteValue_(worker) : '');
+    invoiceTemplateSetCell_(row, cols.workerCode, invoiceTemplateWorkerWriteFast_(item.workerCode));
     invoiceTemplateSetCell_(row, cols.partMajor, normalize_(item.partMajor));
     invoiceTemplateSetCell_(row, cols.partMid, normalize_(item.partMid));
     invoiceTemplateSetCell_(row, cols.unitPrice, invoiceTemplateNumericCell_(item.unitPrice));
@@ -1018,48 +1081,47 @@ function saveInvoiceTemplate(payload) {
   }
   const header = payload.header || {};
   const items = (payload.items || []).filter(invoiceTemplateItemHasContent_);
-  const sh = ensureInvoiceTemplateSheet_();
+  let sh = findInvoiceTemplateSheet_();
+  if (!sh) {
+    sh = ensureInvoiceTemplateSheet_();
+  }
   let overwritten = false;
+  let names = [];
   writeInternal_(function () {
-    ensureInvoiceTemplateHeaderCols_(sh);
-    assignMissingTemplateOrders_(sh);
-    const cols = invoiceTemplateHeaderMap_(sh);
     const lastCol = Math.max(sh.getLastColumn(), 1);
-    const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    let cols = resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
+    if (!cols.order) {
+      ensureInvoiceTemplateOrderCol_(sh);
+      headers = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+      cols = resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
+    }
     const width = lastDataHeaderCol_(headers);
-    const found = invoiceTemplateFindNameRows_(sh, cols, name);
+    const last = sh.getLastRow();
+    const block = last >= 2 ? sh.getRange(2, 1, last - 1, width).getValues() : [];
+    let scan = invoiceTemplateScanNameOrders_(block, cols);
+    if (scan.emptyIdx.length && cols.order) {
+      invoiceTemplateFillEmptyOrdersInBlock_(block, cols, scan.emptyIdx, scan.maxOrder);
+      sh.getRange(2, cols.order, block.length, 1).setValues(block.map(function (row) {
+        return [row[cols.order - 1]];
+      }));
+      scan = invoiceTemplateScanNameOrders_(block, cols);
+    }
+    const found = scan.byName[name] || { rows: [], minOrder: Number.POSITIVE_INFINITY };
     overwritten = found.rows.length > 0;
     const step = invoiceTemplateOrderStep_();
     const startOrder = overwritten && isFinite(found.minOrder)
       ? found.minOrder
-      : invoiceTemplateNextGlobalOrder_(sh, cols);
+      : (scan.maxOrder > 0 ? scan.maxOrder + step : step);
     const body = invoiceTemplateBodyRows_(cols, width, name, header, items, startOrder, step);
-    let startRow = 2;
-    if (overwritten) {
-      startRow = found.rows[0];
-      for (let i = found.rows.length - 1; i >= 0; i--) {
-        sh.deleteRow(found.rows[i]);
-      }
-      const last = sh.getLastRow();
-      if (startRow <= last) {
-        sh.insertRowsAfter(startRow - 1, body.length);
-      }
-    } else {
-      startRow = Math.max(sh.getLastRow(), 1) + 1;
-      if (startRow < 2) {
-        startRow = 2;
-      }
-    }
-    sh.getRange(startRow, 1, body.length, width).setValues(body);
-    applyInvoiceTemplateDropdowns_(sh);
-    applyInvoiceTemplateRowDropdowns_(sh, startRow, startRow + body.length - 1);
-    coerceInvoiceTemplateWorkerCodes_(sh, sh.getRange(startRow, 1, body.length, width));
+    writeInvoiceTemplateBlock_(sh, found.rows, body, width);
+    names = listInvoiceTemplateNamesFast_();
   });
   return invoiceJsonSafe_({
     ok: true,
     name: name,
     overwritten: overwritten,
-    names: listInvoiceTemplateNamesFast_()
+    names: names
   });
 }
 

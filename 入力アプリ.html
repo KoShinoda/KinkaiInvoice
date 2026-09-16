@@ -2220,7 +2220,7 @@
             dept: payload.header.dept,
             serviceType: payload.header.serviceType
           },
-          items: payload.items
+          items: (payload.items || []).filter(function (r) { return !rowIsEmpty(r); })
         });
     }
     function clampPct(v) {
