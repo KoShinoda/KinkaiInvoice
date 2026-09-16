@@ -211,7 +211,8 @@
       color: var(--muted);
     }
     #editBadge.editing { color: var(--accent); font-weight: 600; }
-    main { padding: 14px 18px 132px; }
+    main { padding: 14px 18px 18px; }
+    body.is-input-view main { padding-bottom: 132px; }
     .card {
       background: var(--card);
       border: 1px solid var(--line);
@@ -313,6 +314,7 @@
       align-items: flex-end;
       gap: 16px;
     }
+    footer.bar[hidden] { display: none; }
     .foot-left {
       display: flex;
       flex-direction: column;
@@ -961,6 +963,7 @@
         <div class="list-actions">
           <button type="button" id="btnListWorkAddRow" class="sub">行を追加</button>
           <button type="button" id="btnListWorkSave">作業リストに保存</button>
+          <button type="button" id="btnListWorkClear" class="ghost">全消去</button>
         </div>
       </div>
       <div id="listPanelParts" hidden>
@@ -1001,6 +1004,7 @@
         <div class="list-actions">
           <button type="button" id="btnListPartAddRow" class="sub">行を追加</button>
           <button type="button" id="btnListPartSave">部品リストに保存</button>
+          <button type="button" id="btnListPartClear" class="ghost">全消去</button>
         </div>
       </div>
       <div id="listPanelWorkers" hidden>
@@ -1017,6 +1021,7 @@
         </div>
         <div class="list-actions">
           <button type="button" id="btnListWorkerSave">作業者リストに保存</button>
+          <button type="button" id="btnListWorkerClear" class="ghost">全消去</button>
         </div>
       </div>
     </section>
@@ -1668,7 +1673,8 @@
       if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
       if ($('btnDraftAdd')) $('btnDraftAdd').disabled = busy;
       ['btnListWorkSave', 'btnListPartSave', 'btnListWorkerSave',
-        'btnListWorkAddRow', 'btnListPartAddRow'].forEach(function (id) {
+        'btnListWorkAddRow', 'btnListPartAddRow',
+        'btnListWorkClear', 'btnListPartClear', 'btnListWorkerClear'].forEach(function (id) {
         if ($(id)) $(id).disabled = busy;
       });
     }
@@ -1681,6 +1687,7 @@
       if ($('viewSearch')) $('viewSearch').hidden = !search;
       $('appFooter').hidden = view !== 'input';
       if ($('draftBar')) $('draftBar').hidden = view !== 'input';
+      document.body.classList.toggle('is-input-view', view === 'input');
       $('navInput').classList.toggle('on', view === 'input');
       if ($('navSearch')) $('navSearch').classList.toggle('on', search);
       if ($('navLists')) $('navLists').classList.toggle('on', lists);
@@ -4374,6 +4381,39 @@
         })
         .saveWorkerListItem({ name: name, code: code, overwrite: exists });
     }
+    function listWorkFormHasContent() {
+      collectListWorkRows();
+      return filled($('listWorkMajor') && $('listWorkMajor').value) ||
+        filled($('listWorkMid') && $('listWorkMid').value) ||
+        listWorkRows.some(listWorkRowHasContent);
+    }
+    function listPartFormHasContent() {
+      collectListPartRows();
+      return filled($('listPartMajor') && $('listPartMajor').value) ||
+        filled($('listPartMid') && $('listPartMid').value) ||
+        listPartRows.some(listPartRowHasContent);
+    }
+    function clearListWorkForm() {
+      if ($('listWorkMajor')) $('listWorkMajor').value = '';
+      if ($('listWorkMid')) $('listWorkMid').value = '';
+      listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+      listWorkLoadedKey = '';
+      renderListWorkTable();
+      setListStatus('入力を消去しました');
+    }
+    function clearListPartForm() {
+      if ($('listPartMajor')) $('listPartMajor').value = '';
+      if ($('listPartMid')) $('listPartMid').value = '';
+      listPartRows = [emptyListPartRow(), emptyListPartRow()];
+      listPartLoadedKey = '';
+      renderListPartTable();
+      setListStatus('入力を消去しました');
+    }
+    function clearListWorkerForm() {
+      if ($('listWorkerCode')) $('listWorkerCode').value = '';
+      if ($('listWorkerName')) $('listWorkerName').value = '';
+      setListStatus('入力を消去しました');
+    }
 
     $('navInput').addEventListener('click', function () {
       showAppView('input');
@@ -4431,6 +4471,29 @@
     if ($('btnListWorkSave')) $('btnListWorkSave').addEventListener('click', saveListWorkPack);
     if ($('btnListPartSave')) $('btnListPartSave').addEventListener('click', saveListPartPack);
     if ($('btnListWorkerSave')) $('btnListWorkerSave').addEventListener('click', saveListWorker);
+    if ($('btnListWorkClear')) {
+      $('btnListWorkClear').addEventListener('click', function () {
+        if (!listWorkFormHasContent()) return;
+        if (!window.confirm('作業リストの入力をすべて消しますか？')) return;
+        clearListWorkForm();
+      });
+    }
+    if ($('btnListPartClear')) {
+      $('btnListPartClear').addEventListener('click', function () {
+        if (!listPartFormHasContent()) return;
+        if (!window.confirm('部品リストの入力をすべて消しますか？')) return;
+        clearListPartForm();
+      });
+    }
+    if ($('btnListWorkerClear')) {
+      $('btnListWorkerClear').addEventListener('click', function () {
+        var code = $('listWorkerCode') ? $('listWorkerCode').value.replace(/\u3000/g, ' ').trim() : '';
+        var name = $('listWorkerName') ? $('listWorkerName').value.replace(/\u3000/g, ' ').trim() : '';
+        if (!code && !name) return;
+        if (!window.confirm('作業者の入力を消しますか？')) return;
+        clearListWorkerForm();
+      });
+    }
     if ($('listWorkBody')) {
       $('listWorkBody').addEventListener('input', function (e) {
         var t = e.target;
