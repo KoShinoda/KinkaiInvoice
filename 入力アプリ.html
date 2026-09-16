@@ -723,6 +723,54 @@
     button:disabled { opacity: .5; cursor: wait; }
     #status { color: var(--muted); font-size: 13px; }
     #status.err { color: var(--danger); }
+    .list-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+    .list-seg button.list-kind {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--line);
+      padding: 6px 14px;
+      font-size: 13px;
+    }
+    .list-seg button.list-kind.on {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .list-seg button.list-kind:hover { background: #e8f0ec; }
+    .list-seg button.list-kind.on:hover { background: var(--accent); }
+    #listStatus { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+    #listStatus.err { color: var(--danger); }
+    .list-preview, .list-hint { margin: 8px 0 10px; color: var(--muted); font-size: 12px; }
+    .list-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .list-pack-wrap { max-height: min(48vh, 420px); }
+    .list-pack {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .list-pack th, .list-pack td {
+      padding: 4px 6px;
+      font-size: 12px;
+      border-bottom: 1px solid #eef1f3;
+      text-align: left;
+    }
+    .list-pack th { color: var(--muted); font-weight: 600; }
+    .list-pack col.c-content { width: 22%; }
+    .list-pack col.c-fee { width: 10%; }
+    .list-pack col.c-worker { width: 16%; }
+    .list-pack col.c-pmid { width: 18%; }
+    .list-pack col.c-price { width: 10%; }
+    .list-pack col.c-qty { width: 10%; }
+    .list-pack col.c-del { width: 36px; }
+    .list-pack col.c-set { width: 46%; }
+    .list-pack input { padding: 5px 6px; font-size: 12px; }
+    .list-worker-grid { max-width: 520px; }
   </style>
 </head>
 <body>
@@ -735,6 +783,7 @@
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
       <button type="button" id="navSearch" class="tab">請求書検索</button>
+      <button type="button" id="navLists" class="tab">リスト追加</button>
     </nav>
   </header>
   <div class="draft-bar" id="draftBar">
@@ -881,6 +930,120 @@
           </thead>
           <tbody id="searchResultBody"></tbody>
         </table>
+      </div>
+    </section>
+  </main>
+  <main id="viewLists" hidden>
+    <section class="card">
+      <div class="card-head">
+        <h2>リスト追加</h2>
+        <div class="list-seg" id="listKindBar">
+          <button type="button" class="list-kind on" data-list-kind="work">作業</button>
+          <button type="button" class="list-kind" data-list-kind="parts">部品</button>
+          <button type="button" class="list-kind" data-list-kind="workers">作業者</button>
+        </div>
+      </div>
+      <p id="listStatus"></p>
+      <p class="list-hint">請求入力で選ぶときの塊を登録します。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。並びの確定はシートの更新ボタンです。</p>
+      <div id="listPanelWork">
+        <div class="grid">
+          <div>
+            <label>大項目</label>
+            <input id="listWorkMajor" list="listWorkMajorOpts" autocomplete="off">
+            <datalist id="listWorkMajorOpts"></datalist>
+          </div>
+          <div>
+            <label>中項目</label>
+            <input id="listWorkMid" list="listWorkMidOpts" autocomplete="off">
+            <datalist id="listWorkMidOpts"></datalist>
+          </div>
+        </div>
+        <p id="listWorkPreview" class="list-preview"></p>
+        <div class="table-wrap list-pack-wrap">
+          <table class="list-pack">
+            <colgroup>
+              <col class="c-content">
+              <col class="c-fee">
+              <col class="c-worker">
+              <col class="c-pmid">
+              <col class="c-price">
+              <col class="c-qty">
+              <col class="c-del">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>作業内容</th>
+                <th>技術料</th>
+                <th>作業者コード</th>
+                <th>部品_中項目</th>
+                <th>単価</th>
+                <th>数量</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="listWorkBody"></tbody>
+          </table>
+        </div>
+        <datalist id="listWorkWorkerOpts"></datalist>
+        <datalist id="listWorkPartMidOpts"></datalist>
+        <div class="list-actions">
+          <button type="button" id="btnListWorkAddRow" class="sub">行を追加</button>
+          <button type="button" id="btnListWorkSave">作業リストに保存</button>
+        </div>
+      </div>
+      <div id="listPanelParts" hidden>
+        <div class="grid">
+          <div>
+            <label>部品_大項目</label>
+            <input id="listPartMajor" list="listPartMajorOpts" autocomplete="off">
+            <datalist id="listPartMajorOpts"></datalist>
+          </div>
+          <div>
+            <label>部品_中項目</label>
+            <input id="listPartMid" list="listPartMidOpts" autocomplete="off">
+            <datalist id="listPartMidOpts"></datalist>
+          </div>
+        </div>
+        <p id="listPartPreview" class="list-preview"></p>
+        <div class="table-wrap list-pack-wrap">
+          <table class="list-pack">
+            <colgroup>
+              <col class="c-set">
+              <col class="c-price">
+              <col class="c-qty">
+              <col class="c-del">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>部品_セット</th>
+                <th>単価</th>
+                <th>数量</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="listPartBody"></tbody>
+          </table>
+        </div>
+        <div class="list-actions">
+          <button type="button" id="btnListPartAddRow" class="sub">行を追加</button>
+          <button type="button" id="btnListPartSave">部品リストに保存</button>
+        </div>
+      </div>
+      <div id="listPanelWorkers" hidden>
+        <div class="grid list-worker-grid">
+          <div>
+            <label>コード（空なら自動）</label>
+            <input id="listWorkerCode" inputmode="numeric" autocomplete="off">
+          </div>
+          <div>
+            <label>氏名</label>
+            <input id="listWorkerName" list="listWorkerNameOpts" autocomplete="off">
+            <datalist id="listWorkerNameOpts"></datalist>
+          </div>
+        </div>
+        <div class="list-actions">
+          <button type="button" id="btnListWorkerSave">作業者リストに保存</button>
+        </div>
       </div>
     </section>
   </main>
@@ -1490,19 +1653,27 @@
       if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
       if ($('btnPopupSearch')) $('btnPopupSearch').disabled = busy;
       if ($('btnDraftAdd')) $('btnDraftAdd').disabled = busy;
+      ['btnListWorkSave', 'btnListPartSave', 'btnListWorkerSave',
+        'btnListWorkAddRow', 'btnListPartAddRow'].forEach(function (id) {
+        if ($(id)) $(id).disabled = busy;
+      });
     }
     function showAppView(view) {
+      if (workJobs.length && view !== 'input') snapshotActiveJob(true);
       var search = view === 'search';
-      if (workJobs.length) snapshotActiveJob(true);
-      $('viewInput').hidden = search;
+      var lists = view === 'lists';
+      $('viewInput').hidden = view !== 'input';
       $('viewSearch').hidden = !search;
-      $('appFooter').hidden = search;
-      if ($('draftBar')) $('draftBar').hidden = search;
-      $('navInput').classList.toggle('on', !search);
+      if ($('viewLists')) $('viewLists').hidden = !lists;
+      $('appFooter').hidden = view !== 'input';
+      if ($('draftBar')) $('draftBar').hidden = view !== 'input';
+      $('navInput').classList.toggle('on', view === 'input');
       $('navSearch').classList.toggle('on', search);
-      $('appTitle').textContent = search ? '請求書検索' : '車検 請求入力';
+      if ($('navLists')) $('navLists').classList.toggle('on', lists);
+      $('appTitle').textContent = lists ? 'リスト追加' : (search ? '請求書検索' : '車検 請求入力');
       $('appSub').textContent = '';
       if (search && workJobId) searchReturnJobId = workJobId;
+      if (lists) initListAddView();
     }
     function searchUi(kind) {
       if (kind === 'popup') {
@@ -3767,6 +3938,366 @@
         })
         .listInvoiceDrafts(kNo);
     }
+
+    var listKind = 'work';
+    var listWorkRows = [];
+    var listPartRows = [];
+    var listWorkLoadedKey = '';
+    var listPartLoadedKey = '';
+
+    function setListStatus(msg, isErr) {
+      var el = $('listStatus');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.className = isErr ? 'err' : '';
+    }
+    function fillDatalist(id, values) {
+      var el = $(id);
+      if (!el) return;
+      el.innerHTML = '';
+      var seen = {};
+      (values || []).forEach(function (v) {
+        var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim();
+        if (!s || seen[s]) return;
+        seen[s] = true;
+        var o = document.createElement('option');
+        o.value = s;
+        el.appendChild(o);
+      });
+    }
+    function emptyListWorkRow() {
+      return { content: '', fee: '', workerCode: '', partMid: '', unitPrice: '', qty: '' };
+    }
+    function emptyListPartRow() {
+      return { set: '', unitPrice: '', qty: '' };
+    }
+    function listWorkRowHasContent(r) {
+      return !!(r && (filled(r.content) || filled(r.fee) || filled(r.workerCode) ||
+        filled(r.partMid) || filled(r.unitPrice) || filled(r.qty)));
+    }
+    function listPartRowHasContent(r) {
+      return !!(r && (filled(r.set) || filled(r.unitPrice) || filled(r.qty)));
+    }
+    function listWorkPackExists(major, mid) {
+      if (!mid) return false;
+      return (master.workLines || []).some(function (r) {
+        if (String(r.mid || '') !== String(mid)) return false;
+        if (major && r.major && r.major !== major) return false;
+        return true;
+      });
+    }
+    function listPartPackExists(major, mid) {
+      if (!mid) return false;
+      var m = foldKey(mid);
+      return (master.partLines || []).some(function (r) {
+        if (!r.fromParts) return false;
+        if (foldKey(r.mid) !== m) return false;
+        if (major && r.major && foldKey(r.major) !== foldKey(major)) return false;
+        return true;
+      });
+    }
+    function refreshListDatalists() {
+      fillDatalist('listWorkMajorOpts', master.majors);
+      fillDatalist('listWorkMidOpts', midsFor($('listWorkMajor') ? $('listWorkMajor').value : ''));
+      fillDatalist('listWorkWorkerOpts', workerListRows().map(function (w) { return workerLabel(w); }));
+      fillDatalist('listWorkPartMidOpts', master.allPartMids);
+      fillDatalist('listPartMajorOpts', master.partMajors);
+      fillDatalist('listPartMidOpts', partMidsFor($('listPartMajor') ? $('listPartMajor').value : ''));
+      fillDatalist('listWorkerNameOpts', workerListRows().map(function (w) { return w.name || ''; }));
+    }
+    function applyListMaster(res) {
+      if (!res || !res.master) return;
+      var m = res.master;
+      ['majors', 'allMids', 'midsByMajor', 'workLines', 'partMajors', 'allPartMids',
+        'partMidsByMajor', 'partLines', 'workers', 'workerHeaders', 'workerCodes', 'ordersPending'].forEach(function (k) {
+        if (m[k] !== undefined) master[k] = m[k];
+      });
+      refreshOptionCache();
+      fillWorkerPicker();
+      if (gridReady) renderGrid();
+      refreshListDatalists();
+    }
+    function listWorkRowsFromMaster(major, mid) {
+      var lines = linesForMid(major, mid);
+      var rows = [];
+      lines.forEach(function (r) {
+        var row = {
+          content: r.content || '',
+          fee: r.fee == null ? '' : r.fee,
+          workerCode: r.workerCode || '',
+          partMid: r.partMid || '',
+          unitPrice: r.unitPrice == null ? '' : r.unitPrice,
+          qty: r.qty == null ? '' : r.qty
+        };
+        if (listWorkRowHasContent(row)) rows.push(row);
+      });
+      return rows.length ? rows : [emptyListWorkRow(), emptyListWorkRow()];
+    }
+    function listPartRowsFromMaster(major, mid) {
+      var lines = linesForPartMid(major, mid);
+      var rows = [];
+      lines.forEach(function (r) {
+        var set = partLineName(r, mid);
+        if (foldKey(set) === foldKey(mid) && !filled(r.qty) && !filled(r.unitPrice)) return;
+        rows.push({
+          set: set,
+          unitPrice: r.unitPrice == null ? '' : r.unitPrice,
+          qty: r.qty == null ? '' : r.qty
+        });
+      });
+      return rows.length ? rows : [emptyListPartRow(), emptyListPartRow()];
+    }
+    function renderListWorkTable() {
+      var tb = $('listWorkBody');
+      if (!tb) return;
+      if (!listWorkRows.length) listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+      tb.innerHTML = listWorkRows.map(function (r, i) {
+        return '<tr>' +
+          '<td><input data-list-work="' + i + '" data-k="content" value=""></td>' +
+          '<td><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
+          '<td><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
+          '<td><input data-list-work="' + i + '" data-k="partMid" list="listWorkPartMidOpts" value=""></td>' +
+          '<td><input data-list-work="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
+          '<td><input data-list-work="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
+          '<td><button type="button" class="row-del" data-list-work-del="' + i + '" title="行を削除">×</button></td>' +
+          '</tr>';
+      }).join('');
+      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work]'), function (inp) {
+        var i = Number(inp.getAttribute('data-list-work'));
+        var k = inp.getAttribute('data-k');
+        inp.value = listWorkRows[i][k] == null ? '' : listWorkRows[i][k];
+      });
+      updateListWorkPreview();
+    }
+    function renderListPartTable() {
+      var tb = $('listPartBody');
+      if (!tb) return;
+      if (!listPartRows.length) listPartRows = [emptyListPartRow(), emptyListPartRow()];
+      tb.innerHTML = listPartRows.map(function (r, i) {
+        return '<tr>' +
+          '<td><input data-list-part="' + i + '" data-k="set" value=""></td>' +
+          '<td><input data-list-part="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
+          '<td><input data-list-part="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
+          '<td><button type="button" class="row-del" data-list-part-del="' + i + '" title="行を削除">×</button></td>' +
+          '</tr>';
+      }).join('');
+      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-part]'), function (inp) {
+        var i = Number(inp.getAttribute('data-list-part'));
+        var k = inp.getAttribute('data-k');
+        inp.value = listPartRows[i][k] == null ? '' : listPartRows[i][k];
+      });
+      updateListPartPreview();
+    }
+    function updateListWorkPreview() {
+      var n = listWorkRows.filter(listWorkRowHasContent).length;
+      var mid = $('listWorkMid') ? $('listWorkMid').value.replace(/\u3000/g, ' ').trim() : '';
+      var el = $('listWorkPreview');
+      if (!el) return;
+      if (!mid) {
+        el.textContent = '中項目を入れると、請求入力で選んだときの行数が見えます。';
+        return;
+      }
+      el.textContent = n
+        ? ('請求入力で「' + mid + '」を選ぶと、明細 ' + n + ' 行出ます。')
+        : ('中項目「' + mid + '」だけ登録します（作業内容が空の先頭行）。');
+    }
+    function updateListPartPreview() {
+      var n = listPartRows.filter(listPartRowHasContent).length;
+      var mid = $('listPartMid') ? $('listPartMid').value.replace(/\u3000/g, ' ').trim() : '';
+      var el = $('listPartPreview');
+      if (!el) return;
+      if (!mid) {
+        el.textContent = '中項目を入れると、請求入力で選んだときに出るセット数が見えます。';
+        return;
+      }
+      el.textContent = n
+        ? ('請求入力で「' + mid + '」を選ぶと、部品 ' + n + ' 件出ます。')
+        : 'セットを1行以上入力してください。';
+    }
+    function showListKind(kind) {
+      listKind = kind || 'work';
+      Array.prototype.forEach.call(document.querySelectorAll('#listKindBar button.list-kind'), function (btn) {
+        btn.classList.toggle('on', btn.getAttribute('data-list-kind') === listKind);
+      });
+      if ($('listPanelWork')) $('listPanelWork').hidden = listKind !== 'work';
+      if ($('listPanelParts')) $('listPanelParts').hidden = listKind !== 'parts';
+      if ($('listPanelWorkers')) $('listPanelWorkers').hidden = listKind !== 'workers';
+      refreshListDatalists();
+    }
+    function initListAddView() {
+      refreshListDatalists();
+      if (!listWorkRows.length) {
+        listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+        renderListWorkTable();
+      }
+      if (!listPartRows.length) {
+        listPartRows = [emptyListPartRow(), emptyListPartRow()];
+        renderListPartTable();
+      }
+      showListKind(listKind);
+      setListStatus('');
+    }
+    function tryLoadWorkPack() {
+      var major = $('listWorkMajor').value.replace(/\u3000/g, ' ').trim();
+      var mid = $('listWorkMid').value.replace(/\u3000/g, ' ').trim();
+      fillDatalist('listWorkMidOpts', midsFor(major));
+      var key = major + '\t' + mid;
+      if (major && mid && listWorkPackExists(major, mid)) {
+        if (listWorkLoadedKey === key) return;
+        listWorkRows = listWorkRowsFromMaster(major, mid);
+        listWorkLoadedKey = key;
+        renderListWorkTable();
+        setListStatus('既存の作業「' + (major ? major + ' / ' : '') + mid + '」を読みました。保存すると上書きします。');
+        return;
+      }
+      if (listWorkLoadedKey && listWorkLoadedKey !== key) {
+        listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+        listWorkLoadedKey = '';
+        renderListWorkTable();
+        setListStatus('');
+        return;
+      }
+      updateListWorkPreview();
+    }
+    function tryLoadPartPack() {
+      var major = $('listPartMajor').value.replace(/\u3000/g, ' ').trim();
+      var mid = $('listPartMid').value.replace(/\u3000/g, ' ').trim();
+      fillDatalist('listPartMidOpts', partMidsFor(major));
+      var key = major + '\t' + mid;
+      if (major && mid && listPartPackExists(major, mid)) {
+        if (listPartLoadedKey === key) return;
+        listPartRows = listPartRowsFromMaster(major, mid);
+        listPartLoadedKey = key;
+        renderListPartTable();
+        setListStatus('既存の部品「' + (major ? major + ' / ' : '') + mid + '」を読みました。保存すると上書きします。');
+        return;
+      }
+      if (listPartLoadedKey && listPartLoadedKey !== key) {
+        listPartRows = [emptyListPartRow(), emptyListPartRow()];
+        listPartLoadedKey = '';
+        renderListPartTable();
+        setListStatus('');
+        return;
+      }
+      updateListPartPreview();
+    }
+    function collectListWorkRows() {
+      var tb = $('listWorkBody');
+      if (!tb) return listWorkRows;
+      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work]'), function (inp) {
+        var i = Number(inp.getAttribute('data-list-work'));
+        var k = inp.getAttribute('data-k');
+        if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
+        listWorkRows[i][k] = inp.value;
+      });
+      return listWorkRows;
+    }
+    function collectListPartRows() {
+      var tb = $('listPartBody');
+      if (!tb) return listPartRows;
+      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-part]'), function (inp) {
+        var i = Number(inp.getAttribute('data-list-part'));
+        var k = inp.getAttribute('data-k');
+        if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
+        listPartRows[i][k] = inp.value;
+      });
+      return listPartRows;
+    }
+    function saveListWorkPack() {
+      var major = $('listWorkMajor').value.replace(/\u3000/g, ' ').trim();
+      var mid = $('listWorkMid').value.replace(/\u3000/g, ' ').trim();
+      if (!major) {
+        setListStatus('大項目を入力してください。', true);
+        return;
+      }
+      if (!mid) {
+        setListStatus('中項目を入力してください。', true);
+        return;
+      }
+      collectListWorkRows();
+      var lines = listWorkRows.filter(listWorkRowHasContent);
+      var exists = listWorkPackExists(major, mid);
+      if (exists && !window.confirm('作業「' + major + ' / ' + mid + '」を上書きします')) return;
+      setBusy(true);
+      setListStatus('作業リストに保存しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          applyListMaster(res);
+          listWorkLoadedKey = major + '\t' + mid;
+          setListStatus((res && res.overwritten ? '上書き保存' : '保存') +
+            'しました（作業「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setListStatus(err.message || String(err), true);
+        })
+        .saveWorkListPack({ major: major, mid: mid, lines: lines, overwrite: exists });
+    }
+    function saveListPartPack() {
+      var major = $('listPartMajor').value.replace(/\u3000/g, ' ').trim();
+      var mid = $('listPartMid').value.replace(/\u3000/g, ' ').trim();
+      if (!major) {
+        setListStatus('部品の大項目を入力してください。', true);
+        return;
+      }
+      if (!mid) {
+        setListStatus('部品の中項目を入力してください。', true);
+        return;
+      }
+      collectListPartRows();
+      var lines = listPartRows.filter(listPartRowHasContent);
+      if (!lines.length) {
+        setListStatus('セット（部品名）か単価・数量を1行以上入力してください。', true);
+        return;
+      }
+      var exists = listPartPackExists(major, mid);
+      if (exists && !window.confirm('部品「' + major + ' / ' + mid + '」を上書きします')) return;
+      setBusy(true);
+      setListStatus('部品リストに保存しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          applyListMaster(res);
+          listPartLoadedKey = major + '\t' + mid;
+          setListStatus((res && res.overwritten ? '上書き保存' : '保存') +
+            'しました（部品「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setListStatus(err.message || String(err), true);
+        })
+        .savePartsListPack({ major: major, mid: mid, lines: lines, overwrite: exists });
+    }
+    function saveListWorker() {
+      var name = $('listWorkerName').value.replace(/\u3000/g, ' ').trim();
+      var code = $('listWorkerCode').value.replace(/\u3000/g, ' ').trim();
+      if (!name) {
+        setListStatus('作業者の氏名を入力してください。', true);
+        return;
+      }
+      var byCode = code ? findWorker(code) : null;
+      var byName = findWorker(name);
+      var exists = !!(byCode || byName);
+      var label = (byCode && (workerLabel(byCode) || code)) || name;
+      if (exists && !window.confirm('作業者「' + label + '」を上書きします')) return;
+      setBusy(true);
+      setListStatus('作業者リストに保存しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          applyListMaster(res);
+          if (res && res.code) $('listWorkerCode').value = res.code;
+          setListStatus((res && res.overwritten ? '上書き保存' : '保存') +
+            'しました（作業者「' + (res && res.code ? res.code + '：' : '') + name + '」）。');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setListStatus(err.message || String(err), true);
+        })
+        .saveWorkerListItem({ name: name, code: code, overwrite: exists });
+    }
+
     $('navInput').addEventListener('click', function () {
       showAppView('input');
     });
@@ -3776,6 +4307,94 @@
       showAppView('search');
       $('searchKNo').focus();
     });
+    if ($('navLists')) {
+      $('navLists').addEventListener('click', function () {
+        showAppView('lists');
+      });
+    }
+    if ($('listKindBar')) {
+      $('listKindBar').addEventListener('click', function (e) {
+        var btn = e.target.closest('button.list-kind');
+        if (!btn) return;
+        showListKind(btn.getAttribute('data-list-kind'));
+        setListStatus('');
+      });
+    }
+    if ($('listWorkMajor')) {
+      $('listWorkMajor').addEventListener('change', tryLoadWorkPack);
+      $('listWorkMajor').addEventListener('blur', tryLoadWorkPack);
+      $('listWorkMid').addEventListener('change', tryLoadWorkPack);
+      $('listWorkMid').addEventListener('blur', tryLoadWorkPack);
+    }
+    if ($('listPartMajor')) {
+      $('listPartMajor').addEventListener('change', tryLoadPartPack);
+      $('listPartMajor').addEventListener('blur', tryLoadPartPack);
+      $('listPartMid').addEventListener('change', tryLoadPartPack);
+      $('listPartMid').addEventListener('blur', tryLoadPartPack);
+    }
+    if ($('listWorkerName')) {
+      $('listWorkerName').addEventListener('change', function () {
+        var w = findWorker($('listWorkerName').value);
+        if (w && w.code) $('listWorkerCode').value = w.code;
+      });
+    }
+    if ($('btnListWorkAddRow')) {
+      $('btnListWorkAddRow').addEventListener('click', function () {
+        collectListWorkRows();
+        listWorkRows.push(emptyListWorkRow());
+        renderListWorkTable();
+      });
+    }
+    if ($('btnListPartAddRow')) {
+      $('btnListPartAddRow').addEventListener('click', function () {
+        collectListPartRows();
+        listPartRows.push(emptyListPartRow());
+        renderListPartTable();
+      });
+    }
+    if ($('btnListWorkSave')) $('btnListWorkSave').addEventListener('click', saveListWorkPack);
+    if ($('btnListPartSave')) $('btnListPartSave').addEventListener('click', saveListPartPack);
+    if ($('btnListWorkerSave')) $('btnListWorkerSave').addEventListener('click', saveListWorker);
+    if ($('listWorkBody')) {
+      $('listWorkBody').addEventListener('input', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
+        var i = Number(t.getAttribute('data-list-work'));
+        var k = t.getAttribute('data-k');
+        if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
+        listWorkRows[i][k] = t.value;
+        updateListWorkPreview();
+      });
+      $('listWorkBody').addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-list-work-del]');
+        if (!btn) return;
+        collectListWorkRows();
+        var i = Number(btn.getAttribute('data-list-work-del'));
+        listWorkRows.splice(i, 1);
+        if (!listWorkRows.length) listWorkRows.push(emptyListWorkRow());
+        renderListWorkTable();
+      });
+    }
+    if ($('listPartBody')) {
+      $('listPartBody').addEventListener('input', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || !t.getAttribute('data-list-part')) return;
+        var i = Number(t.getAttribute('data-list-part'));
+        var k = t.getAttribute('data-k');
+        if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
+        listPartRows[i][k] = t.value;
+        updateListPartPreview();
+      });
+      $('listPartBody').addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-list-part-del]');
+        if (!btn) return;
+        collectListPartRows();
+        var i = Number(btn.getAttribute('data-list-part-del'));
+        listPartRows.splice(i, 1);
+        if (!listPartRows.length) listPartRows.push(emptyListPartRow());
+        renderListPartTable();
+      });
+    }
     $('btnLoad').addEventListener('click', function () {
       openSearchPopup();
     });
@@ -3897,6 +4516,7 @@
         renderGrid();
         bindPlateAreaCombo();
         initHeaderMasters();
+        if (typeof refreshListDatalists === 'function') refreshListDatalists();
         bindDateField('inDate', 'inDateCal');
         bindDateField('outDate', 'outDateCal', function (f) {
           if (f) applyDateField('billDate', 'billDateCal', f);
