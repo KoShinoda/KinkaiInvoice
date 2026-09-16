@@ -753,7 +753,12 @@
       flex-wrap: wrap;
       margin-top: 12px;
     }
-    .list-pack-wrap { max-height: min(48vh, 420px); }
+    .list-pack-wrap {
+      max-height: none;
+      overflow: visible;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
     .list-pack {
       width: 100%;
       border-collapse: collapse;
@@ -764,6 +769,7 @@
       font-size: 12px;
       border-bottom: 1px solid #eef1f3;
       text-align: left;
+      vertical-align: middle;
     }
     .list-pack th { color: var(--muted); font-weight: 600; }
     .list-pack col.c-content { width: 20%; }
@@ -772,11 +778,27 @@
     .list-pack col.c-pmid { width: 16%; }
     .list-pack col.c-price { width: 9%; }
     .list-pack col.c-qty { width: 9%; }
-    .list-pack col.c-del { width: 36px; }
-    .list-pack col.c-ins { width: 28px; }
+    .list-pack col.c-del { width: 24px; }
+    .list-pack col.c-ins { width: 16px; }
     .list-pack col.c-set { width: 42%; }
-    .list-pack td.ins { text-align: center; overflow: visible; padding: 8px 0; }
-    .list-pack td.del { text-align: center; padding: 2px 0; }
+    .list-pack th.ins-h,
+    .list-pack td.ins {
+      width: 16px;
+      padding: 8px 0;
+      text-align: center;
+      overflow: visible;
+    }
+    .list-pack th.del-h,
+    .list-pack td.del {
+      width: 24px;
+      padding: 0;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .list-pack td.del .row-del {
+      display: block;
+      margin: 0 auto;
+    }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
     .list-pack input { padding: 5px 6px; font-size: 12px; }
@@ -931,7 +953,7 @@
           </div>
         </div>
         <p id="listWorkPreview" class="list-preview"></p>
-        <div class="table-wrap list-pack-wrap">
+        <div class="list-pack-wrap">
           <table class="list-pack">
             <colgroup>
               <col class="c-ins">
@@ -984,7 +1006,7 @@
           </div>
         </div>
         <p id="listPartPreview" class="list-preview"></p>
-        <div class="table-wrap list-pack-wrap">
+        <div class="list-pack-wrap">
           <table class="list-pack">
             <colgroup>
               <col class="c-ins">
@@ -4138,6 +4160,24 @@
     function emptyListPartRow() {
       return { set: '', unitPrice: '', qty: '' };
     }
+    var LIST_PACK_EMPTY_ROWS = 5;
+    function makeBlankListRows(factory) {
+      var rows = [];
+      var i;
+      for (i = 0; i < LIST_PACK_EMPTY_ROWS; i++) rows.push(factory());
+      return rows;
+    }
+    function padListRows(rows, factory) {
+      while (rows.length < LIST_PACK_EMPTY_ROWS) rows.push(factory());
+      return rows;
+    }
+    function trimListRows(rows, hasContent, factory) {
+      while (rows.length > LIST_PACK_EMPTY_ROWS && !hasContent(rows[rows.length - 1])) {
+        rows.pop();
+      }
+      if (!rows.length) return makeBlankListRows(factory);
+      return padListRows(rows, factory);
+    }
     function listWorkHasWork(r) {
       return !!(r && (filled(r.content) || filled(r.fee) || filled(r.workerCode)));
     }
@@ -4205,10 +4245,7 @@
       var last = listWorkRows[listWorkRows.length - 1];
       if (side === 'work') clearListWorkSide(last);
       else clearListWorkPartSide(last);
-      while (listWorkRows.length > 2 && !listWorkRowHasContent(listWorkRows[listWorkRows.length - 1])) {
-        listWorkRows.pop();
-      }
-      if (!listWorkRows.length) listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+      listWorkRows = trimListRows(listWorkRows, listWorkRowHasContent, emptyListWorkRow);
       renderListWorkTable();
     }
     function listWorkPackExists(major, mid) {
@@ -4294,7 +4331,7 @@
         };
         if (listWorkRowHasContent(row)) rows.push(row);
       });
-      return rows.length ? rows : [emptyListWorkRow(), emptyListWorkRow()];
+      return padListRows(rows.length ? rows : makeBlankListRows(emptyListWorkRow), emptyListWorkRow);
     }
     function listPartRowsFromMaster(major, mid) {
       var lines = linesForPartMid(major, mid);
@@ -4308,12 +4345,13 @@
           qty: r.qty == null ? '' : r.qty
         });
       });
-      return rows.length ? rows : [emptyListPartRow(), emptyListPartRow()];
+      return padListRows(rows.length ? rows : makeBlankListRows(emptyListPartRow), emptyListPartRow);
     }
     function renderListWorkTable() {
       var tb = $('listWorkBody');
       if (!tb) return;
-      if (!listWorkRows.length) listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+      if (!listWorkRows.length) listWorkRows = makeBlankListRows(emptyListWorkRow);
+      else padListRows(listWorkRows, emptyListWorkRow);
       tb.innerHTML = listWorkRows.map(function (r, i) {
         return '<tr>' +
           '<td class="ins side-work">' + listInsButtons('data-list-work-ins', i, 'work', '技術側') + '</td>' +
@@ -4338,7 +4376,8 @@
     function renderListPartTable() {
       var tb = $('listPartBody');
       if (!tb) return;
-      if (!listPartRows.length) listPartRows = [emptyListPartRow(), emptyListPartRow()];
+      if (!listPartRows.length) listPartRows = makeBlankListRows(emptyListPartRow);
+      else padListRows(listPartRows, emptyListPartRow);
       tb.innerHTML = listPartRows.map(function (r, i) {
         return '<tr>' +
           '<td class="ins side-part">' + listInsButtons('data-list-part-ins', i, 'part', '') + '</td>' +
@@ -4397,11 +4436,11 @@
         listDatalistsReady = true;
       }
       if (!listWorkRows.length) {
-        listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+        listWorkRows = makeBlankListRows(emptyListWorkRow);
         renderListWorkTable();
       }
       if (!listPartRows.length) {
-        listPartRows = [emptyListPartRow(), emptyListPartRow()];
+        listPartRows = makeBlankListRows(emptyListPartRow);
         renderListPartTable();
       }
       showListKind(listKind);
@@ -4418,7 +4457,7 @@
         } else if (workMajors.length > 1) {
           fillDatalist('listWorkMidOpts', midsFor(''));
           if (listWorkLoadedKey) {
-            listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+            listWorkRows = makeBlankListRows(emptyListWorkRow);
             listWorkLoadedKey = '';
             renderListWorkTable();
           }
@@ -4437,7 +4476,7 @@
         return;
       }
       if (listWorkLoadedKey && listWorkLoadedKey !== key) {
-        listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+        listWorkRows = makeBlankListRows(emptyListWorkRow);
         listWorkLoadedKey = '';
         renderListWorkTable();
         setListStatus('');
@@ -4457,7 +4496,7 @@
         } else if (partMajors.length > 1) {
           fillDatalist('listPartMidOpts', partMidsFor(''));
           if (listPartLoadedKey) {
-            listPartRows = [emptyListPartRow(), emptyListPartRow()];
+            listPartRows = makeBlankListRows(emptyListPartRow);
             listPartLoadedKey = '';
             renderListPartTable();
           }
@@ -4476,7 +4515,7 @@
         return;
       }
       if (listPartLoadedKey && listPartLoadedKey !== key) {
-        listPartRows = [emptyListPartRow(), emptyListPartRow()];
+        listPartRows = makeBlankListRows(emptyListPartRow);
         listPartLoadedKey = '';
         renderListPartTable();
         setListStatus('');
@@ -4615,7 +4654,7 @@
     function clearListWorkForm() {
       resetListTextInput($('listWorkMajor'));
       resetListTextInput($('listWorkMid'));
-      listWorkRows = [emptyListWorkRow(), emptyListWorkRow()];
+      listWorkRows = makeBlankListRows(emptyListWorkRow);
       listWorkLoadedKey = '';
       fillDatalist('listWorkMidOpts', midsFor(''));
       renderListWorkTable();
@@ -4624,7 +4663,7 @@
     function clearListPartForm() {
       resetListTextInput($('listPartMajor'));
       resetListTextInput($('listPartMid'));
-      listPartRows = [emptyListPartRow(), emptyListPartRow()];
+      listPartRows = makeBlankListRows(emptyListPartRow);
       listPartLoadedKey = '';
       fillDatalist('listPartMidOpts', partMidsFor(''));
       renderListPartTable();
@@ -4762,7 +4801,7 @@
         collectListPartRows();
         var i = Number(btn.getAttribute('data-list-part-del'));
         listPartRows.splice(i, 1);
-        if (!listPartRows.length) listPartRows.push(emptyListPartRow());
+        listPartRows = trimListRows(listPartRows, listPartRowHasContent, emptyListPartRow);
         renderListPartTable();
       });
     }
