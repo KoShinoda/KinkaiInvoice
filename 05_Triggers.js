@@ -143,6 +143,7 @@ function handleEdit_(e) {
       return;
     }
     writeInternal_(function () {
+      coerceInvoiceTemplateWorkerCodes_(sheet, e.range);
       applyInvoiceTemplateRowDropdowns_(sheet, e.range.getRow(), e.range.getLastRow());
     });
     return;

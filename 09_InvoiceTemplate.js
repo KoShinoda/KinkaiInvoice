@@ -469,13 +469,137 @@ function applyInvoiceTemplateDropdowns_(sh) {
     applyOpenListValidation_(sh.getRange(2, cols.serviceType, rows, 1), service.allServiceTypes || []);
   }
   if (cols.workerCode) {
-    applyOpenListValidation_(sh.getRange(2, cols.workerCode, rows, 1), workerCodesForDropdown_());
+    const labels = workerCodeLabelsForTemplateDropdown_();
+    applyOpenListValidation_(sh.getRange(2, cols.workerCode, rows, 1), labels);
+    coerceInvoiceTemplateWorkerCodes_(sh, sh.getRange(2, cols.workerCode, rows, 1));
   }
   if (cols.partMajor) {
     applyOpenListValidation_(sh.getRange(2, cols.partMajor, rows, 1), partsDrop.partMajors || []);
   }
   if (cols.partMid) {
     applyOpenListValidation_(sh.getRange(2, cols.partMid, rows, 1), templatePartMidChoices_(''));
+  }
+}
+
+function workerCodeLabelForTemplate_(w) {
+  const code = normalize_(w && w.code);
+  const name = normalize_(w && w.name);
+  if (!code) {
+    return '';
+  }
+  return name ? (code + '：' + name) : code;
+}
+
+function workerCodeLabelsForTemplateDropdown_() {
+  const seen = {};
+  const out = [];
+  try {
+    (loadWorkers_() || []).forEach(function (w) {
+      const label = workerCodeLabelForTemplate_(w);
+      const key = normalize_(label);
+      if (!key || seen[key] || out.length >= 500) {
+        return;
+      }
+      seen[key] = true;
+      out.push(label);
+    });
+  } catch (err) {
+    Logger.log('%s workerCodeLabelsForTemplateDropdown_: %s', CONFIG.logPrefix, err);
+  }
+  return out;
+}
+
+function parseTemplateWorkerCodeCell_(raw) {
+  if (raw === '' || raw == null) {
+    return '';
+  }
+  let s = '';
+  if (typeof raw === 'number' && isFinite(raw)) {
+    s = String(Math.round(raw));
+  } else {
+    s = normalize_(raw);
+  }
+  if (!s) {
+    return '';
+  }
+  let code = '';
+  const labeled = s.match(/^(\d+)\s*[：:]\s*(.*)$/);
+  if (labeled) {
+    code = labeled[1];
+  } else if (/^\d+$/.test(s)) {
+    code = s;
+  } else {
+    try {
+      const byName = workerCodeByNameMap_();
+      if (byName[s] != null) {
+        return String(byName[s]);
+      }
+    } catch (err) {
+      Logger.log('%s parseTemplateWorkerCodeCell_: %s', CONFIG.logPrefix, err);
+    }
+    return '';
+  }
+  try {
+    const workers = loadWorkers_() || [];
+    for (let i = 0; i < workers.length; i++) {
+      if (normalize_(workers[i].code) === code) {
+        return String(workers[i].code);
+      }
+    }
+  } catch (err) {
+    Logger.log('%s parseTemplateWorkerCodeCell_ workers: %s', CONFIG.logPrefix, err);
+  }
+  return code;
+}
+
+function templateWorkerCodeWriteValue_(code) {
+  const s = String(code == null ? '' : code).trim();
+  if (/^\d+$/.test(s) && s === String(Number(s))) {
+    return Number(s);
+  }
+  return s;
+}
+
+function coerceInvoiceTemplateWorkerCodes_(sh, range) {
+  if (!sh || !range) {
+    return;
+  }
+  const cols = invoiceTemplateHeaderMap_(sh);
+  if (!cols.workerCode) {
+    return;
+  }
+  const col = cols.workerCode;
+  const c1 = range.getColumn();
+  const c2 = range.getLastColumn();
+  if (col < c1 || col > c2) {
+    return;
+  }
+  const from = Math.max(range.getRow(), 2);
+  const to = range.getLastRow();
+  if (to < from) {
+    return;
+  }
+  const cells = sh.getRange(from, col, to - from + 1, 1);
+  const vals = cells.getValues();
+  const labels = workerCodeLabelsForTemplateDropdown_();
+  let changed = false;
+  for (let i = 0; i < vals.length; i++) {
+    const parsed = parseTemplateWorkerCodeCell_(vals[i][0]);
+    if (!parsed) {
+      continue;
+    }
+    const writeVal = templateWorkerCodeWriteValue_(parsed);
+    const cur = vals[i][0];
+    const same = (typeof cur === 'number' && isFinite(cur) && Number(cur) === Number(parsed)) ||
+      normalize_(cur) === parsed;
+    if (!same) {
+      vals[i][0] = writeVal;
+      changed = true;
+    }
+    applyOpenListValidation_(sh.getRange(from + i, col), labels.concat([parsed]));
+  }
+  if (changed) {
+    cells.setValues(vals);
   }
 }
 
