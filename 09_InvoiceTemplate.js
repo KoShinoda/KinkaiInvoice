@@ -2,6 +2,7 @@
  * 入力アプリ用のテンプレート。
  * シート「テンプレートリスト」：同じテンプレート名の行＝1つの明細セット。
  * ヘッダー初期値は整備部門・整備種別。同じ名前のうち最初の値。
+ * 順番列と図形ボタン refreshInvoiceTemplateList で並べ替える。入力画面から保存できる。
  */
 
 var INVOICE_TEMPLATE_NAME_HEADER_ = 'テンプレート名';
@@ -21,7 +22,7 @@ var INVOICE_TEMPLATE_OBSOLETE_HEADERS_ = [
 ];
 
 function invoiceTemplateColumnHeaders_() {
-  return [INVOICE_TEMPLATE_NAME_HEADER_].concat(INVOICE_TEMPLATE_META_HEADERS_).concat(INVOICE_TEMPLATE_LINE_HEADERS_);
+  return [INVOICE_TEMPLATE_NAME_HEADER_].concat(INVOICE_TEMPLATE_META_HEADERS_).concat(INVOICE_TEMPLATE_LINE_HEADERS_).concat(['順番']);
 }
 
 function findInvoiceTemplateSheet_(ss) {
@@ -66,10 +67,43 @@ function listInvoiceTemplateNamesFast_() {
   const header = sh.getRange(1, 1, 1, lastCol).getValues()[0];
   const cols = resolveColumns_(header, CONFIG.invoiceTemplate.headers);
   const nameCol = cols.name || 1;
-  const vals = sh.getRange(2, nameCol, last - 1, 1).getValues();
-  return uniqueValues_(vals.map(function (row) {
-    return row[0];
-  }));
+  const orderCol = cols.order || 0;
+  if (!orderCol) {
+    const vals = sh.getRange(2, nameCol, last - 1, 1).getValues();
+    return uniqueValues_(vals.map(function (row) {
+      return row[0];
+    }));
+  }
+  const width = Math.max(nameCol, orderCol);
+  const block = sh.getRange(2, 1, last - 1, width).getValues();
+  return listInvoiceTemplateNamesFromRows_(block, nameCol, orderCol);
+}
+
+function listInvoiceTemplateNamesFromRows_(rows, nameCol, orderCol) {
+  const seen = {};
+  const meta = [];
+  for (let i = 0; i < (rows || []).length; i++) {
+    const name = normalize_(rows[i][nameCol - 1]);
+    if (!name) {
+      continue;
+    }
+    const ord = orderCol ? toOrderNumber_(rows[i][orderCol - 1]) : i + 1;
+    if (!seen[name]) {
+      seen[name] = { name: name, order: ord, idx: i };
+      meta.push(seen[name]);
+    } else if (ord < seen[name].order) {
+      seen[name].order = ord;
+    }
+  }
+  meta.sort(function (a, b) {
+    if (a.order !== b.order) {
+      return a.order - b.order;
+    }
+    return a.idx - b.idx;
+  });
+  return meta.map(function (m) {
+    return m.name;
+  });
 }
 
 /**
@@ -209,6 +243,17 @@ function removeObsoleteInvoiceTemplateCols_(sh) {
   }
 }
 
+function ensureInvoiceTemplateOrderCol_(sh) {
+  const col = ensureOrderColumnOnSheet_(sh);
+  try {
+    sh.getRange(1, col).setFontWeight('bold').setBackground('#e8f0ec');
+    sh.setColumnWidth(col, 64);
+  } catch (err) {
+    // 列幅は必須ではない。
+  }
+  return col;
+}
+
 function ensureInvoiceTemplateHeaderCols_(sh) {
   if (!sh || !isInvoiceTemplateLayout_(sh)) {
     return;
@@ -217,21 +262,21 @@ function ensureInvoiceTemplateHeaderCols_(sh) {
     const lastColBefore = sh.getLastColumn();
     removeObsoleteInvoiceTemplateCols_(sh);
     const removed = sh.getLastColumn() < lastColBefore;
-    if (invoiceTemplateMetaInPlace_(sh)) {
-      if (removed) {
-        applyInvoiceTemplateDropdowns_(sh);
-      }
-      return;
+    const needLayout = !invoiceTemplateMetaInPlace_(sh);
+    if (needLayout) {
+      ensureHeaderTitleAt_(sh, 'name', INVOICE_TEMPLATE_NAME_HEADER_, 1, 160);
+      INVOICE_TEMPLATE_META_KEYS_.forEach(function (key, i) {
+        const title = INVOICE_TEMPLATE_META_HEADERS_[i];
+        const dest = i + 2;
+        const width = key === 'serviceType' ? 100 : 90;
+        ensureHeaderTitleAt_(sh, key, title, dest, width);
+      });
+      sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
     }
-    ensureHeaderTitleAt_(sh, 'name', INVOICE_TEMPLATE_NAME_HEADER_, 1, 160);
-    INVOICE_TEMPLATE_META_KEYS_.forEach(function (key, i) {
-      const title = INVOICE_TEMPLATE_META_HEADERS_[i];
-      const dest = i + 2;
-      const width = key === 'serviceType' ? 100 : 90;
-      ensureHeaderTitleAt_(sh, key, title, dest, width);
-    });
-    sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
-    applyInvoiceTemplateDropdowns_(sh);
+    ensureInvoiceTemplateOrderCol_(sh);
+    if (removed || needLayout) {
+      applyInvoiceTemplateDropdowns_(sh);
+    }
   } catch (err) {
     // 保護などで列を足せないときは、既存の列だけで読む。
   }
@@ -252,9 +297,9 @@ function parseInvoiceTemplateSheet_() {
   if (!cols.name) {
     return empty;
   }
-  const names = [];
   const linesByName = {};
   const headerByName = {};
+  const lineMeta = {};
   for (let i = CONFIG.invoiceTemplate.headerRow; i < values.length; i++) {
     const raw = values[i];
     const tmpl = normalize_(cell_(raw, cols.name));
@@ -278,20 +323,40 @@ function parseInvoiceTemplateSheet_() {
     };
     const hasLine = !!(line.major || line.mid || isFilled_(line.fee) || line.partMajor || line.partMid ||
       isFilled_(line.qty) || isFilled_(line.unitPrice) || isFilled_(line.discYen));
+    const ord = toOrderNumber_(cell_(raw, cols.order));
     if (!hasLine) {
-      if (!linesByName[tmpl] && Object.keys(headerByName[tmpl]).length) {
-        names.push(tmpl);
+      if (!lineMeta[tmpl] && Object.keys(headerByName[tmpl]).length) {
+        lineMeta[tmpl] = [];
         linesByName[tmpl] = [];
       }
       continue;
     }
-    if (!linesByName[tmpl]) {
+    if (!lineMeta[tmpl]) {
+      lineMeta[tmpl] = [];
       linesByName[tmpl] = [];
-      names.push(tmpl);
     }
-    linesByName[tmpl].push(line);
+    lineMeta[tmpl].push({ order: ord, idx: i, line: line });
   }
-  return { names: names, linesByName: linesByName, headerByName: headerByName };
+  Object.keys(lineMeta).forEach(function (tmpl) {
+    lineMeta[tmpl].sort(function (a, b) {
+      if (a.order !== b.order) {
+        return a.order - b.order;
+      }
+      return a.idx - b.idx;
+    });
+    linesByName[tmpl] = lineMeta[tmpl].map(function (row) {
+      return row.line;
+    });
+  });
+  return {
+    names: listInvoiceTemplateNamesFromRows_(
+      values.slice(CONFIG.invoiceTemplate.headerRow),
+      cols.name || 1,
+      cols.order || 0
+    ),
+    linesByName: linesByName,
+    headerByName: headerByName
+  };
 }
 
 function pickTemplateHeader_(raw, cols) {
@@ -334,6 +399,7 @@ function templateSummaryForClient_(header) {
 function invoiceTemplateSheetNote_() {
   return '同じテンプレート名の行が、入力アプリで選んだときの明細になります。\n' +
     '整備部門・整備種別は同じ名前のうち最初に入っている値をヘッダー初期値にします。空欄は画面の値を残します。\n' +
+    '順番列でテンプレート名の並びと、同じ名前の中の行順を決めます。空欄は図形ボタン（refreshInvoiceTemplateList）で 10,20,… と埋まります。手で入れた番号は残します。\n' +
     '中項目列には、画面の中項目（作業内容）を書いてください。\n' +
     '部品は同じ行に横並びでも、作業だけの行／部品だけの行に分けても構いません。\n' +
     '合計は数量×単価から自動計算します。値引額は円（空欄可）。';
@@ -346,14 +412,15 @@ function writeInvoiceTemplateSample_(sh) {
   sh.getRange(1, 1, 1, colCount).setValues(headers);
   sh.getRange(1, 1, 1, colCount).setFontWeight('bold').setBackground('#e8f0ec');
 
-  const body = defaultInvoiceTemplateRows_().map(function (r) {
+  const body = defaultInvoiceTemplateRows_().map(function (r, i) {
     return [
       r.name,
       r.dept || '', r.serviceType || '',
       r.major || '', r.mid || '', r.fee === '' || r.fee == null ? '' : r.fee, r.workerCode || '',
       r.partMajor || '', r.partMid || '', r.unitPrice === '' || r.unitPrice == null ? '' : r.unitPrice,
       r.qty === '' || r.qty == null ? '' : r.qty,
-      r.discYen === '' || r.discYen == null ? '' : r.discYen
+      r.discYen === '' || r.discYen == null ? '' : r.discYen,
+      (i + 1) * invoiceTemplateOrderStep_()
     ];
   });
   sh.getRange(2, 1, body.length, colCount).setValues(body);
@@ -370,6 +437,7 @@ function writeInvoiceTemplateSample_(sh) {
   sh.setColumnWidth(10, 80);
   sh.setColumnWidth(11, 60);
   sh.setColumnWidth(12, 80);
+  sh.setColumnWidth(13, 64);
   sh.getRange(1, 1).setNote(invoiceTemplateSheetNote_());
 }
 
@@ -633,3 +701,365 @@ function applyInvoiceTemplateRowDropdowns_(sh, fromRow, toRow) {
     }
   }
 }
+
+function invoiceTemplateOrderStep_() {
+  return (CONFIG.listRefresh && CONFIG.listRefresh.orderStep) || 10;
+}
+
+/**
+ * 図形のボタンに割り当てる。空の順番を埋め、同じテンプレート名を固めて並べ替える。
+ */
+function refreshInvoiceTemplateList() {
+  const sh = findInvoiceTemplateSheet_();
+  if (!sh) {
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      'シート「' + CONFIG.invoiceTemplate.sheetName + '」がありません',
+      '請求書入力',
+      5
+    );
+    return;
+  }
+  writeInternal_(function () {
+    refreshInvoiceTemplateList_(sh);
+  });
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    sh.getName() + ' を順番で並べ替えました',
+    '請求書入力',
+    5
+  );
+}
+
+function refreshInvoiceTemplateList_(sh) {
+  if (!sh) {
+    return;
+  }
+  ensureInvoiceTemplateHeaderCols_(sh);
+  assignMissingTemplateOrders_(sh);
+  sortTemplateListRows_(sh);
+  applyInvoiceTemplateDropdowns_(sh);
+}
+
+function assignMissingTemplateOrders_(sh) {
+  const orderCol = ensureInvoiceTemplateOrderCol_(sh);
+  const lastRow = sh.getLastRow();
+  if (lastRow <= 1) {
+    return false;
+  }
+  const lastCol = Math.max(sh.getLastColumn(), 1);
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
+  const nameCol = cols.name || 1;
+  const height = lastRow - 1;
+  const data = sh.getRange(2, 1, height, lastCol).getValues();
+  const formulas = sh.getRange(2, 1, height, lastCol).getFormulas();
+  const orders = sh.getRange(2, orderCol, height, 1).getValues();
+  const step = invoiceTemplateOrderStep_();
+  const groups = {};
+  const keys = [];
+  let globalMax = 0;
+  for (let i = 0; i < height; i++) {
+    const n = toOrderNumber_(orders[i][0]);
+    if (isFinite(n) && n > globalMax) {
+      globalMax = n;
+    }
+    if (listRowIsEmpty_(data[i], formulas[i])) {
+      continue;
+    }
+    const name = normalize_(data[i][nameCol - 1]);
+    if (!name) {
+      continue;
+    }
+    if (!groups[name]) {
+      groups[name] = [];
+      keys.push(name);
+    }
+    groups[name].push(i);
+  }
+  const out = orders.map(function (row) {
+    return [row[0]];
+  });
+  let changed = false;
+  keys.forEach(function (name) {
+    const idxs = groups[name];
+    let maxOrd = 0;
+    let hasFilled = false;
+    idxs.forEach(function (i) {
+      const n = toOrderNumber_(out[i][0]);
+      if (isFinite(n)) {
+        hasFilled = true;
+        if (n > maxOrd) {
+          maxOrd = n;
+        }
+      }
+    });
+    let next = hasFilled ? maxOrd + step : (globalMax > 0 ? globalMax + step : step);
+    idxs.forEach(function (i) {
+      const n = toOrderNumber_(out[i][0]);
+      if (isFinite(n)) {
+        if (n > globalMax) {
+          globalMax = n;
+        }
+        return;
+      }
+      out[i][0] = next;
+      changed = true;
+      if (next > globalMax) {
+        globalMax = next;
+      }
+      next += step;
+    });
+  });
+  if (changed) {
+    sh.getRange(2, orderCol, height, 1).setValues(out);
+  }
+  return changed;
+}
+
+function sortTemplateListRows_(sh) {
+  const headerRow = 1;
+  const lastRow = sh.getLastRow();
+  if (lastRow <= headerRow) {
+    return;
+  }
+  const lastCol = Math.max(sh.getLastColumn(), 1);
+  const headers = sh.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  const dataCol = lastDataHeaderCol_(headers);
+  const cols = resolveColumns_(headers, CONFIG.invoiceTemplate.headers);
+  const nameCol = cols.name || 1;
+  const orderCol = findOrderCol_(headers) || dataCol;
+  const height = lastRow - headerRow;
+  const range = sh.getRange(headerRow + 1, 1, height, dataCol);
+  const values = range.getValues();
+  const formulas = range.getFormulas();
+  const formats = range.getNumberFormats();
+  const emptyRows = [];
+  const groups = {};
+  const groupKeys = [];
+  for (let i = 0; i < height; i++) {
+    const rec = {
+      order: orderCol <= dataCol ? values[i][orderCol - 1] : '',
+      sourceIndex: i,
+      values: values[i],
+      formulas: formulas[i],
+      formats: formats[i],
+      name: normalize_(values[i][nameCol - 1])
+    };
+    if (listRowIsEmpty_(values[i], formulas[i])) {
+      emptyRows.push(rec);
+      continue;
+    }
+    const key = rec.name || ('\0' + i);
+    if (!groups[key]) {
+      groups[key] = [];
+      groupKeys.push(key);
+    }
+    groups[key].push(rec);
+  }
+  const metas = groupKeys.map(function (key) {
+    const rows = groups[key];
+    let minOrder = Number.POSITIVE_INFINITY;
+    let minIdx = rows[0].sourceIndex;
+    rows.forEach(function (r) {
+      const o = toOrderNumber_(r.order);
+      if (o < minOrder) {
+        minOrder = o;
+      }
+      if (r.sourceIndex < minIdx) {
+        minIdx = r.sourceIndex;
+      }
+    });
+    rows.sort(function (a, b) {
+      const oa = toOrderNumber_(a.order);
+      const ob = toOrderNumber_(b.order);
+      if (oa !== ob) {
+        return oa - ob;
+      }
+      return a.sourceIndex - b.sourceIndex;
+    });
+    return { order: minOrder, idx: minIdx, rows: rows };
+  });
+  metas.sort(function (a, b) {
+    if (a.order !== b.order) {
+      return a.order - b.order;
+    }
+    return a.idx - b.idx;
+  });
+  const finalRows = [];
+  metas.forEach(function (m) {
+    m.rows.forEach(function (r) {
+      finalRows.push(r);
+    });
+  });
+  emptyRows.forEach(function (r) {
+    finalRows.push(r);
+  });
+  const outValues = [];
+  const outFormats = [];
+  for (let r = 0; r < finalRows.length; r++) {
+    const valueRow = [];
+    for (let c = 0; c < dataCol; c++) {
+      const f = finalRows[r].formulas[c];
+      valueRow.push(f ? f : finalRows[r].values[c]);
+    }
+    outValues.push(valueRow);
+    outFormats.push(finalRows[r].formats);
+  }
+  range.setValues(outValues);
+  range.setNumberFormats(outFormats);
+}
+
+function invoiceTemplateItemHasContent_(it) {
+  if (!it) {
+    return false;
+  }
+  return !!(normalize_(it.major) || normalize_(it.mid) || isFilled_(it.fee) ||
+    normalize_(it.workerCode) || normalize_(it.partMajor) || normalize_(it.partMid) ||
+    isFilled_(it.qty) || isFilled_(it.unitPrice));
+}
+
+function invoiceTemplateNumericCell_(v) {
+  if (v === '' || v == null) {
+    return '';
+  }
+  if (typeof v === 'number' && isFinite(v)) {
+    return v;
+  }
+  const n = Number(String(v).replace(/,/g, '').trim());
+  return isFinite(n) ? n : '';
+}
+
+function invoiceTemplateSetCell_(row, col1, val) {
+  if (!col1) {
+    return;
+  }
+  row[col1 - 1] = val == null ? '' : val;
+}
+
+function invoiceTemplateFindNameRows_(sh, cols, name) {
+  const key = normalize_(name);
+  const last = sh.getLastRow();
+  const lastCol = Math.max(sh.getLastColumn(), 1);
+  const out = { rows: [], minOrder: Number.POSITIVE_INFINITY };
+  if (last < 2 || !cols.name) {
+    return out;
+  }
+  const vals = sh.getRange(2, 1, last - 1, lastCol).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    if (normalize_(cell_(vals[i], cols.name)) !== key) {
+      continue;
+    }
+    out.rows.push(i + 2);
+    const o = toOrderNumber_(cell_(vals[i], cols.order));
+    if (o < out.minOrder) {
+      out.minOrder = o;
+    }
+  }
+  return out;
+}
+
+function invoiceTemplateNextGlobalOrder_(sh, cols) {
+  const step = invoiceTemplateOrderStep_();
+  const last = sh.getLastRow();
+  if (last < 2 || !cols.order) {
+    return step;
+  }
+  const orders = sh.getRange(2, cols.order, last - 1, 1).getValues();
+  let max = 0;
+  for (let i = 0; i < orders.length; i++) {
+    const n = toOrderNumber_(orders[i][0]);
+    if (isFinite(n) && n > max) {
+      max = n;
+    }
+  }
+  return max > 0 ? max + step : step;
+}
+
+function invoiceTemplateBodyRows_(cols, lastCol, name, header, items, startOrder, step) {
+  const lines = items && items.length ? items : [{}];
+  const dept = normalize_(header && header.dept);
+  const serviceType = normalize_(header && header.serviceType);
+  return lines.map(function (item, i) {
+    const row = [];
+    for (let c = 0; c < lastCol; c++) {
+      row.push('');
+    }
+    invoiceTemplateSetCell_(row, cols.name, name);
+    if (i === 0) {
+      invoiceTemplateSetCell_(row, cols.dept, dept);
+      invoiceTemplateSetCell_(row, cols.serviceType, serviceType);
+    }
+    invoiceTemplateSetCell_(row, cols.major, normalize_(item.major));
+    invoiceTemplateSetCell_(row, cols.mid, normalize_(item.mid));
+    invoiceTemplateSetCell_(row, cols.fee, invoiceTemplateNumericCell_(item.fee));
+    const worker = parseTemplateWorkerCodeCell_(item.workerCode);
+    invoiceTemplateSetCell_(row, cols.workerCode, worker ? templateWorkerCodeWriteValue_(worker) : '');
+    invoiceTemplateSetCell_(row, cols.partMajor, normalize_(item.partMajor));
+    invoiceTemplateSetCell_(row, cols.partMid, normalize_(item.partMid));
+    invoiceTemplateSetCell_(row, cols.unitPrice, invoiceTemplateNumericCell_(item.unitPrice));
+    invoiceTemplateSetCell_(row, cols.qty, invoiceTemplateNumericCell_(item.qty));
+    const disc = invoiceTemplateNumericCell_(item.discYen);
+    invoiceTemplateSetCell_(row, cols.discYen, disc === 0 ? '' : disc);
+    invoiceTemplateSetCell_(row, cols.order, startOrder + i * step);
+    return row;
+  });
+}
+
+/**
+ * 入力アプリから呼ぶ。現在の明細と整備部門・整備種別をテンプレートリストへ書く。
+ *
+ * @param {{name: string, header: object, items: object[]}} payload
+ * @return {{ok: boolean, name: string, overwritten: boolean, names: string[]}}
+ */
+function saveInvoiceTemplate(payload) {
+  payload = payload || {};
+  const name = normalize_(payload.name);
+  if (!name) {
+    throw new Error('テンプレート名を入力してください。');
+  }
+  const header = payload.header || {};
+  const items = (payload.items || []).filter(invoiceTemplateItemHasContent_);
+  const sh = ensureInvoiceTemplateSheet_();
+  let overwritten = false;
+  writeInternal_(function () {
+    ensureInvoiceTemplateHeaderCols_(sh);
+    assignMissingTemplateOrders_(sh);
+    const cols = invoiceTemplateHeaderMap_(sh);
+    const lastCol = Math.max(sh.getLastColumn(), 1);
+    const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    const width = lastDataHeaderCol_(headers);
+    const found = invoiceTemplateFindNameRows_(sh, cols, name);
+    overwritten = found.rows.length > 0;
+    const step = invoiceTemplateOrderStep_();
+    const startOrder = overwritten && isFinite(found.minOrder)
+      ? found.minOrder
+      : invoiceTemplateNextGlobalOrder_(sh, cols);
+    const body = invoiceTemplateBodyRows_(cols, width, name, header, items, startOrder, step);
+    let startRow = 2;
+    if (overwritten) {
+      startRow = found.rows[0];
+      for (let i = found.rows.length - 1; i >= 0; i--) {
+        sh.deleteRow(found.rows[i]);
+      }
+      const last = sh.getLastRow();
+      if (startRow <= last) {
+        sh.insertRowsAfter(startRow - 1, body.length);
+      }
+    } else {
+      startRow = Math.max(sh.getLastRow(), 1) + 1;
+      if (startRow < 2) {
+        startRow = 2;
+      }
+    }
+    sh.getRange(startRow, 1, body.length, width).setValues(body);
+    applyInvoiceTemplateDropdowns_(sh);
+    applyInvoiceTemplateRowDropdowns_(sh, startRow, startRow + body.length - 1);
+    coerceInvoiceTemplateWorkerCodes_(sh, sh.getRange(startRow, 1, body.length, width));
+  });
+  return invoiceJsonSafe_({
+    ok: true,
+    name: name,
+    overwritten: overwritten,
+    names: listInvoiceTemplateNamesFast_()
+  });
+}
+

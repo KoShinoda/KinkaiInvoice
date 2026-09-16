@@ -1,6 +1,7 @@
 /**
  * 作業リスト／部品リストの並べ替えと、欠けている順番・列の補完。
  * 更新は図形ボタンまたはメニューから refreshAllMasterLists を実行する（チェックは置かない）。
+ * テンプレートリストは作業リストの順番ロジックを使わず、refreshInvoiceTemplateList で並べ替える。
  * 既存の順番は上書きしない。
  */
 
@@ -74,6 +75,10 @@ function refreshAllMasterLists() {
         refreshMasterListSheet_(sheet);
       }
     });
+    const tmpl = findInvoiceTemplateSheet_(ss);
+    if (tmpl) {
+      refreshInvoiceTemplateList_(tmpl);
+    }
   });
   ss.toast('リストを順番で並べ替え、選択肢を更新しました', '請求書入力', 5);
 }
@@ -83,9 +88,21 @@ function refreshAllMasterLists() {
  */
 function refreshActiveMasterList() {
   const sheet = SpreadsheetApp.getActiveSheet();
-  if (!sheet || !isListRefreshSheet_(sheet.getName())) {
+  const name = sheet ? sheet.getName() : '';
+  if (sheet && isInvoiceTemplateSheetName_(name)) {
+    writeInternal_(function () {
+      refreshInvoiceTemplateList_(sheet);
+    });
     SpreadsheetApp.getActiveSpreadsheet().toast(
-      '作業リストまたは部品リストを表示してから実行してください',
+      name + ' を順番で並べ替えました',
+      '請求書入力',
+      5
+    );
+    return;
+  }
+  if (!sheet || !isListRefreshSheet_(name)) {
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      '作業リスト、部品リスト、またはテンプレートリストを表示してから実行してください',
       '請求書入力',
       5
     );
@@ -95,7 +112,7 @@ function refreshActiveMasterList() {
     refreshMasterListSheet_(sheet);
   });
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    sheet.getName() + ' を順番で並べ替え、選択肢を更新しました',
+    name + ' を順番で並べ替え、選択肢を更新しました',
     '請求書入力',
     5
   );
@@ -129,6 +146,10 @@ function ensureListMasterSheets_() {
     ensureInvoiceTemplateHeaderCols_(tmpl);
     applyInvoiceTemplateDropdowns_(tmpl);
   }
+}
+
+function isInvoiceTemplateSheetName_(sheetName) {
+  return sheetName === CONFIG.invoiceTemplate.sheetName || sheetName === '明細テンプレート';
 }
 
 function listMasterSheetSpecs_() {

@@ -624,8 +624,21 @@
     .header-grid .header-template {
       grid-column: 1 / -1;
     }
+    .header-grid .header-template .template-wrap {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      max-width: 560px;
+    }
     .header-grid .header-template select {
-      max-width: 420px;
+      flex: 1;
+      min-width: 0;
+      max-width: none;
+    }
+    .header-grid .header-template button {
+      flex: 0 0 auto;
+      padding: 6px 12px;
+      font-size: 13px;
     }
     .date-wrap {
       display: flex;
@@ -738,7 +751,10 @@
       <div class="grid header-grid">
         <div class="header-template">
           <label>テンプレート</label>
-          <select id="invoiceTemplate"></select>
+          <div class="template-wrap">
+            <select id="invoiceTemplate"></select>
+            <button type="button" id="btnSaveTemplate" class="sub">テンプレートとして保存</button>
+          </div>
         </div>
         <div><label>ユーザー</label><input id="userName"></div>
         <div>
@@ -1468,6 +1484,7 @@
     function setBusy(busy) {
       $('btnSave').disabled = busy;
       if ($('btnSaveNew')) $('btnSaveNew').disabled = busy;
+      if ($('btnSaveTemplate')) $('btnSaveTemplate').disabled = busy;
       $('btnLoad').disabled = busy;
       $('btnPrintSheet').disabled = busy;
       if ($('btnSearchApp')) $('btnSearchApp').disabled = busy;
@@ -2167,6 +2184,44 @@
           }
         })
         .getInvoiceTemplateLines(name);
+    }
+    function saveCurrentAsTemplate() {
+      var suggested = $('invoiceTemplate').value || '';
+      var name = window.prompt('テンプレート名を入力してください。', suggested);
+      if (name == null) return;
+      name = String(name).replace(/\u3000/g, ' ').trim();
+      if (!name) {
+        setStatus('テンプレート名を入力してください。', true);
+        return;
+      }
+      var exists = (master.templateNames || []).indexOf(name) !== -1;
+      if (exists && !window.confirm('テンプレート「' + name + '」を上書きします')) return;
+      if (!gridHasContent() && !filled($('dept').value) && !filled($('serviceType').value)) {
+        if (!window.confirm('明細とヘッダー初期値が空です。この内容で保存しますか？')) return;
+      }
+      var payload = collectPayload();
+      setBusy(true);
+      setStatus('テンプレート「' + name + '」を保存しています…');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setBusy(false);
+          master.templateNames = (res && res.names) || master.templateNames;
+          fillHeaderSelect($('invoiceTemplate'), master.templateNames, name);
+          setStatus((res && res.overwritten ? '上書き保存' : '保存') + 'しました（テンプレート「' + name + '」）');
+          snapshotActiveJob(false);
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .saveInvoiceTemplate({
+          name: name,
+          header: {
+            dept: payload.header.dept,
+            serviceType: payload.header.serviceType
+          },
+          items: payload.items
+        });
     }
     function clampPct(v) {
       var n = Math.round(num(v));
@@ -3860,6 +3915,7 @@
           snapshotActiveJob(false);
         });
         $('invoiceTemplate').addEventListener('change', onTemplatePicked);
+        if ($('btnSaveTemplate')) $('btnSaveTemplate').addEventListener('click', saveCurrentAsTemplate);
         applyDiscPctDefaults();
         initWorkJobs();
         document.addEventListener('visibilitychange', function () {

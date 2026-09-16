@@ -10,7 +10,7 @@
  * 05_Triggers.js          … onOpen / onEdit / メニュー。
  * 07_WebApp.js            … 入力 Web アプリと PDF 出力の呼び出し。
  * 08_ServiceInfo.js       … 整備情報マスタ。
- * 09_InvoiceTemplate.js   … テンプレートリストシートの読込とサンプル作成。
+ * 09_InvoiceTemplate.js   … テンプレートリストの読込・順番並べ替え・入力画面からの保存。
  * 10_ListRefresh.js       … リストの並べ替え（図形ボタン refreshAllMasterLists）。
  * 12_InvoiceSave.js       … 請求書の保存・呼び出し。
  * 13_InvoiceSearch.js     … 旧シート「請求書検索」の図形ボタンを入力アプリへ誘導。
@@ -106,6 +106,7 @@ const CONFIG = {
   /**
    * 作業リスト／部品リスト。図形に refreshAllMasterLists を割り当てて更新する。
    * 空の順番は更新時だけまとめて付ける。手で入れた順番は残す。
+   * テンプレートリストは含めない（refreshInvoiceTemplateList）。
    */
   listRefresh: {
     sheets: ['作業リスト', '部品リスト'],
@@ -124,6 +125,8 @@ const CONFIG = {
    * 入力アプリのテンプレート。
    * 同じ「テンプレート名」の行が、選んだときの明細になる。
    * ヘッダー初期値は整備部門・整備種別。同じ名前のうち最初の値。空欄は上書きしない。
+   * 末尾の順番列で名前の並びと行順を決める。空の順番は更新時だけ step 10 で埋める（手入力は残す）。
+   * 図形には refreshInvoiceTemplateList を割り当てる。refreshAllMasterLists でも同時に更新する。
    */
   invoiceTemplate: {
     sheetName: 'テンプレートリスト',
@@ -140,7 +143,8 @@ const CONFIG = {
       qty: ['数量'],
       discYen: ['値引額', '値引'],
       dept: ['整備部門', '部門'],
-      serviceType: ['整備種別', '種別']
+      serviceType: ['整備種別', '種別'],
+      order: ['順番', '表示順']
     }
   },
 
