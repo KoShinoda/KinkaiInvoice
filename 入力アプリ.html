@@ -821,7 +821,25 @@
     }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
+    .list-pack td { vertical-align: top; }
     .list-pack input { padding: 5px 6px; font-size: 12px; }
+    .list-pack textarea {
+      display: block;
+      width: 100%;
+      resize: none;
+      overflow: hidden;
+      height: 28px;
+      min-height: 28px;
+      line-height: 1.35;
+      padding: 5px 6px;
+      font: inherit;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      box-sizing: border-box;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .list-worker-grid { max-width: 520px; }
   </style>
 </head>
@@ -3387,8 +3405,15 @@
     function isMidTextarea(el) {
       return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid'));
     }
+    function isGrowTextarea(el) {
+      if (!el || String(el.tagName || '').toLowerCase() !== 'textarea') return false;
+      return isMidTextarea(el) || !!(el.dataset && el.dataset.k === 'content');
+    }
+    function isNewlineEnter(e) {
+      return !!(e && e.key === 'Enter' && (e.ctrlKey || e.altKey || e.shiftKey));
+    }
     function fitMidHeight(el) {
-      if (!isMidTextarea(el)) return;
+      if (!isGrowTextarea(el)) return;
       var v = el.value || '';
       el.style.whiteSpace = 'pre-wrap';
       if (!v || v.indexOf('\n') === -1) {
@@ -3406,8 +3431,7 @@
       el.style.overflow = el.scrollHeight > maxH ? 'auto' : 'hidden';
     }
     function insertMidNewline(el) {
-      if (!isMidTextarea(el)) return;
-      var i = Number(el.dataset.i);
+      if (!isGrowTextarea(el)) return;
       var start = el.selectionStart;
       var end = el.selectionEnd;
       if (start == null) start = el.value.length;
@@ -3415,7 +3439,15 @@
       var v = String(el.value || '');
       el.value = v.slice(0, start) + '\n' + v.slice(end);
       el.selectionStart = el.selectionEnd = start + 1;
-      if (items[i]) items[i][el.dataset.k] = el.value;
+      var k = el.dataset.k;
+      if (el.getAttribute('data-list-work') != null) {
+        var li = Number(el.getAttribute('data-list-work'));
+        if (!listWorkRows[li]) listWorkRows[li] = emptyListWorkRow();
+        listWorkRows[li][k] = el.value;
+      } else {
+        var i = Number(el.dataset.i);
+        if (items[i]) items[i][k] = el.value;
+      }
       fitMidHeight(el);
     }
     function comboOptionLabel(v) {
@@ -3431,6 +3463,13 @@
     }
     function ensureMidOptions(input) {
       if (!input || (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid')) return;
+      if (input.getAttribute('data-list-work') != null) {
+        if (input.dataset.optKey !== 'allPartMids' || !input.dataset.options) {
+          input.dataset.options = JSON.stringify(master.allPartMids || []);
+          input.dataset.optKey = 'allPartMids';
+        }
+        return;
+      }
       var i = Number(input.dataset.i);
       var it = items[i] || emptyRow();
       if (input.dataset.k === 'mid') {
@@ -3965,7 +4004,7 @@
         moveRight(e.target, e.shiftKey ? -1 : 1);
         return;
       }
-      if (e.key === 'Enter' && isMidTextarea(e.target) && (e.ctrlKey || e.altKey)) {
+      if (isGrowTextarea(e.target) && isNewlineEnter(e)) {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
         insertMidNewline(e.target);
@@ -4504,22 +4543,30 @@
       tb.innerHTML = listWorkRows.map(function (r, i) {
         return '<tr>' +
           '<td class="ins side-work">' + listInsButtons('data-list-work-ins', i, 'work', '技術側') + '</td>' +
-          '<td class="side-work"><input data-list-work="' + i + '" data-k="content" value=""></td>' +
+          '<td class="side-work"><textarea data-list-work="' + i + '" data-k="content" rows="1" autocomplete="off" title="Alt+Enter または Shift+Enter で改行"></textarea></td>' +
           '<td class="gap side-work"></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
           '<td class="del side-work"><button type="button" class="row-del" data-list-work-del="' + i + '" data-side="work" title="この行の技術側を削除して詰める">×</button></td>' +
           '<td class="ins side-part">' + listInsButtons('data-list-work-ins', i, 'part', '部品側') + '</td>' +
-          '<td class="side-part"><input data-list-work="' + i + '" data-k="partMid" list="listWorkPartMidOpts" value=""></td>' +
+          '<td class="side-part"><div class="combo">' +
+            '<textarea data-list-work="' + i + '" data-k="partMid" rows="1" autocomplete="off" title="Alt+Enter または Shift+Enter で改行"></textarea>' +
+            '<div class="combo-list" hidden></div>' +
+          '</div></td>' +
           '<td class="side-part"><input data-list-work="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
           '<td class="side-part"><input data-list-work="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
           '<td class="del side-part"><button type="button" class="row-del" data-list-work-del="' + i + '" data-side="part" title="この行の部品側を削除して詰める">×</button></td>' +
           '</tr>';
       }).join('');
-      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work]'), function (inp) {
+      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work], textarea[data-list-work]'), function (inp) {
         var i = Number(inp.getAttribute('data-list-work'));
         var k = inp.getAttribute('data-k');
         inp.value = listWorkRows[i][k] == null ? '' : listWorkRows[i][k];
+        if (k === 'partMid') {
+          inp.dataset.options = JSON.stringify(master.allPartMids || []);
+          inp.dataset.optKey = 'allPartMids';
+        }
+        if (inp.tagName === 'TEXTAREA') fitMidHeight(inp);
       });
       updateListWorkPreview();
     }
@@ -4673,10 +4720,25 @@
       }
       updateListPartPreview();
     }
+    function focusListWorkCell(i, k) {
+      var tb = $('listWorkBody');
+      if (!tb) return;
+      var el = tb.querySelector('[data-list-work="' + i + '"][data-k="' + k + '"]');
+      if (!el) return;
+      el.focus();
+      try { el.select(); } catch (err) {}
+    }
+    function moveListWorkField(el, dir) {
+      var i = Number(el.getAttribute('data-list-work'));
+      var k = el.getAttribute('data-k');
+      var next = i + dir;
+      if (next < 0 || next >= listWorkRows.length) return;
+      focusListWorkCell(next, k);
+    }
     function collectListWorkRows() {
       var tb = $('listWorkBody');
       if (!tb) return listWorkRows;
-      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work]'), function (inp) {
+      Array.prototype.forEach.call(tb.querySelectorAll('input[data-list-work], textarea[data-list-work]'), function (inp) {
         var i = Number(inp.getAttribute('data-list-work'));
         var k = inp.getAttribute('data-k');
         if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
@@ -4961,18 +5023,90 @@
         var k = t.getAttribute('data-k');
         if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
         listWorkRows[i][k] = t.value;
+        if (k === 'partMid') {
+          rememberComboQuery(t);
+          showComboList(t);
+        }
+        if (isGrowTextarea(t)) fitMidHeight(t);
         updateListWorkPreview();
+      });
+      $('listWorkBody').addEventListener('focusin', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
+        if (t.getAttribute('data-k') === 'partMid') {
+          hideComboLists();
+          rememberComboQuery(t);
+          showComboList(t);
+          try { t.select(); } catch (err) {}
+        }
+        if (isGrowTextarea(t)) fitMidHeight(t);
+      });
+      $('listWorkBody').addEventListener('mousedown', function (e) {
+        var opt = e.target.closest('.combo-list div');
+        if (!opt) return;
+        e.preventDefault();
+        var input = opt.parentNode.parentNode.querySelector('textarea[data-k="partMid"]');
+        if (!input) return;
+        var chosen = comboChosenValue(comboFilterQuery, comboDivValue(opt));
+        input.value = chosen;
+        hideComboLists();
+        comboIgnoreBlur = true;
+        var i = Number(input.getAttribute('data-list-work'));
+        if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
+        listWorkRows[i].partMid = chosen;
+        fitMidHeight(input);
+      });
+      $('listWorkBody').addEventListener('keydown', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
+        var k = t.getAttribute('data-k');
+        if (isGrowTextarea(t) && isNewlineEnter(e)) {
+          if (e.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          insertMidNewline(t);
+          return;
+        }
+        if (e.key === 'Enter') {
+          if (e.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          if (k === 'partMid') confirmComboIfOpen(t);
+          if (k === 'partMid') {
+            var i = Number(t.getAttribute('data-list-work'));
+            if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
+            listWorkRows[i].partMid = t.value;
+          }
+          hideComboLists();
+          moveListWorkField(t, 1);
+          return;
+        }
+        if (k === 'partMid' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+          if (e.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          moveComboHighlight(t, e.key === 'ArrowDown' ? 1 : -1);
+          return;
+        }
+        if (e.key === 'Escape') hideComboLists();
       });
       $('listWorkBody').addEventListener('focusout', function (e) {
         var t = e.target;
         if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
         var k = t.getAttribute('data-k');
-        if (k !== 'fee' && k !== 'unitPrice' && k !== 'qty') return;
-        var i = Number(t.getAttribute('data-list-work'));
-        if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
-        var next = coerceListNumber(t.value);
-        listWorkRows[i][k] = next.value;
-        if (t.value !== next.value) t.value = next.value;
+        if (k === 'fee' || k === 'unitPrice' || k === 'qty') {
+          var i = Number(t.getAttribute('data-list-work'));
+          if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
+          var next = coerceListNumber(t.value);
+          listWorkRows[i][k] = next.value;
+          if (t.value !== next.value) t.value = next.value;
+        }
+        if (k === 'partMid') {
+          var pi = Number(t.getAttribute('data-list-work'));
+          if (!listWorkRows[pi]) listWorkRows[pi] = emptyListWorkRow();
+          listWorkRows[pi].partMid = t.value;
+          setTimeout(function () {
+            if (document.activeElement === t) return;
+            hideComboLists();
+          }, 120);
+        }
       });
       $('listWorkBody').addEventListener('click', function (e) {
         var ins = e.target.closest('[data-list-work-ins]');
