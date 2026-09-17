@@ -404,7 +404,11 @@
       position: relative;
       overflow: visible;
     }
-    td.del { text-align: center; padding: 2px 0; }
+    td.del {
+      text-align: center;
+      padding: 4px 0 2px;
+      vertical-align: top;
+    }
     th.del-h { text-align: center; }
     button.side-ins {
       position: absolute;
@@ -793,9 +797,9 @@
       width: 22px;
       min-width: 22px;
       max-width: 22px;
-      padding: 0;
+      padding: 4px 0 0;
       text-align: left;
-      vertical-align: middle;
+      vertical-align: top;
       box-sizing: border-box;
     }
     .list-pack th:has(+ .del-h),
@@ -3520,8 +3524,13 @@
       }
       var list = comboListEl(input);
       if (!list || list.hidden || !list.children.length) return false;
+      var typed = isMidPartCombo(input) ? comboFilterQuery : String(input.value || '');
+      var hasTyped = !!String(typed || '').replace(/\u3000/g, ' ').trim();
       var idx = comboActiveIndex;
-      if (idx < 0) idx = 0;
+      if (idx < 0) {
+        if (!hasTyped) return false;
+        idx = 0;
+      }
       var picked = '';
       while (idx < list.children.length) {
         picked = comboDivValue(list.children[idx]);
