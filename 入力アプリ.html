@@ -954,7 +954,7 @@
         </div>
       </div>
       <p id="listStatus"></p>
-      <p class="list-hint">請求入力では中項目は選択肢です。選ぶと作業内容だけが明細になります。技術料は作業内容の行に付けます。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。並びの確定はシートのリスト更新です。</p>
+      <p class="list-hint">請求入力では中項目は選択肢です。作業は作業内容、部品は部品_セットが明細になります。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。並びの確定はシートのリスト更新です。</p>
       <div id="listPanelWork">
         <div class="grid">
           <div>
@@ -2763,20 +2763,15 @@
       });
       return sortMasterLines(fromOther);
     }
-    function partLineName(w, setMid) {
+    function partSetName(w) {
       var setName = String(w && w.set != null ? w.set : '').replace(/\u3000/g, ' ').trim();
-      var c = String(w && w.content != null ? w.content : '').replace(/\u3000/g, ' ').trim();
-      var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
-      var qn = String(w && w.qty != null ? w.qty : '').replace(/\u3000/g, ' ').trim();
-      var selected = String(setMid || '').trim();
-      if (setName && !numericCell(setName) && foldKey(setName) !== foldKey(selected)) return setName;
-      if (c && !numericCell(c) && foldKey(c) !== foldKey(selected)) return c;
-      if (qn && !numericCell(qn) && foldKey(qn) !== foldKey(selected)) return qn;
-      if (pm && !numericCell(pm) && foldKey(pm) !== foldKey(selected)) return pm;
       if (setName && !numericCell(setName)) return setName;
+      var c = String(w && w.content != null ? w.content : '').replace(/\u3000/g, ' ').trim();
       if (c && !numericCell(c)) return c;
+      if (w && w.fromParts) return '';
+      var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
       if (pm && !numericCell(pm)) return pm;
-      return selected;
+      return '';
     }
 
     var optHtml = { major: '', partMajor: '' };
@@ -3267,52 +3262,48 @@
       if (alreadyExpanded('part:' + rowIndex + ':' + foldKey(it.partMajor || '') + ':' + foldKey(mid))) return;
       var group = linesForPartMid(it.partMajor, mid);
       if (!group.length) group = linesForPartMid('', mid);
-      var works = group.filter(function (r) {
-        var name = partLineName(r, mid);
-        return filled(name) && foldKey(name) !== foldKey(mid);
-      });
-      var named = [];
-      var seenName = {};
-      works.forEach(function (w) {
-        var name = partLineName(w, mid);
-        if (!name || numericCell(name) || foldKey(name) === foldKey(mid) || seenName[foldKey(name)]) return;
-        seenName[foldKey(name)] = true;
-        named.push(w);
-      });
+      var sets = group.filter(function (r) { return filled(partSetName(r)); });
       if (!it.partMajor && group[0] && (group[0].partMajor || group[0].major)) {
         it.partMajor = group[0].partMajor || group[0].major;
       }
 
-      if (!named.length) {
-        var only = group[0];
-        if (only) {
-          it.qty = measureQty(only.qty);
-          it.unitPrice = measurePrice(only.unitPrice);
-          it.discYen = 0;
-          calcFromQtyPrice(it);
-        }
+      if (!sets.length) {
+        it.partMid = '';
+        it.qty = '';
+        it.unitPrice = '';
+        it.amount = '';
+        it.discYen = 0;
+        refreshKind(it);
         compactItems();
         renderGrid();
-        setStatus('部品中項目「' + mid + '」を入力しました');
+        setStatus('部品中項目「' + mid + '」にセットがありません');
         return;
       }
 
-      clearPartSide(it);
+      var first = sets[0];
+      it.partMajor = it.partMajor || first.partMajor || first.major || '';
+      it.partMid = partSetName(first);
+      it.qty = measureQty(first.qty);
+      it.unitPrice = measurePrice(first.unitPrice);
+      it.discYen = 0;
+      if (it.kind !== 'work' && it.kind !== 'mid') it.kind = 'part';
+      calcFromQtyPrice(it);
       refreshKind(it);
-      var details = named.map(function (w) {
+
+      var details = sets.slice(1).map(function (w) {
         var row = emptyRow();
         row.partMajor = w.partMajor || it.partMajor || w.major || '';
-        row.partMid = partLineName(w, mid);
+        row.partMid = partSetName(w);
         row.qty = measureQty(w.qty);
         row.unitPrice = measurePrice(w.unitPrice);
         row.kind = 'part';
         calcFromQtyPrice(row);
         return row;
       });
-      appendSide(firstAppendPartRow(), 'part', details);
+      if (details.length) writeBelow(rowIndex, 'part', details);
       compactItems();
       renderGrid();
-      setStatus('部品中項目「' + mid + '」から部品 ' + details.length + ' 件を末尾へ出力しました');
+      setStatus('部品中項目「' + mid + '」からセット ' + sets.length + ' 件を入力しました');
     }
 
     function hideComboLists(keepInput) {
@@ -4383,8 +4374,8 @@
       var lines = linesForPartMid(major, mid);
       var rows = [];
       lines.forEach(function (r) {
-        var set = partLineName(r, mid);
-        if (foldKey(set) === foldKey(mid) && !filled(r.qty) && !filled(r.unitPrice)) return;
+        var set = partSetName(r);
+        if (!filled(set)) return;
         rows.push({
           set: set,
           unitPrice: r.unitPrice == null ? '' : r.unitPrice,
@@ -4464,8 +4455,8 @@
         return;
       }
       el.textContent = n
-        ? ('請求入力で「' + mid + '」を選ぶと、部品 ' + n + ' 件出ます。')
-        : 'セットを1行以上入力してください。';
+        ? ('請求入力で「' + mid + '」を選ぶと、部品_セット ' + n + ' 件が明細になります。')
+        : '部品_セットが無いと、請求入力で選んでも明細は出ません。';
     }
     function showListKind(kind) {
       listKind = kind || 'work';

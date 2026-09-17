@@ -331,7 +331,42 @@ function parsePartsSheetValues_(vals) {
     }
     rows.push(rec);
   }
+  promotePartSetNames_(rows);
   return { rows: rows, cols: cols };
+}
+
+/**
+ * 部品_セットが空で単価・数量がある行は、セット名に中項目名を入れる。
+ *
+ * @param {object[]} rows
+ * @return {number}
+ */
+function promotePartSetNames_(rows) {
+  if (!rows || !rows.length) {
+    return 0;
+  }
+  let filled = 0;
+  rows.forEach(function (row) {
+    const mid = normalize_(row && row.mid);
+    if (!mid) {
+      return;
+    }
+    if (normalize_(row.set)) {
+      return;
+    }
+    if (normalize_(row.content) && !isNumericCell_(row.content)) {
+      row.set = normalize_(row.content);
+      filled += 1;
+      return;
+    }
+    if (!isFilled_(row.qty) && !isFilled_(row.unitPrice)) {
+      return;
+    }
+    row.set = mid;
+    row.content = mid;
+    filled += 1;
+  });
+  return filled;
 }
 
 function readPartsListRow_(raw, cols, carry, sourceIndex) {

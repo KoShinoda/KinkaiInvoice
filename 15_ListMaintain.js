@@ -249,6 +249,22 @@ function listMaintainPartsLineHasContent_(line) {
     isFilled_(line.qty) || isFilled_(line.unitPrice));
 }
 
+function listMaintainCanonicalPartsLine_(mid, line) {
+  const out = line ? {
+    set: line.set || line.content,
+    content: line.content || line.set,
+    qty: line.qty,
+    unitPrice: line.unitPrice
+  } : {};
+  if (!normalize_(out.set) && (isFilled_(out.qty) || isFilled_(out.unitPrice))) {
+    out.set = mid;
+  }
+  if (normalize_(out.set) && !normalize_(out.content)) {
+    out.content = out.set;
+  }
+  return out;
+}
+
 function listMaintainPartsRow_(cols, width, major, mid, line) {
   const row = listMaintainBlankRow_(width);
   const setName = normalize_(line && (line.set || line.content));
@@ -274,7 +290,10 @@ function savePartsListPack(payload) {
   if (!mid) {
     throw new Error('部品の中項目を入力してください。');
   }
-  const lines = (payload.lines || []).filter(listMaintainPartsLineHasContent_);
+  const lines = (payload.lines || []).filter(listMaintainPartsLineHasContent_)
+    .map(function (line) {
+      return listMaintainCanonicalPartsLine_(mid, line);
+    });
   if (!lines.length) {
     throw new Error('セット（部品名）か単価・数量を1行以上入力してください。');
   }

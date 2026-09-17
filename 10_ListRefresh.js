@@ -289,6 +289,52 @@ function promoteWorkListMidFeesOnSheet_(sheet) {
 }
 
 /**
+ * 部品_セットが空で単価・数量がある行に、部品_中項目名を書いてシートへ残す。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @return {number}
+ */
+function promotePartsSetNamesOnSheet_(sheet) {
+  const values = sheet.getDataRange().getValues();
+  if (!values || values.length < 2) {
+    return 0;
+  }
+  const parsed = parsePartsSheetValues_(values);
+  const cols = parsed.cols || {};
+  if (!cols.set && !cols.name) {
+    return 0;
+  }
+  const filled = promotePartSetNames_(parsed.rows);
+  if (!filled) {
+    return 0;
+  }
+  const byRow = {};
+  parsed.rows.forEach(function (row) {
+    if (row.sourceIndex) {
+      byRow[row.sourceIndex] = row;
+    }
+  });
+  const headerRow = CONFIG.parts.headerRow || 1;
+  const height = values.length - headerRow;
+  const setOut = [];
+  const nameOut = [];
+  for (let i = headerRow; i < values.length; i++) {
+    const rec = byRow[i + 1];
+    const oldSet = cols.set ? values[i][cols.set - 1] : '';
+    const oldName = cols.name ? values[i][cols.name - 1] : '';
+    setOut.push([rec ? (rec.set || oldSet) : oldSet]);
+    nameOut.push([rec ? (rec.content || rec.set || oldName) : oldName]);
+  }
+  if (cols.set) {
+    sheet.getRange(headerRow + 1, cols.set, height, 1).setValues(setOut);
+  }
+  if (cols.name && cols.name !== cols.set) {
+    sheet.getRange(headerRow + 1, cols.name, height, 1).setValues(nameOut);
+  }
+  return filled;
+}
+
+/**
  * 技術料の右（既定 E 列）に「作業コード」を挿入する。
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
@@ -471,6 +517,7 @@ function refreshMasterListSheet_(sheet) {
   }
   if (sheet.getName() === CONFIG.parts.sheetName) {
     ensurePartsSetHeader_(sheet);
+    promotePartsSetNamesOnSheet_(sheet);
   }
   ensureOrderColumnOnSheet_(sheet);
   if (sheet.getName() === CONFIG.workList.sheetName) {
