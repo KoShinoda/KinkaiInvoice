@@ -348,51 +348,53 @@ function groupFirstSeen_(records, keyFn) {
 }
 
 /**
- * 大項目で固め、その中で中項目で固め、中項目内だけ順番する。
- * 中項目同士は先頭行の順番の昇順（空は後）。
+ * 大項目で固め、その中で中項目で固め、中項目の中だけ順番の昇順にする。
+ * 大項目同士は塊の最小順番（空は後）。中項目同士はシート上の出順を維持する。
  *
  * @param {object[]} records
  * @return {object[]}
  */
 function sortWorkListRecords_(records) {
   tagMidGroups_(records);
-  const majorOrder = groupFirstSeen_(records, function (r) {
-    return normalize_(r.major);
-  });
-  const midKey = {};
-  const grouped = {};
-  records.forEach(function (row) {
-    const key = normalize_(row.major) + '\t' + normalize_(row.mid);
-    if (!grouped[key]) {
-      grouped[key] = [];
+  const majorMin = {};
+  const majorSeen = {};
+  const midSeen = {};
+  (records || []).forEach(function (row) {
+    const major = normalize_(row.major);
+    const key = major + '\t' + normalize_(row.mid);
+    const ord = toOrderNumber_(row.order);
+    const idx = row.sourceIndex || 0;
+    if (majorMin[major] == null || ord < majorMin[major]) {
+      majorMin[major] = ord;
     }
-    grouped[key].push(row);
-  });
-  Object.keys(grouped).forEach(function (key) {
-    const g = grouped[key];
-    const tagged = g.filter(function (r) {
-      return r._isMidAnchor;
-    })[0];
-    const anchor = tagged || pickMidAnchorRow_(g) || g[0];
-    midKey[key] = {
-      order: toOrderNumber_(anchor.order),
-      sourceIndex: anchor.sourceIndex || 0
-    };
+    if (majorSeen[major] == null || idx < majorSeen[major]) {
+      majorSeen[major] = idx;
+    }
+    if (midSeen[key] == null || idx < midSeen[key]) {
+      midSeen[key] = idx;
+    }
   });
   return records.slice().sort(function (a, b) {
-    const dMaj = (majorOrder[normalize_(a.major)] || 0) - (majorOrder[normalize_(b.major)] || 0);
-    if (dMaj) {
-      return dMaj;
+    const ma = normalize_(a.major);
+    const mb = normalize_(b.major);
+    const dMajOrd = majorMin[ma] - majorMin[mb];
+    if (dMajOrd) {
+      return dMajOrd;
     }
-    const ka = normalize_(a.major) + '\t' + normalize_(a.mid);
-    const kb = normalize_(b.major) + '\t' + normalize_(b.mid);
-    const oa = midKey[ka] || { order: Number.POSITIVE_INFINITY, sourceIndex: 0 };
-    const ob = midKey[kb] || { order: Number.POSITIVE_INFINITY, sourceIndex: 0 };
-    if (oa.order !== ob.order) {
-      return oa.order - ob.order;
+    const dMajSeen = (majorSeen[ma] || 0) - (majorSeen[mb] || 0);
+    if (dMajSeen) {
+      return dMajSeen;
     }
-    if (oa.sourceIndex !== ob.sourceIndex) {
-      return oa.sourceIndex - ob.sourceIndex;
+    const ka = ma + '\t' + normalize_(a.mid);
+    const kb = mb + '\t' + normalize_(b.mid);
+    const dMidSeen = (midSeen[ka] || 0) - (midSeen[kb] || 0);
+    if (dMidSeen) {
+      return dMidSeen;
+    }
+    const oa = toOrderNumber_(a.order);
+    const ob = toOrderNumber_(b.order);
+    if (oa !== ob) {
+      return oa - ob;
     }
     return compareMidGroupRows_(a, b);
   });

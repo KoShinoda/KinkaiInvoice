@@ -600,20 +600,18 @@ function fillWorkListGroupOrders_(data, formulas, orders, cols) {
     const rawSet = cols.set ? normalize_(cell_(raw, cols.set)) : '';
     if (rawMajor) {
       carryMajor = rawMajor;
-      if (!rawMid && !rawSet) {
+      if (!rawMid) {
         carryMid = '';
       }
     }
-    if (rawSet) {
-      carryMid = rawSet;
-    } else if (rawMid) {
+    if (rawMid) {
       carryMid = rawMid;
     }
     const rec = {
       i: i,
       major: rawMajor || carryMajor,
-      mid: rawSet || rawMid || carryMid,
-      content: cols.content ? cell_(raw, cols.content) : '',
+      mid: rawMid || carryMid,
+      content: (cols.content && isFilled_(cell_(raw, cols.content))) ? cell_(raw, cols.content) : rawSet,
       partMajor: cols.partMajor ? cell_(raw, cols.partMajor) : '',
       partMid: cols.partMid ? cell_(raw, cols.partMid) : '',
       qty: cols.qty ? cell_(raw, cols.qty) : '',
@@ -764,9 +762,10 @@ function sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers) {
     if (grouped && !listRowIsEmpty_(values[i], formulas[i])) {
       const rawMajor = normalize_(cell_(values[i], cols.major));
       const rawMid = normalize_(cell_(values[i], cols.mid));
+      const rawSet = cols.set ? normalize_(cell_(values[i], cols.set)) : '';
       if (rawMajor) {
         carryMajor = rawMajor;
-        if (!rawMid) {
+        if (!rawMid && !rawSet) {
           carryMid = '';
         }
       }
@@ -776,6 +775,9 @@ function sortListDataRows_(sheet, headerRow, dataCol, orderCol, headers) {
       rec.major = rawMajor || carryMajor;
       rec.mid = rawMid || carryMid;
       rec.content = cols.content ? cell_(values[i], cols.content) : '';
+      if (!normalize_(rec.content) && rawSet) {
+        rec.content = rawSet;
+      }
     }
     rows.push(rec);
   }
