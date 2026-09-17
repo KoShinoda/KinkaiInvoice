@@ -226,10 +226,6 @@ function parseWorkList_(values, cols) {
     const major = rawMajor || carryMajor;
     const mid = rawMid || carryMid;
 
-    if (!rawMajor && !rawMid && !isFilled_(content) && !normalize_(partMajor) && !normalize_(partMid)) {
-      continue;
-    }
-
     rows.push({
       sourceIndex: i + 1,
       major: major,
@@ -268,105 +264,26 @@ function getRecordsForSelection_(ctx, major, mid) {
 }
 
 /**
- * 中項目行（作業内容が空）の技術料を、リスト追加と同じ「作業内容行」へ移す。
- * 作業内容が無いパックは、作業内容に中項目名を入れて技術料を残す。
+ * 作業内容が空で技術料がある行は、リスト追加と同じく作業内容＝中項目名にする。
+ * 技術料は動かさない（その行の作業内容に載せる）。
  *
  * @param {object[]} rows
- * @return {boolean}
+ * @return {number} 埋めた件数
  */
 function promoteMidFeesToWorkContent_(rows) {
   if (!rows || !rows.length) {
-    return false;
+    return 0;
   }
-  const grouped = {};
-  const keys = [];
+  let filled = 0;
   rows.forEach(function (row) {
-    const key = normalize_(row.major) + '\t' + normalize_(row.mid);
-    if (!grouped[key]) {
-      grouped[key] = [];
-      keys.push(key);
-    }
-    grouped[key].push(row);
-  });
-  let changed = false;
-  const extras = [];
-  keys.forEach(function (key) {
-    const g = grouped[key];
-    const mid = g[0] ? normalize_(g[0].mid) : '';
-    if (!mid) {
+    const mid = normalize_(row && row.mid);
+    if (!mid || hasWorkContent_(row) || !isFilled_(row.fee)) {
       return;
     }
-    const works = [];
-    const blanks = [];
-    g.forEach(function (row) {
-      if (hasWorkContent_(row)) {
-        works.push(row);
-      } else {
-        blanks.push(row);
-      }
-    });
-    let midFee = '';
-    let feeRow = null;
-    const anchor = pickMidAnchorRow_(g);
-    if (anchor && !hasWorkContent_(anchor) && isFilled_(anchor.fee)) {
-      midFee = anchor.fee;
-      feeRow = anchor;
-    } else {
-      for (let i = 0; i < blanks.length; i++) {
-        if (isFilled_(blanks[i].fee)) {
-          midFee = blanks[i].fee;
-          feeRow = blanks[i];
-          break;
-        }
-      }
-    }
-    if (!isFilled_(midFee)) {
-      return;
-    }
-    if (works.length) {
-      let target = null;
-      for (let i = 0; i < works.length; i++) {
-        if (!isFilled_(works[i].fee)) {
-          target = works[i];
-          break;
-        }
-      }
-      if (target) {
-        target.fee = midFee;
-        changed = true;
-      } else {
-        extras.push({
-          sourceIndex: null,
-          major: normalize_(g[0].major),
-          mid: mid,
-          content: mid,
-          fee: midFee,
-          workerCode: feeRow && feeRow.workerCode ? feeRow.workerCode : '',
-          order: '',
-          partMajor: '',
-          partMid: '',
-          qty: '',
-          unitPrice: ''
-        });
-        changed = true;
-      }
-      blanks.forEach(function (row) {
-        if (isFilled_(row.fee)) {
-          row.fee = '';
-          changed = true;
-        }
-      });
-      return;
-    }
-    if (feeRow) {
-      feeRow.content = mid;
-      changed = true;
-    }
+    row.content = mid;
+    filled += 1;
   });
-  extras.forEach(function (row) {
-    rows.push(row);
-  });
-  return changed;
+  return filled;
 }
 
 /**

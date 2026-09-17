@@ -67,12 +67,16 @@ function masterSheetsHaveEmptyOrders_() {
  */
 function refreshAllMasterLists() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let promoted = 0;
   writeInternal_(function () {
     ensureListMasterSheets_();
     CONFIG.listRefresh.sheets.forEach(function (name) {
       const sheet = ss.getSheetByName(name);
       if (sheet) {
-        refreshMasterListSheet_(sheet);
+        const n = refreshMasterListSheet_(sheet);
+        if (sheet.getName() === CONFIG.workList.sheetName) {
+          promoted = n || 0;
+        }
       }
     });
     const tmpl = findInvoiceTemplateSheet_(ss);
@@ -80,7 +84,10 @@ function refreshAllMasterLists() {
       refreshInvoiceTemplateList_(tmpl);
     }
   });
-  ss.toast('リストを順番で並べ替え、選択肢を更新しました', '請求書入力', 5);
+  const msg = promoted
+    ? 'リストを更新しました。作業内容が空で技術料がある ' + promoted + ' 件に、中項目名を入れました。'
+    : 'リストを順番で並べ替え、選択肢を更新しました';
+  ss.toast(msg, '請求書入力', 8);
 }
 
 /**
@@ -244,65 +251,48 @@ function ensureOrderColumnOnSheet_(sheet) {
 }
 
 /**
- * 技術料の右（既定 E 列）に「作業コード」を挿入する。
+ * 作業内容が空で技術料がある行に、中項目名を書いてシートへ残す。
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
- */
-/**
- * 中項目行に残っている技術料を作業内容へ移してシートへ書く。
+ * @return {number}
  */
 function promoteWorkListMidFeesOnSheet_(sheet) {
   const values = sheet.getDataRange().getValues();
   if (!values || values.length < 2) {
-    return false;
+    return 0;
   }
   const headers = values[CONFIG.workList.headerRow - 1] || [];
   const cols = resolveColumns_(headers, CONFIG.workList.headers);
   if (!cols.mid || !cols.content || !cols.fee) {
-    return false;
+    return 0;
   }
   const parsed = parseWorkList_(values, cols);
-  promoteMidFeesToWorkContent_(parsed);
+  const filled = promoteMidFeesToWorkContent_(parsed);
+  if (!filled) {
+    return 0;
+  }
   const byRow = {};
-  const extras = [];
   parsed.forEach(function (row) {
     if (row.sourceIndex) {
       byRow[row.sourceIndex] = row;
-    } else {
-      extras.push(row);
     }
   });
   const height = values.length - CONFIG.workList.headerRow;
   const contentOut = [];
-  const feeOut = [];
-  let changed = false;
   for (let i = CONFIG.workList.headerRow; i < values.length; i++) {
     const rec = byRow[i + 1];
     const oldContent = values[i][cols.content - 1];
-    const oldFee = values[i][cols.fee - 1];
-    const newContent = rec ? rec.content : oldContent;
-    const newFee = rec ? (rec.fee == null ? '' : rec.fee) : oldFee;
-    contentOut.push([newContent]);
-    feeOut.push([newFee]);
-    if (normalize_(oldContent) !== normalize_(newContent) || String(oldFee) !== String(newFee)) {
-      changed = true;
-    }
+    contentOut.push([rec ? rec.content : oldContent]);
   }
-  if (changed) {
-    sheet.getRange(CONFIG.workList.headerRow + 1, cols.content, height, 1).setValues(contentOut);
-    sheet.getRange(CONFIG.workList.headerRow + 1, cols.fee, height, 1).setValues(feeOut);
-  }
-  if (extras.length) {
-    const width = lastDataHeaderCol_(headers);
-    const body = extras.map(function (line) {
-      return listMaintainWorkRow_(cols, width, line.major, line.mid, line);
-    });
-    listMaintainAppendRows_(sheet, body, width);
-    changed = true;
-  }
-  return changed;
+  sheet.getRange(CONFIG.workList.headerRow + 1, cols.content, height, 1).setValues(contentOut);
+  return filled;
 }
 
+/**
+ * 技術料の右（既定 E 列）に「作業コード」を挿入する。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
 function ensureWorkListWorkerCodeColumn_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -472,11 +462,12 @@ function removeWorkerOrderColumn_(sheet) {
  */
 function refreshMasterListSheet_(sheet) {
   const headerRow = 1;
+  let promoted = 0;
   if (sheet.getName() === CONFIG.workList.sheetName) {
     ensureWorkListWorkerCodeColumn_(sheet);
     ensureWorkListPartColumns_(sheet);
     layoutWorkListColumns_(sheet);
-    promoteWorkListMidFeesOnSheet_(sheet);
+    promoted = promoteWorkListMidFeesOnSheet_(sheet);
   }
   if (sheet.getName() === CONFIG.parts.sheetName) {
     ensurePartsSetHeader_(sheet);
@@ -500,6 +491,7 @@ function refreshMasterListSheet_(sheet) {
     applyWorkListOpenDropdowns_(sheet.getParent(), work);
   }
   log_('%s refreshMasterListSheet_: %s を順番で並べ替えました', CONFIG.logPrefix, sheet.getName());
+  return promoted;
 }
 
 /**
