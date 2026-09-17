@@ -3410,7 +3410,7 @@
       return isMidTextarea(el) || !!(el.dataset && el.dataset.k === 'content');
     }
     function isNewlineEnter(e) {
-      return !!(e && e.key === 'Enter' && (e.ctrlKey || e.altKey || e.shiftKey));
+      return !!(e && e.key === 'Enter' && (e.ctrlKey || e.altKey) && !e.shiftKey);
     }
     function fitMidHeight(el) {
       if (!isGrowTextarea(el)) return;
@@ -4543,14 +4543,14 @@
       tb.innerHTML = listWorkRows.map(function (r, i) {
         return '<tr>' +
           '<td class="ins side-work">' + listInsButtons('data-list-work-ins', i, 'work', '技術側') + '</td>' +
-          '<td class="side-work"><textarea data-list-work="' + i + '" data-k="content" rows="1" autocomplete="off" title="Alt+Enter または Shift+Enter で改行"></textarea></td>' +
+          '<td class="side-work"><textarea data-list-work="' + i + '" data-k="content" rows="1" autocomplete="off" title="Alt+Enter または Ctrl+Enter で改行"></textarea></td>' +
           '<td class="gap side-work"></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
           '<td class="del side-work"><button type="button" class="row-del" data-list-work-del="' + i + '" data-side="work" title="この行の技術側を削除して詰める">×</button></td>' +
           '<td class="ins side-part">' + listInsButtons('data-list-work-ins', i, 'part', '部品側') + '</td>' +
           '<td class="side-part"><div class="combo">' +
-            '<textarea data-list-work="' + i + '" data-k="partMid" rows="1" autocomplete="off" title="Alt+Enter または Shift+Enter で改行"></textarea>' +
+            '<textarea data-list-work="' + i + '" data-k="partMid" rows="1" autocomplete="off" title="Alt+Enter または Ctrl+Enter で改行"></textarea>' +
             '<div class="combo-list" hidden></div>' +
           '</div></td>' +
           '<td class="side-part"><input data-list-work="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
@@ -5076,7 +5076,7 @@
             listWorkRows[i].partMid = t.value;
           }
           hideComboLists();
-          moveListWorkField(t, 1);
+          moveListWorkField(t, e.shiftKey ? -1 : 1);
           return;
         }
         if (k === 'partMid' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
