@@ -3235,7 +3235,10 @@
       it.kind = it.kind === 'part' ? it.kind : 'mid';
       if (!mid) {
         lastExpandKey = '';
+        it.major = '';
         it.fee = '';
+        it.kind = it.kind === 'part' ? it.kind : '';
+        refreshKind(it);
         compactItems();
         renderGrid();
         return;
@@ -3265,6 +3268,7 @@
 
       if (works.length === 0) {
         it.mid = '';
+        it.major = '';
         it.fee = '';
         it.kind = it.kind === 'part' ? it.kind : '';
         applyMasterWorkerIfEmpty(it, group);
@@ -3308,6 +3312,8 @@
       it.partMid = mid;
       if (!mid) {
         lastExpandKey = '';
+        it.partMajor = '';
+        refreshKind(it);
         compactItems();
         renderGrid();
         return;
@@ -3322,6 +3328,7 @@
 
       if (!sets.length) {
         it.partMid = '';
+        it.partMajor = '';
         it.qty = '';
         it.unitPrice = '';
         it.amount = '';
