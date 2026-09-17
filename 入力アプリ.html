@@ -2888,9 +2888,10 @@
       return stripped || t;
     }
     function comboChosenValue(typed, option) {
+      if (option === '' || option == null) return '';
       var prefix = takeTypedPosPrefix(typed);
       if (!prefix) return option;
-      var body = String(option == null ? '' : option).replace(POS_PREFIX_CHARS, '');
+      var body = String(option).replace(POS_PREFIX_CHARS, '');
       return prefix + (body || option);
     }
     function isMidPartCombo(input) {
@@ -3444,15 +3445,9 @@
       }
 
       if (works.length === 0) {
-        it.mid = '';
-        it.major = '';
-        it.fee = '';
-        it.kind = it.kind === 'part' ? it.kind : '';
-        applyMasterWorkerIfEmpty(it, group);
+        it.kind = it.kind === 'part' ? it.kind : 'work';
         refreshKind(it);
-        compactItems();
         renderGrid();
-        setStatus('中項目「' + mid + '」に作業内容がありません');
         return;
       }
 
@@ -3504,16 +3499,9 @@
       }
 
       if (!sets.length) {
-        it.partMid = '';
-        it.partMajor = '';
-        it.qty = '';
-        it.unitPrice = '';
-        it.amount = '';
-        it.discYen = 0;
+        if (it.kind !== 'work' && it.kind !== 'mid') it.kind = 'part';
         refreshKind(it);
-        compactItems();
         renderGrid();
-        setStatus('部品中項目「' + mid + '」にセットがありません');
         return;
       }
 
@@ -3808,6 +3796,17 @@
       var full = comboDivValue(list.children[comboActiveIndex]);
       input.value = isMidPartCombo(input) ? comboChosenValue(comboFilterQuery, full) : full;
     }
+    function comboExactOptionIndex(list, typed) {
+      var t = String(typed || '').replace(/\u3000/g, ' ').trim();
+      if (!t || !list) return -1;
+      var i;
+      for (i = 0; i < list.children.length; i++) {
+        var v = comboDivValue(list.children[i]);
+        if (!String(v || '').replace(/\u3000/g, ' ').trim()) continue;
+        if (String(v) === String(typed) || comboNameEquals(v, typed)) return i;
+      }
+      return -1;
+    }
     function confirmComboIfOpen(input) {
       if (!input || (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid' && input.dataset.k !== 'workerCode')) {
         return false;
@@ -3815,20 +3814,10 @@
       var list = comboListEl(input);
       if (!list || list.hidden || !list.children.length) return false;
       var typed = isMidPartCombo(input) ? comboFilterQuery : String(input.value || '');
-      var hasTyped = !!String(typed || '').replace(/\u3000/g, ' ').trim();
       var idx = comboActiveIndex;
-      if (idx < 0) {
-        if (!hasTyped) return false;
-        idx = 0;
-      }
-      var picked = '';
-      while (idx < list.children.length) {
-        picked = comboDivValue(list.children[idx]);
-        if (String(picked || '').replace(/\u3000/g, ' ').trim()) break;
-        idx += 1;
-        picked = '';
-      }
-      if (!picked) return false;
+      if (idx < 0) idx = comboExactOptionIndex(list, typed);
+      if (idx < 0 || !list.children[idx]) return false;
+      var picked = comboDivValue(list.children[idx]);
       comboActiveIndex = idx;
       highlightCombo(list, comboActiveIndex);
       input.value = isMidPartCombo(input) ? comboChosenValue(comboFilterQuery, picked) : picked;
