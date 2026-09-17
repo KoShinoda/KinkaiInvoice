@@ -791,6 +791,13 @@
       overflow: visible;
       box-sizing: border-box;
     }
+    .list-pack col.c-content { width: 28%; }
+    .list-pack col.c-fee { width: 72px; }
+    .list-pack col.c-worker { width: 88px; }
+    .list-pack col.c-pmid { width: 24%; }
+    .list-pack col.c-price { width: 72px; }
+    .list-pack col.c-qty { width: 48px; }
+    .list-pack col.c-set { width: auto; }
     .list-pack col.c-del,
     .list-pack th.del-h,
     .list-pack td.del {
@@ -817,15 +824,25 @@
       min-width: 28px;
       max-width: 28px;
       padding: 0;
+      overflow: hidden;
       box-sizing: border-box;
+      pointer-events: none;
+    }
+    .list-pack td.gap::after {
+      content: '';
+      display: block;
+      width: 28px;
+      height: 1px;
     }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
     .list-pack td { vertical-align: top; }
-    .list-pack input { padding: 5px 6px; font-size: 12px; }
+    .list-pack input { padding: 5px 6px; font-size: 12px; min-width: 0; }
+    .list-pack .combo { min-width: 0; }
     .list-pack textarea {
       display: block;
       width: 100%;
+      min-width: 0;
       resize: none;
       overflow: hidden;
       height: 28px;
@@ -4313,6 +4330,8 @@
     var listPartRows = [];
     var listWorkLoadedKey = '';
     var listPartLoadedKey = '';
+    var listWorkNameSeed = '';
+    var listPartNameSeed = '';
 
     function setListStatus(msg, isErr) {
       var el = $('listStatus');
@@ -4377,6 +4396,42 @@
     }
     function listPartRowHasContent(r) {
       return !!(r && (filled(r.set) || filled(r.unitPrice) || filled(r.qty)));
+    }
+    function seedListFirstName(rows, field, mid, seedHolder) {
+      mid = String(mid == null ? '' : mid).replace(/\u3000/g, ' ').trim();
+      if (!rows[0]) return;
+      var cur = String(rows[0][field] == null ? '' : rows[0][field]).replace(/\u3000/g, ' ').trim();
+      if (!mid) {
+        if (cur && cur === seedHolder.seed) rows[0][field] = '';
+        seedHolder.seed = '';
+        return;
+      }
+      if (!cur || cur === seedHolder.seed) {
+        rows[0][field] = mid;
+        seedHolder.seed = mid;
+      }
+    }
+    function seedListWorkContent(mid) {
+      if (!listWorkRows.length) listWorkRows = makeBlankListRows(emptyListWorkRow);
+      var st = { seed: listWorkNameSeed };
+      seedListFirstName(listWorkRows, 'content', mid, st);
+      listWorkNameSeed = st.seed;
+    }
+    function seedListPartSet(mid) {
+      if (!listPartRows.length) listPartRows = makeBlankListRows(emptyListPartRow);
+      var st = { seed: listPartNameSeed };
+      seedListFirstName(listPartRows, 'set', mid, st);
+      listPartNameSeed = st.seed;
+    }
+    function patchListFirstName(rootId, rowAttr, field, value) {
+      var root = $(rootId);
+      if (!root) return false;
+      var el = root.querySelector('[' + rowAttr + '="0"][data-k="' + field + '"]');
+      if (!el) return false;
+      var v = value == null ? '' : value;
+      if (el.value !== v) el.value = v;
+      if (el.tagName === 'TEXTAREA') fitMidHeight(el);
+      return true;
     }
     function copyListWorkSide(to, from) {
       to.content = from.content;
@@ -4668,6 +4723,7 @@
         if (listWorkLoadedKey === key) return;
         listWorkRows = listWorkRowsFromMaster(major, mid);
         listWorkLoadedKey = key;
+        listWorkNameSeed = '';
         renderListWorkTable();
         setListStatus('既存の作業「' + major + ' / ' + mid + '」を読みました。保存すると上書きします。');
         return;
@@ -4675,9 +4731,17 @@
       if (listWorkLoadedKey && listWorkLoadedKey !== key) {
         listWorkRows = makeBlankListRows(emptyListWorkRow);
         listWorkLoadedKey = '';
-        renderListWorkTable();
+        listWorkNameSeed = '';
         setListStatus('');
+        seedListWorkContent(mid);
+        renderListWorkTable();
+        updateListWorkPreview();
         return;
+      }
+      collectListWorkRows();
+      seedListWorkContent(mid);
+      if (!patchListFirstName('listWorkBody', 'data-list-work', 'content', listWorkRows[0] && listWorkRows[0].content)) {
+        renderListWorkTable();
       }
       updateListWorkPreview();
     }
@@ -4707,6 +4771,7 @@
         if (listPartLoadedKey === key) return;
         listPartRows = listPartRowsFromMaster(major, mid);
         listPartLoadedKey = key;
+        listPartNameSeed = '';
         renderListPartTable();
         setListStatus('既存の部品「' + major + ' / ' + mid + '」を読みました。保存すると上書きします。');
         return;
@@ -4714,9 +4779,17 @@
       if (listPartLoadedKey && listPartLoadedKey !== key) {
         listPartRows = makeBlankListRows(emptyListPartRow);
         listPartLoadedKey = '';
-        renderListPartTable();
+        listPartNameSeed = '';
         setListStatus('');
+        seedListPartSet(mid);
+        renderListPartTable();
+        updateListPartPreview();
         return;
+      }
+      collectListPartRows();
+      seedListPartSet(mid);
+      if (!patchListFirstName('listPartBody', 'data-list-part', 'set', listPartRows[0] && listPartRows[0].set)) {
+        renderListPartTable();
       }
       updateListPartPreview();
     }
@@ -4799,6 +4872,7 @@
         return;
       }
       collectListWorkRows();
+      seedListWorkContent(mid);
       listWorkRows.forEach(function (r) {
         if (!r) return;
         if (filled(r.fee) && !filled(r.content)) r.content = mid;
@@ -4820,9 +4894,9 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           applyListMaster(res);
-          listWorkLoadedKey = major + '\t' + mid;
-          setListStatus((res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（作業「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。');
+          var msg = (res && res.overwritten ? '上書き保存' : '保存') +
+            'しました（作業「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。';
+          clearListWorkForm(msg);
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -4842,6 +4916,7 @@
         return;
       }
       collectListPartRows();
+      seedListPartSet(mid);
       var numberBad = coerceListNumberRows(listPartRows, ['unitPrice', 'qty']);
       renderListPartTable();
       if (numberBad.length) {
@@ -4862,9 +4937,9 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           applyListMaster(res);
-          listPartLoadedKey = major + '\t' + mid;
-          setListStatus((res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（部品「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。');
+          var msg = (res && res.overwritten ? '上書き保存' : '保存') +
+            'しました（部品「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。';
+          clearListPartForm(msg);
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -4912,23 +4987,25 @@
         filled($('listPartMid') && $('listPartMid').value) ||
         listPartRows.some(listPartRowHasContent);
     }
-    function clearListWorkForm() {
+    function clearListWorkForm(status) {
       resetListTextInput($('listWorkMajor'));
       resetListTextInput($('listWorkMid'));
       listWorkRows = makeBlankListRows(emptyListWorkRow);
       listWorkLoadedKey = '';
+      listWorkNameSeed = '';
       fillDatalist('listWorkMidOpts', midsFor(''));
       renderListWorkTable();
-      setListStatus('入力を消去しました');
+      setListStatus(status || '入力を消去しました');
     }
-    function clearListPartForm() {
+    function clearListPartForm(status) {
       resetListTextInput($('listPartMajor'));
       resetListTextInput($('listPartMid'));
       listPartRows = makeBlankListRows(emptyListPartRow);
       listPartLoadedKey = '';
+      listPartNameSeed = '';
       fillDatalist('listPartMidOpts', partMidsFor(''));
       renderListPartTable();
-      setListStatus('入力を消去しました');
+      setListStatus(status || '入力を消去しました');
     }
     function clearListWorkerForm() {
       resetListTextInput($('listWorkerCode'));
