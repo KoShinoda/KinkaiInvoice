@@ -816,20 +816,23 @@
       margin-top: 12px;
     }
     .list-pack-wrap {
-      width: max-content;
+      display: inline-block;
+      width: auto;
       max-width: 100%;
+      vertical-align: top;
       overflow-x: auto;
       overflow-y: visible;
       border: 1px solid var(--line);
       border-radius: 8px;
+      background: #fff;
     }
     .list-pack {
-      width: 728px;
+      width: auto;
       border-collapse: collapse;
       table-layout: fixed;
     }
     .list-pack.list-pack-parts {
-      width: 364px;
+      width: auto;
     }
     .list-pack th, .list-pack td {
       padding: 4px 4px;
@@ -839,9 +842,17 @@
       vertical-align: middle;
     }
     .list-pack th {
+      position: static;
+      z-index: auto;
       color: var(--muted);
       font-weight: 600;
       white-space: nowrap;
+      background: #eef3f0;
+    }
+    .list-pack th.ins-h,
+    .list-pack th.gap-h,
+    .list-pack th.del-h {
+      background: transparent;
     }
     .list-pack col.c-ins,
     .list-pack th.ins-h,
@@ -923,6 +934,15 @@
       box-sizing: border-box;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+    #viewLists .card {
+      width: fit-content;
+      max-width: 100%;
+    }
+    #viewLists .list-hint,
+    #viewLists .list-preview,
+    #viewLists #listStatus {
+      max-width: 728px;
     }
     #viewLists .grid {
       grid-template-columns: 200px 260px;
