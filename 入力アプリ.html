@@ -715,6 +715,60 @@
     .combo-list div { padding: 8px 10px; cursor: pointer; min-height: 28px; }
     .combo-list div:hover,
     .combo-list div.active { background: #e8f0ec; }
+    .combo-list .combo-opt {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .combo-opt-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .combo-opt-n {
+      flex: 0 0 auto;
+      min-width: 18px;
+      padding: 0 6px;
+      border-radius: 9px;
+      background: #e8f0ec;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 18px;
+      text-align: center;
+    }
+    .combo-preview {
+      position: fixed;
+      z-index: 120;
+      width: 240px;
+      max-height: 260px;
+      overflow: auto;
+      padding: 8px 10px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(28, 36, 48, .16);
+      font-size: 12px;
+    }
+    .combo-preview[hidden] { display: none; }
+    .combo-preview-h {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .combo-preview ul {
+      margin: 0;
+      padding: 0 0 0 1.15em;
+    }
+    .combo-preview li { margin: 0 0 4px; line-height: 1.35; }
+    .combo-preview-more {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
     input.warn-neg {
       background: #fde8e8;
       color: #b42318;
@@ -1250,6 +1304,7 @@
       </div>
     </div>
   </div>
+  <div id="comboPreview" class="combo-preview" hidden></div>
 
   <script>
     var START_VIEW = 'input'; // kinkai:startView
@@ -2869,6 +2924,7 @@
     var optHtml = { major: '', partMajor: '' };
     var midsJsonByMajor = {};
     var partMidsJsonByMajor = {};
+    var comboPackNames = { work: {}, part: {} };
     var gridReady = false;
     var gridPaintedUntil = -1;
 
@@ -2892,8 +2948,42 @@
       optHtml.partMajor = optionHtml(master.partMajors);
       midsJsonByMajor = {};
       partMidsJsonByMajor = {};
+      rebuildComboPackIndex();
       gridReady = false;
       gridPaintedUntil = -1;
+    }
+    function packIndexKey(major, mid) {
+      return foldKey(major || '') + '\t' + foldKey(mid || '');
+    }
+    function pushComboPackName(kind, major, mid, name) {
+      name = String(name == null ? '' : name).replace(/\u3000/g, ' ').trim();
+      mid = String(mid == null ? '' : mid).replace(/\u3000/g, ' ').trim();
+      if (!mid || !name) return;
+      var keys = [packIndexKey(major, mid), packIndexKey('', mid)];
+      var seen = {};
+      keys.forEach(function (k) {
+        if (seen[k]) return;
+        seen[k] = true;
+        if (!comboPackNames[kind][k]) comboPackNames[kind][k] = [];
+        comboPackNames[kind][k].push(name);
+      });
+    }
+    function rebuildComboPackIndex() {
+      comboPackNames = { work: {}, part: {} };
+      (master.workLines || []).forEach(function (r) {
+        pushComboPackName('work', r.major, r.mid, r.content);
+      });
+      (master.partLines || []).forEach(function (r) {
+        if (r && r.fromParts === false) return;
+        pushComboPackName('part', r.major || r.partMajor, r.mid, partSetName(r));
+      });
+    }
+    function comboPackInfo(kind, major, mid) {
+      var names = comboPackNames[kind] && comboPackNames[kind][packIndexKey(major, mid)];
+      if ((!names || !names.length) && major) {
+        names = comboPackNames[kind] && comboPackNames[kind][packIndexKey('', mid)];
+      }
+      return names || [];
     }
     function withBlankFirst(values) {
       var out = [''];
@@ -3412,6 +3502,7 @@
         el.hidden = true;
       });
       if (!keepList) comboActiveIndex = -1;
+      if (!keepInput) hideComboPreview();
     }
     function isComboField(el) {
       return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid' || el.dataset.k === 'workerCode'));
@@ -3511,12 +3602,104 @@
     function comboListEl(input) {
       return input.parentNode.querySelector('.combo-list');
     }
+    function hideComboPreview() {
+      var box = $('comboPreview');
+      if (!box) return;
+      box.hidden = true;
+      box.innerHTML = '';
+    }
+    function placeComboPreview(anchor) {
+      var box = $('comboPreview');
+      if (!box || box.hidden || !anchor) return;
+      var r = anchor.getBoundingClientRect();
+      var w = 240;
+      var left = r.right + 8;
+      if (left + w > window.innerWidth - 8) left = r.left - w - 8;
+      if (left < 8) left = 8;
+      box.style.left = left + 'px';
+      box.style.top = Math.max(8, r.top) + 'px';
+      box.style.width = w + 'px';
+      var pr = box.getBoundingClientRect();
+      if (pr.bottom > window.innerHeight - 8) {
+        box.style.top = Math.max(8, window.innerHeight - 8 - pr.height) + 'px';
+      }
+    }
+    function showComboPreview(input, mid) {
+      var box = $('comboPreview');
+      if (!box) return;
+      if (!isMidPartCombo(input) || !mid) {
+        hideComboPreview();
+        return;
+      }
+      var kind = input.dataset.k === 'partMid' ? 'part' : 'work';
+      var major = '';
+      if (input.getAttribute('data-list-work') != null) {
+        kind = 'part';
+      } else {
+        var it = items[Number(input.dataset.i)] || emptyRow();
+        major = kind === 'part' ? (it.partMajor || '') : (it.major || '');
+      }
+      var names = comboPackInfo(kind, major, mid);
+      if (names.length < 2) {
+        hideComboPreview();
+        return;
+      }
+      var max = 5;
+      var shown = names.slice(0, max);
+      var rest = names.length - shown.length;
+      var title = kind === 'part' ? '部品_セット' : '作業内容';
+      var h = '<p class="combo-preview-h">' + htmlEscape(title) + ' ' + names.length + ' 件</p><ul>';
+      shown.forEach(function (n) {
+        h += '<li>' + htmlEscape(comboOptionLabel(n)) + '</li>';
+      });
+      h += '</ul>';
+      if (rest > 0) h += '<p class="combo-preview-more">ほか ' + rest + ' 件</p>';
+      box.innerHTML = h;
+      box.hidden = false;
+      var list = comboListEl(input);
+      placeComboPreview((list && !list.hidden) ? list : input);
+    }
+    function comboPackCount(input, mid) {
+      if (!isMidPartCombo(input) || !mid) return 0;
+      var kind = input.dataset.k === 'partMid' ? 'part' : 'work';
+      var major = '';
+      if (input.getAttribute('data-list-work') != null) {
+        kind = 'part';
+      } else {
+        var it = items[Number(input.dataset.i)] || emptyRow();
+        major = kind === 'part' ? (it.partMajor || '') : (it.major || '');
+      }
+      return comboPackInfo(kind, major, mid).length;
+    }
+    function appendComboOption(list, input, v, label) {
+      var d = document.createElement('div');
+      d.className = 'combo-opt';
+      d.setAttribute('data-value', v);
+      var lab = document.createElement('span');
+      lab.className = 'combo-opt-label';
+      lab.textContent = label;
+      d.appendChild(lab);
+      var n = comboPackCount(input, v);
+      if (n >= 2) {
+        var b = document.createElement('span');
+        b.className = 'combo-opt-n';
+        b.textContent = String(n);
+        d.appendChild(b);
+      }
+      list.appendChild(d);
+    }
     function highlightCombo(list, idx) {
-      var nodes = list.querySelectorAll('div');
+      var nodes = list.children;
       for (var i = 0; i < nodes.length; i++) {
         nodes[i].classList.toggle('active', i === idx);
       }
       if (idx >= 0 && nodes[idx]) nodes[idx].scrollIntoView({ block: 'nearest' });
+      var input = list.parentNode && list.parentNode.querySelector('[data-k="mid"], [data-k="partMid"], [data-k="workerCode"]');
+      if (!input || idx < 0 || !nodes[idx]) {
+        hideComboPreview();
+        return;
+      }
+      showComboPreview(input, comboDivValue(nodes[idx]));
     }
     function showComboList(input, keepActive, unfiltered) {
       var list = comboListEl(input);
@@ -3545,12 +3728,15 @@
           return comboBody(v).indexOf(qBody) !== -1;
         });
         opts.forEach(function (v) {
-          var d = document.createElement('div');
-          d.setAttribute('data-value', v);
           var label = v === '' ? '　' : comboOptionLabel(v);
           if (isMidPartCombo(input) && v) label = comboOptionLabel(stripPosPrefixDisplay(v));
-          d.textContent = label;
-          list.appendChild(d);
+          if (isMidPartCombo(input)) appendComboOption(list, input, v, label);
+          else {
+            var d = document.createElement('div');
+            d.setAttribute('data-value', v);
+            d.textContent = label;
+            list.appendChild(d);
+          }
         });
       }
       list.hidden = opts.length === 0;
@@ -3982,6 +4168,18 @@
         commitWorkerAt(i, chosen, { fillDown: true });
         recalc();
       }
+    });
+    document.addEventListener('mouseover', function (e) {
+      var opt = e.target.closest('.combo-list > div');
+      if (!opt) return;
+      var list = opt.parentNode;
+      if (!list || list.hidden) return;
+      var input = list.parentNode && list.parentNode.querySelector('[data-k="mid"], [data-k="partMid"]');
+      if (!input) return;
+      var idx = Array.prototype.indexOf.call(list.children, opt);
+      if (idx < 0) return;
+      comboActiveIndex = idx;
+      highlightCombo(list, idx);
     });
     $('tbody').addEventListener('focusin', function (e) {
       if (!e.target.dataset) return;
