@@ -1806,20 +1806,29 @@
       if (templateValueFilled(h.serviceType)) next.header.serviceType = h.serviceType;
       return next;
     }
-    function normalizeKNo(v) {
+    function kNoDigits(v) {
       var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
       var d = s.replace(/\D/g, '');
       if (!d) return '';
-      if (d.length >= 4) return d;
+      return d.slice(0, 4);
+    }
+    function normalizeKNo(v) {
+      var d = kNoDigits(v);
+      if (!d) return '';
       while (d.length < 4) d = '0' + d;
       return d;
+    }
+    function commitKNoInput(el) {
+      if (!el) return '';
+      var n = normalizeKNo(el.value);
+      if (n || !String(el.value || '').trim()) el.value = n;
+      return n;
     }
     function collectPayload(opts) {
       var summary = (opts && opts.skipRecalc)
         ? { techPct: $('techPct').value, partPct: $('partPct').value }
         : recalc();
-      var kNo = normalizeKNo($('kNo').value);
-      $('kNo').value = kNo;
+      var kNo = opts && opts.liveKNo ? kNoDigits($('kNo').value) : commitKNoInput($('kNo'));
       return {
         header: {
           userName: $('userName').value,
@@ -1977,8 +1986,7 @@
     function openSearchPopup() {
       searchReturnJobId = workJobId;
       $('searchPopup').hidden = false;
-      var k = normalizeKNo($('kNo').value);
-      if (k || !$('kNo').value.trim()) $('kNo').value = k;
+      var k = commitKNoInput($('kNo'));
       $('popupSearchKNo').value = k;
       $('popupSearchEmpty').hidden = true;
       $('popupSearchTable').hidden = true;
@@ -2320,7 +2328,7 @@
       if (workJobHydrating) return;
       var job = findWorkJob(workJobId);
       if (!job) return;
-      job.payload = cloneJobPayload(collectPayload({ skipRecalc: true }));
+      job.payload = cloneJobPayload(collectPayload({ skipRecalc: true, liveKNo: true }));
       job.saveId = currentSaveId;
       job.boundKNo = boundKNo;
       job.templateName = $('invoiceTemplate').value;
@@ -2333,7 +2341,7 @@
       if (!job) return;
       if (!job.payload) job.payload = { header: {}, items: [], summary: {} };
       if (!job.payload.header) job.payload.header = {};
-      job.payload.header.kNo = normalizeKNo($('kNo').value);
+      job.payload.header.kNo = kNoDigits($('kNo').value);
       renderDraftTabs();
       persistWorkJobs();
     }
@@ -4540,8 +4548,7 @@
     function runAppSearch(kind) {
       kind = kind || activeSearchKind();
       var ui = searchUi(kind);
-      var kNo = normalizeKNo(ui.kNo.value);
-      ui.kNo.value = kNo;
+      var kNo = commitKNoInput(ui.kNo);
       if (!kNo) {
         setSearchStatus('K-No を入力してください。', true, kind);
         return;
@@ -5478,16 +5485,14 @@
     });
     $('btnPopupSearch').addEventListener('click', function () { runAppSearch('popup'); });
     $('popupSearchKNo').addEventListener('blur', function () {
-      var n = normalizeKNo($('popupSearchKNo').value);
-      if (n || !$('popupSearchKNo').value.trim()) $('popupSearchKNo').value = n;
+      commitKNoInput($('popupSearchKNo'));
     });
     if ($('btnSearchApp')) {
       $('btnSearchApp').addEventListener('click', function () { runAppSearch('app'); });
     }
     if ($('searchKNo')) {
       $('searchKNo').addEventListener('blur', function () {
-        var n = normalizeKNo($('searchKNo').value);
-        if (n || !$('searchKNo').value.trim()) $('searchKNo').value = n;
+        commitKNoInput($('searchKNo'));
       });
     }
     $('searchPopupClose').addEventListener('click', closeSearchPopup);
@@ -5632,10 +5637,15 @@
           if (f) applyDateField('billDate', 'billDateCal', f);
         });
         bindDateField('billDate', 'billDateCal');
-        $('kNo').addEventListener('input', syncActiveTabKNo);
+        $('kNo').addEventListener('input', function () {
+          var el = $('kNo');
+          var d = kNoDigits(el.value);
+          var typed = String(el.value || '').replace(/\D/g, '');
+          if (typed.length > 4) el.value = d;
+          syncActiveTabKNo();
+        });
         $('kNo').addEventListener('blur', function () {
-          var n = normalizeKNo($('kNo').value);
-          if (n || !$('kNo').value.trim()) $('kNo').value = n;
+          commitKNoInput($('kNo'));
           updateSaveChrome();
           snapshotActiveJob();
           renderDraftTabs();

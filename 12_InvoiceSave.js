@@ -460,7 +460,7 @@ function invoiceSaveYear_(savedAt) {
 }
 
 /**
- * K-1001 / k1001 / 1 → 1001 / 0001。数字以外だけなら空。
+ * K-1001 / k1001 / 1 → 1001 / 0001。最大4桁。数字以外だけなら空。
  */
 function normalizeInvoiceKNo_(value) {
   let s = String(value == null ? '' : value).replace(/\u3000/g, ' ').trim();
@@ -472,10 +472,8 @@ function normalizeInvoiceKNo_(value) {
   if (!digits) {
     return '';
   }
-  if (digits.length >= 4) {
-    return digits;
-  }
-  return ('0000' + digits).slice(-4);
+  const d = digits.slice(0, 4);
+  return ('0000' + d).slice(-4);
 }
 
 function migrateInvoiceSaveLegacy_(sh) {
