@@ -400,13 +400,19 @@
       color: var(--muted);
       text-align: center;
       font-size: 11px;
-      padding: 8px 0;
+      padding: 4px 0 8px;
       position: relative;
       overflow: visible;
+      vertical-align: top;
+    }
+    td.mid, td.part-mid,
+    td.major, td.part-major,
+    td.fee, td.staff, td.num {
+      vertical-align: top;
     }
     td.del {
       text-align: center;
-      padding: 4px 0 2px;
+      padding: 5px 0 2px;
       vertical-align: top;
     }
     th.del-h { text-align: center; }
@@ -5198,9 +5204,10 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           applyListMaster(res);
-          if (res && res.code) $('listWorkerCode').value = res.code;
-          setListStatus((res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（作業者「' + (res && res.code ? res.code + '：' : '') + name + '」）。');
+          var savedCode = (res && res.code) ? res.code : code;
+          var msg = (res && res.overwritten ? '上書き保存' : '保存') +
+            'しました（作業者「' + (savedCode ? savedCode + '：' : '') + name + '」）。';
+          clearListWorkerForm(msg);
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -5240,10 +5247,10 @@
       renderListPartTable();
       setListStatus(status || '入力を消去しました');
     }
-    function clearListWorkerForm() {
+    function clearListWorkerForm(status) {
       resetListTextInput($('listWorkerCode'));
       resetListTextInput($('listWorkerName'));
-      setListStatus('入力を消去しました');
+      setListStatus(status || '入力を消去しました');
     }
 
     $('navInput').addEventListener('click', function () {
