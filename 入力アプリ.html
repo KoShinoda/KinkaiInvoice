@@ -744,7 +744,20 @@
     .list-seg button.list-kind:hover { background: #e8f0ec; }
     .list-seg button.list-kind.on:hover { background: var(--accent); }
     #listStatus { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
-    #listStatus.err { color: var(--danger); }
+    #listStatus.err { color: var(--danger); font-weight: 600; }
+    .list-pack col.c-gap,
+    .list-pack th.gap-h,
+    .list-pack td.gap {
+      width: 12px;
+      min-width: 12px;
+      max-width: 12px;
+      padding: 0;
+      border-bottom: 1px solid #eef1f3;
+    }
+    .list-pack input.list-num-err {
+      border-color: var(--danger);
+      background: #fde8e8;
+    }
     .list-preview, .list-hint { margin: 8px 0 10px; color: var(--muted); font-size: 12px; }
     .list-actions {
       display: flex;
@@ -961,6 +974,7 @@
             <colgroup>
               <col class="c-ins">
               <col class="c-content">
+              <col class="c-gap">
               <col class="c-fee">
               <col class="c-worker">
               <col class="c-del">
@@ -974,6 +988,7 @@
               <tr>
                 <th class="ins-h"></th>
                 <th>作業内容</th>
+                <th class="gap-h"></th>
                 <th>技術料</th>
                 <th>作業者コード</th>
                 <th class="del-h" title="技術側">削</th>
@@ -1247,6 +1262,26 @@
       if (typeof v === 'number') return isFinite(v);
       var s = String(v).replace(/,/g, '').replace(/\s/g, '').trim();
       return s !== '' && isFinite(Number(s));
+    }
+    function toHalfWidthNumberText(v) {
+      return String(v == null ? '' : v)
+        .replace(/[\uFF10-\uFF19]/g, function (ch) {
+          return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+        })
+        .replace(/\uFF0E/g, '.')
+        .replace(/\uFF0D/g, '-')
+        .replace(/\u2212/g, '-')
+        .replace(/\uFF0C/g, ',')
+        .replace(/\u3000/g, ' ');
+    }
+    function normalizeListNumber(v) {
+      return toHalfWidthNumberText(v).replace(/,/g, '').replace(/\s/g, '').trim();
+    }
+    function coerceListNumber(v) {
+      if (!filled(v)) return { ok: true, value: '' };
+      var s = normalizeListNumber(v);
+      if (s === '' || !/^-?\d+(\.\d+)?$/.test(s)) return { ok: false, value: String(v) };
+      return { ok: true, value: s };
     }
     function measureQty(v) { return numericCell(v) ? v : ''; }
     function measurePrice(v) { return numericCell(v) ? v : ''; }
@@ -4359,6 +4394,7 @@
         return '<tr>' +
           '<td class="ins side-work">' + listInsButtons('data-list-work-ins', i, 'work', '技術側') + '</td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="content" value=""></td>' +
+          '<td class="gap side-work"></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
           '<td class="del side-work"><button type="button" class="row-del" data-list-work-del="' + i + '" data-side="work" title="この行の技術側を削除して詰める">×</button></td>' +
@@ -4548,6 +4584,36 @@
       });
       return listPartRows;
     }
+    function listNumberFieldLabel(k) {
+      if (k === 'fee') return '技術料';
+      if (k === 'unitPrice') return '単価';
+      return '数量';
+    }
+    function coerceListNumberRows(rows, keys) {
+      var bad = [];
+      (rows || []).forEach(function (r, i) {
+        if (!r) return;
+        keys.forEach(function (k) {
+          var next = coerceListNumber(r[k]);
+          r[k] = next.value;
+          if (!next.ok) bad.push({ i: i, k: k, label: listNumberFieldLabel(k) });
+        });
+      });
+      return bad;
+    }
+    function listNumberErrorText(bad) {
+      return (bad || []).map(function (item) {
+        return (item.i + 1) + '行目の「' + item.label + '」列';
+      }).join('、');
+    }
+    function markListNumberErrors(rootId, rowAttr, bad) {
+      var root = $(rootId);
+      if (!root) return;
+      (bad || []).forEach(function (item) {
+        var inp = root.querySelector('input[' + rowAttr + '="' + item.i + '"][data-k="' + item.k + '"]');
+        if (inp) inp.classList.add('list-num-err');
+      });
+    }
     function saveListWorkPack() {
       var major = $('listWorkMajor').value.replace(/\u3000/g, ' ').trim();
       var mid = $('listWorkMid').value.replace(/\u3000/g, ' ').trim();
@@ -4560,6 +4626,13 @@
         return;
       }
       collectListWorkRows();
+      var numberBad = coerceListNumberRows(listWorkRows, ['fee', 'unitPrice', 'qty']);
+      renderListWorkTable();
+      if (numberBad.length) {
+        markListNumberErrors('listWorkBody', 'data-list-work', numberBad);
+        setListStatus('数値以外があるため保存できません（' + listNumberErrorText(numberBad) + '）。', true);
+        return;
+      }
       var lines = listWorkRows.filter(listWorkRowHasContent);
       var exists = listWorkPackExists(major, mid);
       if (exists && !window.confirm('作業「' + major + ' / ' + mid + '」を上書きします')) return;
@@ -4591,6 +4664,13 @@
         return;
       }
       collectListPartRows();
+      var numberBad = coerceListNumberRows(listPartRows, ['unitPrice', 'qty']);
+      renderListPartTable();
+      if (numberBad.length) {
+        markListNumberErrors('listPartBody', 'data-list-part', numberBad);
+        setListStatus('数値以外があるため保存できません（' + listNumberErrorText(numberBad) + '）。', true);
+        return;
+      }
       var lines = listPartRows.filter(listPartRowHasContent);
       if (!lines.length) {
         setListStatus('セット（部品名）か単価・数量を1行以上入力してください。', true);
@@ -4767,6 +4847,17 @@
         listWorkRows[i][k] = t.value;
         updateListWorkPreview();
       });
+      $('listWorkBody').addEventListener('focusout', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
+        var k = t.getAttribute('data-k');
+        if (k !== 'fee' && k !== 'unitPrice' && k !== 'qty') return;
+        var i = Number(t.getAttribute('data-list-work'));
+        if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
+        var next = coerceListNumber(t.value);
+        listWorkRows[i][k] = next.value;
+        if (t.value !== next.value) t.value = next.value;
+      });
       $('listWorkBody').addEventListener('click', function (e) {
         var ins = e.target.closest('[data-list-work-ins]');
         if (ins) {
@@ -4789,6 +4880,17 @@
         if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
         listPartRows[i][k] = t.value;
         updateListPartPreview();
+      });
+      $('listPartBody').addEventListener('focusout', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || !t.getAttribute('data-list-part')) return;
+        var k = t.getAttribute('data-k');
+        if (k !== 'unitPrice' && k !== 'qty') return;
+        var i = Number(t.getAttribute('data-list-part'));
+        if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
+        var next = coerceListNumber(t.value);
+        listPartRows[i][k] = next.value;
+        if (t.value !== next.value) t.value = next.value;
       });
       $('listPartBody').addEventListener('click', function (e) {
         var ins = e.target.closest('[data-list-part-ins]');

@@ -10,7 +10,22 @@ function listMaintainNumeric_(v) {
   if (typeof v === 'number' && isFinite(v)) {
     return v;
   }
-  const n = Number(String(v).replace(/,/g, '').trim());
+  const s = String(v)
+    .replace(/[\uFF10-\uFF19]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    })
+    .replace(/\uFF0E/g, '.')
+    .replace(/\uFF0D/g, '-')
+    .replace(/\u2212/g, '-')
+    .replace(/\uFF0C/g, ',')
+    .replace(/\u3000/g, ' ')
+    .replace(/,/g, '')
+    .replace(/\s/g, '')
+    .trim();
+  if (!s || !/^-?\d+(\.\d+)?$/.test(s)) {
+    return '';
+  }
+  const n = Number(s);
   return isFinite(n) ? n : '';
 }
 
