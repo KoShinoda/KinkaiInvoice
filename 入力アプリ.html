@@ -405,10 +405,17 @@
       overflow: visible;
       vertical-align: top;
     }
-    td.mid, td.part-mid,
-    td.major, td.part-major,
-    td.fee, td.staff, td.num {
+    #tbody td.mid, #tbody td.part-mid,
+    #tbody td.major, #tbody td.part-major,
+    #tbody td.fee, #tbody td.staff, #tbody td.num {
       vertical-align: top;
+    }
+    #tbody td.major select,
+    #tbody td.part-major select,
+    #tbody td.fee input,
+    #tbody td.num input {
+      display: block;
+      margin: 0;
     }
     td.del {
       text-align: center;
