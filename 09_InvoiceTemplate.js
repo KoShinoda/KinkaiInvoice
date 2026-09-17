@@ -629,14 +629,21 @@ function templateWorkerCodeWriteValue_(code) {
 }
 
 function coerceInvoiceTemplateWorkerCodes_(sh, range) {
-  if (!sh || !range) {
-    return;
-  }
   const cols = invoiceTemplateHeaderMap_(sh);
-  if (!cols.workerCode) {
+  coerceWorkerCodeColumn_(sh, range, cols && cols.workerCode);
+}
+
+/**
+ * 選択肢は「コード：作業者」。セルには作業コードだけ残す。
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sh
+ * @param {GoogleAppsScript.Spreadsheet.Range} range
+ * @param {number} col
+ */
+function coerceWorkerCodeColumn_(sh, range, col) {
+  if (!sh || !range || !col) {
     return;
   }
-  const col = cols.workerCode;
   const c1 = range.getColumn();
   const c2 = range.getLastColumn();
   if (col < c1 || col > c2) {

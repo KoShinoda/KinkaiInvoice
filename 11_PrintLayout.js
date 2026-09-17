@@ -17,7 +17,7 @@ var PRINT_BLACK_ = '#000000';
 var PRINT_MARGIN_IN_ = { top: 0.75, bottom: 0.75, left: 0.7, right: 0.7 };
 /** シート印刷のヘッダー・フッター余白。0 以外だと本文が次ページへ落ちやすい。 */
 var PRINT_HF_MARGIN_IN_ = 0;
-/** No. の下の空行。各ページの合計高さを A4 印刷可能高さに揃え、次ページの見出しが食い込まないようにする。 */
+/** No. の下の空行。余りだけ埋める。途中ページにフッター分の空行は作らない。 */
 var PRINT_PAD_MIN_ = 12;
 /** 行高の丸め用。大きすぎると次ページの見出しが前ページへ落ちる。 */
 var PRINT_PAGE_SAFETY_PX_ = 2;
@@ -377,7 +377,6 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   const pageCount = Math.max(1, pages.length);
   printWorkerValue_.maps_ = null;
   const sheet = replacePrintSheet_(ss, sheetName);
-  const slotH = printDataRowHeight_();
 
   sheet.setHiddenGridlines(true);
 
@@ -389,17 +388,26 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   const pageMetas = [];
   for (let p = 0; p < pageCount; p++) {
     const slice = pages[p] || [];
+    const showHeader = p === 0;
+    const showFooter = p === pageCount - 1;
+    const slotH = printDataRowHeight_(showHeader, showFooter);
     const L = fillPrintPage_(sheet, cursor, payload.header || {}, slice, {
       page: p + 1,
       pageCount: pageCount,
       serialOffset: serial,
-      showHeader: p === 0,
-      showFooter: p === pageCount - 1,
+      showHeader: showHeader,
+      showFooter: showFooter,
       summary: payload.summary || {},
       slotH: slotH
     });
     serial += slice.length;
-    pageMetas.push({ start: cursor, L: L });
+    pageMetas.push({
+      start: cursor,
+      L: L,
+      showHeader: showHeader,
+      showFooter: showFooter,
+      slotH: slotH
+    });
     const end = cursor + L.pageRows - 1;
     if (p < pageCount - 1) {
       breakRows.push(end + 1);
@@ -411,7 +419,8 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   applyPrintPageBreaksAt_(sheet, breakRows);
   SpreadsheetApp.flush();
   for (let i = 0; i < pageMetas.length; i++) {
-    fitPrintPagePad_(sheet, pageMetas[i].start, pageMetas[i].L);
+    const meta = pageMetas[i];
+    fitPrintPagePad_(sheet, meta.start, meta.L, meta.showHeader, meta.showFooter, meta.slotH);
   }
   SpreadsheetApp.flush();
   return { sheet: sheet, pageCount: pageCount };
@@ -708,7 +717,7 @@ function printInnerWidthPx_() {
 function printTargetInnerPx_() {
   const m = PRINT_MARGIN_IN_;
   const raw = (297 / 25.4 - m.top - m.bottom) * PRINT_PX_PER_IN_;
-  return Math.max(600, Math.floor(raw));
+  return Math.max(600, Math.floor(raw) - 12);
 }
 
 function applyPrintColumnWidths_(sheet) {
@@ -747,15 +756,15 @@ function printChromePx_(showHeader, showFooter, includeMinPad) {
   return h;
 }
 
-function printDataRowHeight_() {
+function printDataRowHeight_(showHeader, showFooter) {
   const inner = printTargetInnerPx_();
-  const chrome = printChromePx_(true, true, true);
-  return Math.max(21, Math.floor((inner - chrome) / CONFIG.print.linesPerPage));
+  const chrome = printChromePx_(!!showHeader, !!showFooter, true);
+  return Math.max(21, Math.floor((inner - chrome - PRINT_PAGE_SAFETY_PX_) / CONFIG.print.linesPerPage));
 }
 
 function printPadHeight_(showHeader, showFooter, slotH) {
   const inner = printTargetInnerPx_();
-  const used = printChromePx_(showHeader, showFooter, false) + CONFIG.print.linesPerPage * slotH;
+  const used = printChromePx_(!!showHeader, !!showFooter, false) + CONFIG.print.linesPerPage * slotH;
   const leftover = inner - used - PRINT_PAGE_SAFETY_PX_;
   if (leftover <= 0) {
     return PRINT_PAD_MIN_;
@@ -769,7 +778,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   const plan = printBodyPlan_(lines);
   const L = printPageLayout_(showHeader, showFooter, plan.bodyRowCount);
   const cols = CONFIG.print.colCount;
-  const slotH = opts.slotH || printDataRowHeight_();
+  const slotH = opts.slotH || printDataRowHeight_(showHeader, showFooter);
 
   sheet.getRange(start, 1, L.pageRows, cols)
     .setFontFamily('Yu Gothic')
@@ -820,7 +829,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   sheet.getRange(start, 1, L.pageRows, cols).setVerticalAlignment('middle');
   fillPrintBodyFonts_(sheet, first, lines);
   applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan);
-  fitPrintPagePad_(sheet, start, L);
+  fitPrintPagePad_(sheet, start, L, showHeader, showFooter, slotH);
   return L;
 }
 
@@ -1027,8 +1036,8 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, 
   setPrintRowHeight_(sheet, start + L.pageNo, PRINT_PAGE_NO_H_);
 }
 
-/** 折返し後に行が高さ自動調整されても、1 ページ分が A4 に収まるよう空行で埋める。 */
-function fitPrintPagePad_(sheet, start, L) {
+/** 折返しで行が伸びた分だけ空行を縮める。測りが小さすぎてもフッター分まで空行を広げない。 */
+function fitPrintPagePad_(sheet, start, L, showHeader, showFooter, slotH) {
   if (!L || L.pad == null) {
     return;
   }
@@ -1041,7 +1050,9 @@ function fitPrintPagePad_(sheet, start, L) {
       used += Number(sheet.getRowHeight(r)) || 0;
     }
   }
-  const padH = Math.max(PRINT_PAD_MIN_, target - used - PRINT_PAGE_SAFETY_PX_);
+  const measured = target - used - PRINT_PAGE_SAFETY_PX_;
+  const formulaPad = printPadHeight_(showHeader, showFooter, slotH);
+  const padH = Math.max(PRINT_PAD_MIN_, Math.min(formulaPad, measured));
   try {
     sheet.getRange(padRow, 1, 1, CONFIG.print.colCount).setWrap(false).clearContent();
   } catch (err) {}

@@ -875,7 +875,7 @@ function fillWorkListWorkerCodesInRows_(sheet, startRow, endRow) {
     if (!nameKey || byName[nameKey] == null) {
       continue;
     }
-    codes[i][0] = byName[nameKey];
+    codes[i][0] = templateWorkerCodeWriteValue_(byName[nameKey]);
     changed = true;
   }
   if (changed) {
@@ -901,6 +901,7 @@ function workerCodeByNameMap_() {
 
 /**
  * 作業リストの作業コード・部品_中項目を、リストから選べて手入力もできるプルダウンにする。
+ * 作業コードの選択肢は「コード：作業者」。選ぶとセルには作業コードだけ入る。
  * セルの値は消さない。
  *
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
@@ -913,10 +914,9 @@ function applyWorkListOpenDropdowns_(ss, workSheet) {
   const lastData = Math.max(workSheet.getLastRow(), 2);
   const rows = Math.max(lastData + 80, 200) - 1;
   if (cols.workerCode) {
-    applyOpenListValidation_(
-      workSheet.getRange(2, cols.workerCode, rows, 1),
-      workerCodesForDropdown_()
-    );
+    const workerRange = workSheet.getRange(2, cols.workerCode, rows, 1);
+    applyOpenListValidation_(workerRange, workerCodeLabelsForTemplateDropdown_());
+    coerceWorkListWorkerCodes_(workSheet, workerRange);
   }
   if (cols.partMid) {
     applyOpenListValidation_(
@@ -924,6 +924,16 @@ function applyWorkListOpenDropdowns_(ss, workSheet) {
       partMidsForDropdown_(workSheet)
     );
   }
+}
+
+function coerceWorkListWorkerCodes_(sheet, range) {
+  if (!sheet || !range) {
+    return;
+  }
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  coerceWorkerCodeColumn_(sheet, range, cols.workerCode);
 }
 
 function applyOpenListValidation_(range, values) {
@@ -954,24 +964,6 @@ function uniqueDropdownItems_(values) {
     seen[key] = true;
     out.push(String(v));
   });
-  return out;
-}
-
-function workerCodesForDropdown_() {
-  const seen = {};
-  const out = [];
-  try {
-    (loadWorkers_() || []).forEach(function (w) {
-      const key = normalize_(w.code);
-      if (!key || seen[key]) {
-        return;
-      }
-      seen[key] = true;
-      out.push(w.code);
-    });
-  } catch (err) {
-    Logger.log('%s workerCodesForDropdown_: %s', CONFIG.logPrefix, err);
-  }
   return out;
 }
 

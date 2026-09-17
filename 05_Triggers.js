@@ -152,6 +152,7 @@ function handleEdit_(e) {
 
   if (sheetName === CONFIG.workList.sheetName) {
     writeInternal_(function () {
+      coerceWorkListWorkerCodes_(sheet, e.range);
       fillWorkListWorkerCodesFromEdit_(sheet, e.range);
     });
     return;
