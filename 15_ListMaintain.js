@@ -136,6 +136,25 @@ function listMaintainWorkLineHasContent_(line) {
     isFilled_(line.qty) || isFilled_(line.unitPrice));
 }
 
+function listMaintainCanonicalWorkLine_(mid, line) {
+  const out = line ? {
+    content: line.content,
+    fee: line.fee,
+    workerCode: line.workerCode,
+    partMajor: line.partMajor,
+    partMid: line.partMid,
+    qty: line.qty,
+    unitPrice: line.unitPrice
+  } : {};
+  if (isFilled_(out.fee) && !normalize_(out.content)) {
+    out.content = mid;
+  }
+  if (!normalize_(out.content)) {
+    out.fee = '';
+  }
+  return out;
+}
+
 function listMaintainWorkRow_(cols, width, major, mid, line) {
   const row = listMaintainBlankRow_(width);
   listMaintainSetCell_(row, cols.major, major);
@@ -164,7 +183,10 @@ function saveWorkListPack(payload) {
   if (!mid) {
     throw new Error('中項目を入力してください。');
   }
-  const lines = (payload.lines || []).filter(listMaintainWorkLineHasContent_);
+  const lines = (payload.lines || []).filter(listMaintainWorkLineHasContent_)
+    .map(function (line) {
+      return listMaintainCanonicalWorkLine_(mid, line);
+    });
   const bodyLines = lines.length ? lines : [{}];
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.workList.sheetName);

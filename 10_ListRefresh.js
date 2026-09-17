@@ -248,6 +248,61 @@ function ensureOrderColumnOnSheet_(sheet) {
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
+/**
+ * 中項目行に残っている技術料を作業内容へ移してシートへ書く。
+ */
+function promoteWorkListMidFeesOnSheet_(sheet) {
+  const values = sheet.getDataRange().getValues();
+  if (!values || values.length < 2) {
+    return false;
+  }
+  const headers = values[CONFIG.workList.headerRow - 1] || [];
+  const cols = resolveColumns_(headers, CONFIG.workList.headers);
+  if (!cols.mid || !cols.content || !cols.fee) {
+    return false;
+  }
+  const parsed = parseWorkList_(values, cols);
+  promoteMidFeesToWorkContent_(parsed);
+  const byRow = {};
+  const extras = [];
+  parsed.forEach(function (row) {
+    if (row.sourceIndex) {
+      byRow[row.sourceIndex] = row;
+    } else {
+      extras.push(row);
+    }
+  });
+  const height = values.length - CONFIG.workList.headerRow;
+  const contentOut = [];
+  const feeOut = [];
+  let changed = false;
+  for (let i = CONFIG.workList.headerRow; i < values.length; i++) {
+    const rec = byRow[i + 1];
+    const oldContent = values[i][cols.content - 1];
+    const oldFee = values[i][cols.fee - 1];
+    const newContent = rec ? rec.content : oldContent;
+    const newFee = rec ? (rec.fee == null ? '' : rec.fee) : oldFee;
+    contentOut.push([newContent]);
+    feeOut.push([newFee]);
+    if (normalize_(oldContent) !== normalize_(newContent) || String(oldFee) !== String(newFee)) {
+      changed = true;
+    }
+  }
+  if (changed) {
+    sheet.getRange(CONFIG.workList.headerRow + 1, cols.content, height, 1).setValues(contentOut);
+    sheet.getRange(CONFIG.workList.headerRow + 1, cols.fee, height, 1).setValues(feeOut);
+  }
+  if (extras.length) {
+    const width = lastDataHeaderCol_(headers);
+    const body = extras.map(function (line) {
+      return listMaintainWorkRow_(cols, width, line.major, line.mid, line);
+    });
+    listMaintainAppendRows_(sheet, body, width);
+    changed = true;
+  }
+  return changed;
+}
+
 function ensureWorkListWorkerCodeColumn_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -421,6 +476,7 @@ function refreshMasterListSheet_(sheet) {
     ensureWorkListWorkerCodeColumn_(sheet);
     ensureWorkListPartColumns_(sheet);
     layoutWorkListColumns_(sheet);
+    promoteWorkListMidFeesOnSheet_(sheet);
   }
   if (sheet.getName() === CONFIG.parts.sheetName) {
     ensurePartsSetHeader_(sheet);

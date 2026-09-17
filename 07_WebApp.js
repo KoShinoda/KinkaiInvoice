@@ -400,14 +400,14 @@ function isProbablyNumber_(value) {
 }
 
 /**
- * 中項目に紐づく作業内容（空白以外）と、中項目技術料。
+ * 中項目に紐づく作業内容（空白以外）。技術料は作業内容行だけ。
  */
 function expandMidSelection(major, mid) {
   invalidateContext_();
   const ctx = loadContext_();
   const resolved = resolveMidOutput_(ctx, normalize_(major), normalize_(mid));
   return {
-    midFee: resolved.midFee,
+    midFee: '',
     works: resolved.workRows.map(function (row) {
       return {
         name: row.content,

@@ -745,15 +745,6 @@
     .list-seg button.list-kind.on:hover { background: var(--accent); }
     #listStatus { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
     #listStatus.err { color: var(--danger); font-weight: 600; }
-    .list-pack col.c-gap,
-    .list-pack th.gap-h,
-    .list-pack td.gap {
-      width: 12px;
-      min-width: 12px;
-      max-width: 12px;
-      padding: 0;
-      border-bottom: 1px solid #eef1f3;
-    }
     .list-pack input.list-num-err {
       border-color: var(--danger);
       background: #fde8e8;
@@ -814,6 +805,15 @@
     .list-pack td.del .row-del {
       display: block;
       margin: 0;
+    }
+    .list-pack col.c-gap,
+    .list-pack th.gap-h,
+    .list-pack td.gap {
+      width: 28px;
+      min-width: 28px;
+      max-width: 28px;
+      padding: 0;
+      box-sizing: border-box;
     }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
@@ -954,7 +954,7 @@
         </div>
       </div>
       <p id="listStatus"></p>
-      <p class="list-hint">請求入力で選ぶときの塊を登録します。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。並びの確定はシートの更新ボタンです。</p>
+      <p class="list-hint">請求入力で選ぶときの塊を登録します。技術料は作業内容の行に付けます。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。並びの確定はシートのリスト更新です。</p>
       <div id="listPanelWork">
         <div class="grid">
           <div>
@@ -3216,9 +3216,8 @@
       }
 
       if (works.length === 0) {
-        var only = group[0];
-        it.fee = only ? only.fee : it.fee;
-        if (only && !it.major && only.major) it.major = only.major;
+        it.fee = '';
+        if (group[0] && !it.major && group[0].major) it.major = group[0].major;
         applyMasterWorkerIfEmpty(it, group);
         compactItems();
         renderGrid();
@@ -3226,7 +3225,19 @@
         return;
       }
 
-      it.fee = firstFilled(blanks, 'fee');
+      if (works.length === 1 && foldKey(works[0].content) === foldKey(mid)) {
+        it.fee = works[0].fee;
+        applyMasterWorkerIfEmpty(it, group);
+        if (!filled(it.workerCode) && filled(works[0].workerCode)) {
+          assignWorker(it, findWorker(works[0].workerCode), works[0].workerCode);
+        }
+        compactItems();
+        renderGrid();
+        setStatus('中項目「' + mid + '」を入力しました');
+        return;
+      }
+
+      it.fee = '';
       applyMasterWorkerIfEmpty(it, blanks.length ? blanks.concat(works) : group);
       var details = works.map(function (w) {
         var row = emptyRow();
@@ -4626,6 +4637,11 @@
         return;
       }
       collectListWorkRows();
+      listWorkRows.forEach(function (r) {
+        if (!r) return;
+        if (filled(r.fee) && !filled(r.content)) r.content = mid;
+        if (!filled(r.content)) r.fee = '';
+      });
       var numberBad = coerceListNumberRows(listWorkRows, ['fee', 'unitPrice', 'qty']);
       renderListWorkTable();
       if (numberBad.length) {
