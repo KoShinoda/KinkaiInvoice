@@ -772,30 +772,27 @@
       vertical-align: middle;
     }
     .list-pack th { color: var(--muted); font-weight: 600; }
-    .list-pack col.c-content { width: 20%; }
-    .list-pack col.c-fee { width: 9%; }
-    .list-pack col.c-worker { width: 14%; }
-    .list-pack col.c-pmid { width: 16%; }
-    .list-pack col.c-price { width: 9%; }
-    .list-pack col.c-qty { width: 9%; }
-    .list-pack col.c-del { width: 22px; }
-    .list-pack col.c-ins { width: 28px; }
-    .list-pack col.c-set { width: 42%; }
+    .list-pack col.c-ins,
     .list-pack th.ins-h,
     .list-pack td.ins {
       width: 28px;
+      min-width: 28px;
       max-width: 28px;
       padding: 8px 0;
       text-align: center;
       overflow: visible;
+      box-sizing: border-box;
     }
+    .list-pack col.c-del,
     .list-pack th.del-h,
     .list-pack td.del {
       width: 22px;
+      min-width: 22px;
       max-width: 22px;
       padding: 0;
       text-align: left;
       vertical-align: middle;
+      box-sizing: border-box;
     }
     .list-pack th:has(+ .del-h),
     .list-pack td:has(+ .del) {
