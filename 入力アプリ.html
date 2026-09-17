@@ -778,26 +778,32 @@
     .list-pack col.c-pmid { width: 16%; }
     .list-pack col.c-price { width: 9%; }
     .list-pack col.c-qty { width: 9%; }
-    .list-pack col.c-del { width: 24px; }
-    .list-pack col.c-ins { width: 16px; }
+    .list-pack col.c-del { width: 22px; }
+    .list-pack col.c-ins { width: 28px; }
     .list-pack col.c-set { width: 42%; }
     .list-pack th.ins-h,
     .list-pack td.ins {
-      width: 16px;
+      width: 28px;
+      max-width: 28px;
       padding: 8px 0;
       text-align: center;
       overflow: visible;
     }
     .list-pack th.del-h,
     .list-pack td.del {
-      width: 24px;
+      width: 22px;
+      max-width: 22px;
       padding: 0;
-      text-align: center;
+      text-align: left;
       vertical-align: middle;
+    }
+    .list-pack th:has(+ .del-h),
+    .list-pack td:has(+ .del) {
+      padding-right: 2px;
     }
     .list-pack td.del .row-del {
       display: block;
-      margin: 0 auto;
+      margin: 0;
     }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
