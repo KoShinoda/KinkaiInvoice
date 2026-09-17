@@ -816,42 +816,51 @@
       margin-top: 12px;
     }
     .list-pack-wrap {
-      max-height: none;
-      overflow: visible;
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: visible;
       border: 1px solid var(--line);
       border-radius: 8px;
     }
     .list-pack {
-      width: 100%;
+      width: 728px;
       border-collapse: collapse;
       table-layout: fixed;
     }
+    .list-pack.list-pack-parts {
+      width: 364px;
+    }
     .list-pack th, .list-pack td {
-      padding: 4px 6px;
+      padding: 4px 4px;
       font-size: 12px;
       border-bottom: 1px solid #eef1f3;
       text-align: left;
       vertical-align: middle;
     }
-    .list-pack th { color: var(--muted); font-weight: 600; }
+    .list-pack th {
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
     .list-pack col.c-ins,
     .list-pack th.ins-h,
     .list-pack td.ins {
-      width: 28px;
-      min-width: 28px;
-      max-width: 28px;
+      width: 22px;
+      min-width: 22px;
+      max-width: 22px;
       padding: 8px 0;
       text-align: center;
       overflow: visible;
       box-sizing: border-box;
     }
-    .list-pack col.c-content { width: 28%; }
-    .list-pack col.c-fee { width: 72px; }
-    .list-pack col.c-worker { width: 88px; }
-    .list-pack col.c-pmid { width: 24%; }
-    .list-pack col.c-price { width: 72px; }
-    .list-pack col.c-qty { width: 48px; }
-    .list-pack col.c-set { width: auto; }
+    .list-pack col.c-content { width: 220px; }
+    .list-pack col.c-fee { width: 60px; }
+    .list-pack col.c-worker { width: 72px; }
+    .list-pack col.c-pmid { width: 176px; }
+    .list-pack col.c-price { width: 60px; }
+    .list-pack col.c-qty { width: 40px; }
+    .list-pack col.c-set { width: 220px; }
     .list-pack col.c-del,
     .list-pack th.del-h,
     .list-pack td.del {
@@ -874,9 +883,9 @@
     .list-pack col.c-gap,
     .list-pack th.gap-h,
     .list-pack td.gap {
-      width: 28px;
-      min-width: 28px;
-      max-width: 28px;
+      width: 12px;
+      min-width: 12px;
+      max-width: 12px;
       padding: 0;
       overflow: hidden;
       box-sizing: border-box;
@@ -885,9 +894,13 @@
     .list-pack td.gap::after {
       content: '';
       display: block;
-      width: 28px;
+      width: 12px;
       height: 1px;
     }
+    .list-pack th:has(+ .gap-h),
+    .list-pack td:has(+ .gap) { padding-right: 2px; }
+    .list-pack .gap-h + th,
+    .list-pack .gap + td { padding-left: 2px; }
     .list-pack .side-ins:hover,
     .list-pack .side-ins:focus { opacity: 1; }
     .list-pack td { vertical-align: top; }
@@ -911,7 +924,14 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .list-worker-grid { max-width: 520px; }
+    #viewLists .grid {
+      grid-template-columns: 200px 260px;
+      max-width: 472px;
+    }
+    #viewLists .list-worker-grid {
+      grid-template-columns: 140px 220px;
+      max-width: 372px;
+    }
   </style>
 </head>
 <body>
@@ -1083,7 +1103,7 @@
                 <th>作業内容</th>
                 <th class="gap-h"></th>
                 <th>技術料</th>
-                <th>作業者コード</th>
+                <th>作業コード</th>
                 <th class="del-h" title="技術側">削</th>
                 <th class="ins-h"></th>
                 <th>部品_中項目</th>
@@ -1118,7 +1138,7 @@
         </div>
         <p id="listPartPreview" class="list-preview"></p>
         <div class="list-pack-wrap">
-          <table class="list-pack">
+          <table class="list-pack list-pack-parts">
             <colgroup>
               <col class="c-ins">
               <col class="c-set">
