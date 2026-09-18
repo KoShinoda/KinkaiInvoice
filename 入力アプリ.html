@@ -232,7 +232,8 @@
       padding-bottom: 132px;
     }
     body.is-input-view #viewInput .card-header-fields {
-      flex: 0 1 auto;
+      flex: 0 0 auto;
+      overflow: visible;
       margin-bottom: 8px;
     }
     body.is-input-view #viewInput .card-items {
@@ -691,17 +692,21 @@
       display: flex;
       gap: 8px;
       align-items: stretch;
-      max-width: 560px;
+      max-width: none;
     }
     .header-grid .header-template select {
       flex: 1;
       min-width: 0;
-      max-width: none;
+      max-width: 360px;
     }
-    .header-grid .header-template button {
+    .header-grid .header-template #btnSaveTemplate {
       flex: 0 0 auto;
       padding: 6px 12px;
       font-size: 13px;
+    }
+    .header-grid .header-template #btnClearHeader {
+      flex: 0 0 auto;
+      margin-left: auto;
     }
     .date-wrap {
       display: flex;
@@ -1023,16 +1028,13 @@
   </div>
   <main id="viewInput">
     <section class="card card-header-fields">
-      <div class="card-head">
-        <h2>ヘッダー</h2>
-        <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
-      </div>
       <div class="grid header-grid">
         <div class="header-template">
           <label>テンプレート</label>
           <div class="template-wrap">
             <select id="invoiceTemplate"></select>
             <button type="button" id="btnSaveTemplate" class="sub">テンプレートとして保存</button>
+            <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
           </div>
         </div>
         <div><label>ユーザー</label><input id="userName"></div>
@@ -3315,45 +3317,20 @@
       if (!wrap) return;
       var footer = $('appFooter');
       var headerCard = document.querySelector('#viewInput .card-header-fields');
-      if (!footer || footer.hidden || $('viewInput').hidden) {
-        wrap.style.height = '';
-        wrap.style.maxHeight = '';
-        if (headerCard) {
-          headerCard.style.maxHeight = '';
-          headerCard.style.overflow = '';
-        }
-        return;
-      }
       if (headerCard) {
         headerCard.style.maxHeight = '';
         headerCard.style.overflow = '';
       }
+      if (!footer || footer.hidden || $('viewInput').hidden) {
+        wrap.style.height = '';
+        wrap.style.maxHeight = '';
+        return;
+      }
       wrap.style.height = '';
       wrap.style.maxHeight = '';
-      var head = wrap.querySelector('thead');
-      var headH = head ? head.offsetHeight : 32;
-      var rowH = gridTypicalRowHeight_(null);
-      var want = headH + rowH * 20 + 8;
-      var foot = gridVisibleBottom_();
-      var avail = foot - wrap.getBoundingClientRect().top;
-      if (headerCard && avail < want) {
-        var steal = want - avail;
-        var hh = headerCard.getBoundingClientRect().height;
-        var next = Math.max(140, Math.floor(hh - steal));
-        headerCard.style.maxHeight = next + 'px';
-        headerCard.style.overflow = 'auto';
-        avail = foot - wrap.getBoundingClientRect().top;
-      }
-      var h = Math.max(160, Math.floor(avail));
+      var h = Math.max(160, Math.floor(gridVisibleBottom_() - wrap.getBoundingClientRect().top));
       wrap.style.height = h + 'px';
       wrap.style.maxHeight = h + 'px';
-    }
-    function gridTypicalRowHeight_(row) {
-      var h = row ? row.getBoundingClientRect().height : 0;
-      if (h >= 28 && h <= 72) return h;
-      var r0 = $('tbody') && $('tbody').rows[0];
-      var h0 = r0 ? r0.getBoundingClientRect().height : 0;
-      return Math.max(36, h0 || 36);
     }
     function scrollGridCellIntoView_(el) {
       var wrap = document.querySelector('#viewInput .table-wrap');
@@ -3425,11 +3402,24 @@
       return out.concat(pendingW).concat(pendingP);
     }
     function packOppositeSides() {
-      var src = [];
-      for (var i = 0; i < items.length; i++) {
-        if (!rowIsEmpty(items[i])) src.push(items[i]);
+      var last = lastFilledIndex(items);
+      var result = [];
+      var chunk = [];
+      function flushChunk() {
+        if (!chunk.length) return;
+        result = result.concat(packRowList(chunk));
+        chunk = [];
       }
-      items = packRowList(src);
+      for (var i = 0; i <= last; i++) {
+        if (rowIsEmpty(items[i])) {
+          flushChunk();
+          result.push(items[i]);
+        } else {
+          chunk.push(items[i]);
+        }
+      }
+      flushChunk();
+      items = result;
     }
 
     function compactItems() {
