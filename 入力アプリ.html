@@ -1937,6 +1937,12 @@
       $('appFooter').hidden = view !== 'input';
       if ($('draftBar')) $('draftBar').hidden = view !== 'input';
       document.body.classList.toggle('is-input-view', view === 'input');
+      if (view === 'input') {
+        window.requestAnimationFrame(fitGridWrapToFooter_);
+      } else {
+        var wrap = document.querySelector('#viewInput .table-wrap');
+        if (wrap) wrap.style.maxHeight = '';
+      }
       $('navInput').classList.toggle('on', view === 'input');
       if ($('navSearch')) $('navSearch').classList.toggle('on', search);
       if ($('navLists')) $('navLists').classList.toggle('on', lists);
@@ -3235,6 +3241,7 @@
     function focusGridEl_(el) {
       var wx = window.pageXOffset || 0;
       var wy = window.pageYOffset || 0;
+      fitGridWrapToFooter_();
       try {
         el.focus({ preventScroll: true });
       } catch (err) {
@@ -3250,7 +3257,25 @@
         scrollGridCellIntoView_(el);
       });
     }
+    function gridVisibleBottom_() {
+      var footer = $('appFooter');
+      var footTop = (footer && !footer.hidden) ? footer.getBoundingClientRect().top : window.innerHeight;
+      return Math.min(window.innerHeight, footTop) - 8;
+    }
+    function fitGridWrapToFooter_() {
+      var wrap = document.querySelector('#viewInput .table-wrap');
+      if (!wrap) return;
+      var footer = $('appFooter');
+      if (!footer || footer.hidden || $('viewInput').hidden) {
+        wrap.style.maxHeight = '';
+        return;
+      }
+      var h = Math.floor(gridVisibleBottom_() - wrap.getBoundingClientRect().top);
+      if (!isFinite(h)) return;
+      wrap.style.maxHeight = Math.max(160, h) + 'px';
+    }
     function scrollGridCellIntoView_(el) {
+      fitGridWrapToFooter_();
       var wrap = document.querySelector('#viewInput .table-wrap');
       if (!wrap || !el || !wrap.contains(el)) return;
       var row = el.closest('tr') || el;
@@ -3258,12 +3283,13 @@
       var rowRect = row.getBoundingClientRect();
       var head = wrap.querySelector('thead');
       var topGap = (head ? head.offsetHeight : 0) + 4;
-      var botGap = 12;
+      var botLimit = Math.min(wrapRect.bottom, gridVisibleBottom_()) - 4;
+      var topLimit = wrapRect.top + topGap;
       var delta = 0;
-      if (rowRect.top < wrapRect.top + topGap) {
-        delta = rowRect.top - (wrapRect.top + topGap);
-      } else if (rowRect.bottom > wrapRect.bottom - botGap) {
-        delta = rowRect.bottom - (wrapRect.bottom - botGap);
+      if (rowRect.top < topLimit) {
+        delta = rowRect.top - topLimit;
+      } else if (rowRect.bottom > botLimit) {
+        delta = rowRect.bottom - botLimit;
       }
       if (delta) wrap.scrollTop += delta;
     }
@@ -4254,10 +4280,7 @@
       if (!list || list.hidden) return;
       var input = list.parentNode && list.parentNode.querySelector('[data-k="mid"], [data-k="partMid"]');
       if (!input) return;
-      var idx = Array.prototype.indexOf.call(list.children, opt);
-      if (idx < 0) return;
-      comboActiveIndex = idx;
-      highlightCombo(list, idx);
+      showComboPreview(input, comboDivValue(opt));
     });
     $('tbody').addEventListener('focusin', function (e) {
       if (!e.target.dataset) return;
@@ -5696,6 +5719,9 @@
         });
         window.addEventListener('pagehide', function () {
           if (workJobs.length) snapshotActiveJob(true);
+        });
+        window.addEventListener('resize', function () {
+          if (document.body.classList.contains('is-input-view')) fitGridWrapToFooter_();
         });
         if (master.ordersPending) {
           setStatus('順番が空の行があります。入力は仮の順番で動きます。確定するにはリストを更新してください。');
