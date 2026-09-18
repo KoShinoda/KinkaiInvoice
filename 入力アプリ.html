@@ -3558,9 +3558,12 @@
       if (!el) return;
       focusGridEl_(el);
     }
+    var focusGridRaf_ = 0;
     function focusGridEl_(el) {
+      var wrap = document.querySelector('#viewInput .table-wrap');
       var wx = window.pageXOffset || 0;
       var wy = window.pageYOffset || 0;
+      var wt = wrap ? wrap.scrollTop : 0;
       try {
         el.focus({ preventScroll: true });
       } catch (err) {
@@ -3570,9 +3573,13 @@
         try { el.select(); } catch (err2) {}
       }
       window.scrollTo(wx, wy);
+      if (wrap) wrap.scrollTop = wt;
       scrollGridCellIntoView_(el);
-      window.requestAnimationFrame(function () {
+      if (focusGridRaf_) window.cancelAnimationFrame(focusGridRaf_);
+      focusGridRaf_ = window.requestAnimationFrame(function () {
+        focusGridRaf_ = 0;
         window.scrollTo(wx, wy);
+        if (wrap) wrap.scrollTop = wt;
         scrollGridCellIntoView_(el);
       });
     }
@@ -4777,6 +4784,7 @@
       if (e.key === 'Enter') {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
+        if (e.repeat) return;
         confirmComboIfOpen(e.target);
         moveDown(e.target, e.shiftKey ? -1 : 1);
         return;
