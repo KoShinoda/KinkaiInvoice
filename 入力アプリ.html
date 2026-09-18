@@ -862,6 +862,7 @@
     .list-seg button.list-kind.on:hover { background: var(--accent); }
     #listStatus { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
     #listStatus.err { color: var(--danger); font-weight: 600; }
+    #tbody input.list-num-err,
     .list-pack input.list-num-err {
       border-color: var(--danger);
       background: #fde8e8;
@@ -1435,7 +1436,7 @@
       return {
         major: '', mid: '', fee: '', workerCode: '', workerName: '',
         partMajor: '', partMid: '',
-        qty: '', unitPrice: '', amount: '', discYen: 0,
+        qty: '', unitPrice: '', amount: '', discYen: '',
         kind: ''
       };
     }
@@ -1459,6 +1460,7 @@
         .replace(/\uFF0D/g, '-')
         .replace(/\u2212/g, '-')
         .replace(/\uFF0C/g, ',')
+        .replace(/\uFF1A/g, ':')
         .replace(/\u3000/g, ' ');
     }
     function normalizeListNumber(v) {
@@ -1469,6 +1471,76 @@
       var s = normalizeListNumber(v);
       if (s === '' || !/^-?\d+(\.\d+)?$/.test(s)) return { ok: false, value: String(v) };
       return { ok: true, value: s };
+    }
+    function invoiceNumberKeys_() {
+      return ['fee', 'qty', 'unitPrice', 'amount', 'discYen'];
+    }
+    function isInvoiceHalfWidthField_(k) {
+      return k === 'fee' || k === 'qty' || k === 'unitPrice' || k === 'amount' || k === 'discYen' || k === 'workerCode';
+    }
+    function foldHalfWidthInField_(el) {
+      if (!el || !isInvoiceHalfWidthField_(el.dataset && el.dataset.k)) return false;
+      var raw = String(el.value == null ? '' : el.value);
+      var next = toHalfWidthNumberText(raw);
+      if (next === raw) return false;
+      var start = el.selectionStart;
+      var end = el.selectionEnd;
+      el.value = next;
+      try {
+        if (start != null) el.selectionStart = Math.min(start, next.length);
+        if (end != null) el.selectionEnd = Math.min(end, next.length);
+      } catch (err) {}
+      return true;
+    }
+    function clearInvoiceNumberErrors_() {
+      Array.prototype.forEach.call(document.querySelectorAll('#tbody input.list-num-err'), function (el) {
+        el.classList.remove('list-num-err');
+      });
+    }
+    function markInvoiceNumberErrors_(bad) {
+      clearInvoiceNumberErrors_();
+      var tb = $('tbody');
+      if (!tb) return;
+      (bad || []).forEach(function (item) {
+        var tr = tb.rows[item.i];
+        var el = tr && ((tr._cells && tr._cells[item.k]) || tr.querySelector('[data-k="' + item.k + '"]'));
+        if (el) el.classList.add('list-num-err');
+      });
+    }
+    function foldInvoiceNumberItems_() {
+      (items || []).forEach(function (r) {
+        if (!r) return;
+        invoiceNumberKeys_().forEach(function (k) {
+          if (!filled(r[k])) return;
+          r[k] = toHalfWidthNumberText(r[k]);
+        });
+        if (filled(r.workerCode)) r.workerCode = toHalfWidthNumberText(r.workerCode);
+      });
+    }
+    function validateInvoiceNumbersForSave_() {
+      foldInvoiceNumberItems_();
+      var bad = [];
+      (items || []).forEach(function (r, i) {
+        if (!r) return;
+        invoiceNumberKeys_().forEach(function (k) {
+          var next = coerceListNumber(r[k]);
+          if (!next.ok) {
+            bad.push({ i: i, k: k, label: listNumberFieldLabel(k) });
+          } else {
+            r[k] = next.value;
+          }
+        });
+      });
+      if (!bad.length) {
+        renderGrid();
+        clearInvoiceNumberErrors_();
+        return true;
+      }
+      pendingFocus = { i: bad[0].i, k: bad[0].k };
+      renderGrid();
+      markInvoiceNumberErrors_(bad);
+      setStatus('数値以外があるため保存できません（' + listNumberErrorText(bad) + '）。', true);
+      return false;
     }
     function measureQty(v) { return numericCell(v) ? v : ''; }
     function measurePrice(v) { return numericCell(v) ? v : ''; }
@@ -1991,7 +2063,7 @@
       row.qty = src.qty == null ? '' : src.qty;
       row.unitPrice = src.unitPrice == null ? '' : src.unitPrice;
       row.amount = src.amount == null || src.amount === '' ? '' : src.amount;
-      row.discYen = src.discYen == null || src.discYen === '' ? 0 : src.discYen;
+      row.discYen = src.discYen == null || src.discYen === '' ? '' : src.discYen;
       row.kind = src.kind || '';
       return row;
     }
@@ -2671,6 +2743,7 @@
       renderDraftTabs();
     }
     function runSave(mode) {
+      if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
         setStatus('保存するには K-No を入力してください。', true);
@@ -2701,6 +2774,7 @@
         .saveInvoiceDraft(payload);
     }
     function runPrintSheet(mode) {
+      if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
         setStatus('PDFを作成するには K-No を入力してください。', true);
@@ -2805,6 +2879,7 @@
       if (!gridHasContent() && !filled($('dept').value) && !filled($('serviceType').value)) {
         if (!window.confirm('明細とヘッダー初期値が空です。この内容で保存しますか？')) return;
       }
+      if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
       setBusy(true);
       setStatus('テンプレート「' + name + '」を保存しています…');
@@ -2841,14 +2916,14 @@
       var list = listPrice(it);
       if (!filled(it.qty) && !filled(it.unitPrice)) {
         if (!filled(it.amount)) {
-          it.discYen = 0;
+          it.discYen = '';
         } else {
           it.discYen = Math.round(0 - num(it.amount));
         }
         return;
       }
       it.amount = Math.round(list);
-      it.discYen = 0;
+      it.discYen = '';
     }
 
     function calcDiscFromAmount(it) {
@@ -2899,7 +2974,7 @@
       r.qty = '';
       r.unitPrice = '';
       r.amount = '';
-      r.discYen = 0;
+      r.discYen = '';
     }
     function copyWorkFields(to, from) {
       to.major = from.major;
@@ -3321,7 +3396,7 @@
           '<button type="button" class="staff-pick" data-i="' + i + '" tabindex="-1" title="作業者リストを開く">▾</button>' +
           '<div class="combo-list" hidden></div>' +
         '</div></td>' +
-        '<td class="del side-work"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める">×</button></td>' +
+        '<td class="del side-work"><button type="button" class="row-del" data-i="' + i + '" data-side="work" tabindex="-1" title="この行の技術側を削除して詰める（Ctrl+Delete）">×</button></td>' +
         '<td class="ins side-part">' +
           '<button type="button" class="side-ins side-ins-top" data-at="' + i + '" data-side="part" tabindex="-1" title="この行の上に部品側の空行を挿入">+</button>' +
           (insBelow ? '<button type="button" class="side-ins" data-at="' + (i + 1) + '" data-side="part" tabindex="-1" title="この行の下に部品側の空行を挿入">+</button>' : '') +
@@ -3335,7 +3410,7 @@
         '<td class="num side-part"><input data-i="' + i + '" data-k="qty"></td>' +
         '<td class="num side-part"><input data-i="' + i + '" data-k="amount"></td>' +
         '<td class="num side-part"><input data-i="' + i + '" data-k="discYen"></td>' +
-        '<td class="del side-part"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める">×</button></td>' +
+        '<td class="del side-part"><button type="button" class="row-del" data-i="' + i + '" data-side="part" tabindex="-1" title="この行の部品側を削除して詰める（Ctrl+Delete）">×</button></td>' +
         '</tr>';
     }
 
@@ -3748,7 +3823,7 @@
       it.partMid = partSetName(first);
       it.qty = measureQty(first.qty);
       it.unitPrice = measurePrice(first.unitPrice);
-      it.discYen = 0;
+      it.discYen = '';
       if (it.kind !== 'work' && it.kind !== 'mid') it.kind = 'part';
       calcFromQtyPrice(it);
       refreshKind(it);
@@ -4113,6 +4188,11 @@
       applyPendingFocus();
     }
     var COL_KEYS = ['major', 'mid', 'fee', 'workerCode', 'partMajor', 'partMid', 'unitPrice', 'qty', 'amount', 'discYen'];
+    function gridFieldSide_(k) {
+      if (k === 'major' || k === 'mid' || k === 'fee' || k === 'workerCode') return 'work';
+      if (k === 'partMajor' || k === 'partMid' || k === 'unitPrice' || k === 'qty' || k === 'amount' || k === 'discYen') return 'part';
+      return '';
+    }
     function prepareComboCommit(el, force) {
       var k = el.dataset.k;
       var i = Number(el.dataset.i);
@@ -4207,7 +4287,7 @@
       var it = items[rowIndex];
       var prevCode = String(it.workerCode || '').trim();
       var before = prevCode + '\t' + String(it.workerName || '');
-      assignWorker(it, findWorker(raw), raw);
+      assignWorker(it, findWorker(raw), toHalfWidthNumberText(raw));
       var after = String(it.workerCode || '') + '\t' + String(it.workerName || '');
       var fill = opts && opts.fillDown;
       if (fill == null) fill = before !== after;
@@ -4226,22 +4306,25 @@
       });
     }
     function findWorker(q) {
-      var s = String(q || '').trim().replace(/\u3000/g, ' ');
+      var s = toHalfWidthNumberText(String(q || '').trim().replace(/\u3000/g, ' '));
       if (!s) return null;
       var all = workerListRows();
       var i;
       var w;
+      function codeOf(row) {
+        return toHalfWidthNumberText(String(row && row.code || '').trim());
+      }
       for (i = 0; i < all.length; i++) {
         w = all[i];
-        if (String(w.code || '') === s) return w;
-        if (workerLabel(w) === s) return w;
+        if (codeOf(w) === s) return w;
+        if (workerLabel(w) === s || toHalfWidthNumberText(workerLabel(w)) === s) return w;
       }
       var sp = s.indexOf(':');
       if (sp < 0) sp = s.indexOf(' ');
       var codePart = (sp >= 0 ? s.slice(0, sp) : s).trim();
       if (codePart) {
         for (i = 0; i < all.length; i++) {
-          if (String(all[i].code || '') === codePart) return all[i];
+          if (codeOf(all[i]) === codePart) return all[i];
         }
       }
       for (i = 0; i < all.length; i++) {
@@ -4525,6 +4608,16 @@
         moveRight(e.target, e.shiftKey ? -1 : 1);
         return;
       }
+      if (e.key === 'Delete' && e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (e.isComposing || e.keyCode === 229) return;
+        var side = gridFieldSide_(k);
+        if (!side) return;
+        e.preventDefault();
+        hideComboLists();
+        hideWorkerPicker();
+        deleteSide(Number(e.target.dataset.i), side);
+        return;
+      }
       if (isGrowTextarea(e.target) && isNewlineEnter(e)) {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
@@ -4578,8 +4671,10 @@
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') return;
+      if (isInvoiceHalfWidthField_(k)) foldHalfWidthInField_(t);
       if (filled(items[i][k]) && !filled(t.value)) rememberGridUndo_({ i: i, k: k });
       items[i][k] = t.value;
+      t.classList.remove('list-num-err');
       if (k === 'major') {
         items[i].mid = '';
         refreshRowSelects(i);
@@ -4595,6 +4690,10 @@
       if (!t.dataset || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
+      if (!(e.isComposing || e.keyCode === 229) && isInvoiceHalfWidthField_(k)) {
+        foldHalfWidthInField_(t);
+        t.classList.remove('list-num-err');
+      }
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') {
         if (k === 'mid' || k === 'partMid') rememberComboQuery(t);
         showComboList(t);
@@ -4614,6 +4713,28 @@
         paintDiscWarn(tr, items[i]);
       } else if (k === 'discYen') {
         items[i].discYen = t.value;
+        paintDiscWarn(tr, items[i]);
+      }
+      recalc();
+    });
+    $('tbody').addEventListener('compositionend', function (e) {
+      var t = e.target;
+      if (!t.dataset || !isInvoiceHalfWidthField_(t.dataset.k)) return;
+      foldHalfWidthInField_(t);
+      t.classList.remove('list-num-err');
+      var i = Number(t.dataset.i);
+      var k = t.dataset.k;
+      if (k === 'workerCode') return;
+      items[i][k] = t.value;
+      var tr = t.closest('tr');
+      if ((k === 'qty' || k === 'unitPrice') && tr) {
+        calcFromQtyPrice(items[i]);
+        tr.querySelector('[data-k="amount"]').value = items[i].amount === '' ? '' : items[i].amount;
+        tr.querySelector('[data-k="discYen"]').value = items[i].discYen;
+        paintDiscWarn(tr, items[i]);
+      } else if (k === 'amount' && tr) {
+        calcDiscFromAmount(items[i]);
+        tr.querySelector('[data-k="discYen"]').value = items[i].discYen;
         paintDiscWarn(tr, items[i]);
       }
       recalc();
@@ -5347,6 +5468,8 @@
     function listNumberFieldLabel(k) {
       if (k === 'fee') return '技術料';
       if (k === 'unitPrice') return '単価';
+      if (k === 'amount') return '合計';
+      if (k === 'discYen') return '値引額';
       return '数量';
     }
     function coerceListNumberRows(rows, keys) {

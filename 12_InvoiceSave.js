@@ -281,16 +281,32 @@ function clearInvoiceSaveLinesById_(sh, saveId) {
   }
 }
 
+function invoiceNumericOrBlank_(v) {
+  if (v === '' || v == null) {
+    return '';
+  }
+  if (typeof v === 'number' && isFinite(v)) {
+    return v;
+  }
+  const s = String(v).replace(/,/g, '').replace(/\s/g, '').trim();
+  if (!s) {
+    return '';
+  }
+  const n = Number(s);
+  return isFinite(n) ? n : '';
+}
+
 function invoiceSaveDetailRow_(saveId, lineNo, it) {
+  const disc = invoiceNumericOrBlank_(it.discYen);
   return [
     saveId, lineNo,
-    it.major || '', it.mid || it.name || '', it.fee == null ? '' : it.fee,
+    it.major || '', it.mid || it.name || '', invoiceNumericOrBlank_(it.fee),
     it.workerCode || '', it.workerName || '',
     it.partMajor || '', it.partMid || it.part || '',
-    it.qty == null ? '' : it.qty,
-    it.unitPrice == null ? '' : it.unitPrice,
-    it.amount == null ? '' : it.amount,
-    it.discYen == null ? '' : it.discYen,
+    invoiceNumericOrBlank_(it.qty),
+    invoiceNumericOrBlank_(it.unitPrice),
+    invoiceNumericOrBlank_(it.amount),
+    disc === 0 ? '' : disc,
     it.kind || ''
   ];
 }
