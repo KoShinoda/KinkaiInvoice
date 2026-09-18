@@ -467,7 +467,7 @@ function normalizeInvoiceKNo_(value) {
   if (!s) {
     return '';
   }
-  s = s.replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
+  s = foldKey_(s).replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
   const digits = s.replace(/\D/g, '');
   if (!digits) {
     return '';

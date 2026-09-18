@@ -1807,7 +1807,7 @@
       return next;
     }
     function kNoDigits(v) {
-      var s = String(v == null ? '' : v).replace(/\u3000/g, ' ').trim().replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
+      var s = toHalfWidthNumberText(v).replace(/^K[-ー－–—−ｰ\s]*/i, '').trim();
       var d = s.replace(/\D/g, '');
       if (!d) return '';
       return d.slice(0, 4);
