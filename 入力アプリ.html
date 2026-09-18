@@ -1419,6 +1419,8 @@
     var pendingFocus = null;
     var comboActiveIndex = -1;
     var comboIgnoreBlur = false;
+    var fieldOrigin = null;
+    var gridUndo = null;
     var workerSelectOnMouseUp = null;
     var currentSaveId = '';
     var boundKNo = '';
@@ -1889,6 +1891,92 @@
         items: items,
         summary: summary
       };
+    }
+    function snapshotItems_() {
+      return items.map(copyItemRow);
+    }
+    function rememberGridUndo_(focus) {
+      gridUndo = {
+        items: snapshotItems_(),
+        focus: focus ? { i: focus.i, k: focus.k } : null
+      };
+    }
+    function captureFieldOrigin_(el) {
+      if (!el || !el.dataset || el.dataset.i == null || !el.dataset.k) {
+        fieldOrigin = null;
+        return;
+      }
+      var i = Number(el.dataset.i);
+      var k = el.dataset.k;
+      if (gridUndo && fieldOrigin && (fieldOrigin.i !== i || fieldOrigin.k !== k)) {
+        gridUndo = null;
+      }
+      fieldOrigin = {
+        i: i,
+        k: k,
+        value: String(el.value == null ? '' : el.value),
+        row: items[i] ? copyItemRow(items[i]) : emptyRow()
+      };
+    }
+    function restoreFieldOrigin_() {
+      if (!fieldOrigin) return false;
+      var i = fieldOrigin.i;
+      var k = fieldOrigin.k;
+      var it = items[i];
+      if (!it) return false;
+      var el = document.activeElement;
+      var inField = !!(el && el.dataset && Number(el.dataset.i) === i && el.dataset.k === k);
+      var cur = inField ? String(el.value || '') : String(it[k] == null ? '' : it[k]);
+      if (cur === fieldOrigin.value && String(it[k] == null ? '' : it[k]) === fieldOrigin.value) {
+        return false;
+      }
+      var src = fieldOrigin.row;
+      if (k === 'mid' || k === 'major' || k === 'fee' || k === 'workerCode') {
+        copyWorkFields(it, src);
+        it.kind = src.kind;
+      } else if (k === 'partMid' || k === 'partMajor' || k === 'qty' || k === 'unitPrice' || k === 'amount' || k === 'discYen') {
+        copyPartFields(it, src);
+        it.kind = src.kind;
+      } else {
+        it[k] = src[k];
+      }
+      refreshKind(it);
+      lastExpandKey = '';
+      comboIgnoreBlur = true;
+      hideComboLists();
+      hideComboPreview();
+      renderGrid();
+      pendingFocus = { i: i, k: k };
+      applyPendingFocus();
+      setStatus('入力を元に戻しました');
+      return true;
+    }
+    function restoreGridUndo_() {
+      if (!gridUndo) return false;
+      var focus = gridUndo.focus;
+      items = gridUndo.items.map(copyItemRow);
+      gridUndo = null;
+      fieldOrigin = null;
+      lastExpandKey = '';
+      padItems();
+      comboIgnoreBlur = true;
+      hideComboLists();
+      renderGrid();
+      if (focus) {
+        pendingFocus = { i: focus.i, k: focus.k };
+        applyPendingFocus();
+      }
+      setStatus('明細の削除を元に戻しました');
+      return true;
+    }
+    function rememberClearUndo_(el) {
+      if (!el || !el.dataset) return;
+      var i = Number(el.dataset.i);
+      var k = el.dataset.k;
+      if (!items[i]) return;
+      var prev = k === 'workerCode' ? workerEditValue(items[i]) : items[i][k];
+      if (!filled(prev) || filled(el.value)) return;
+      rememberGridUndo_({ i: i, k: k });
     }
     function copyItemRow(src) {
       var row = emptyRow();
@@ -2876,9 +2964,13 @@
     function deleteSide(rowIndex, side) {
       var it = items[rowIndex];
       if (!it) return;
+      fieldOrigin = null;
+      rememberGridUndo_({ i: rowIndex, k: side === 'work' ? 'mid' : 'partMid' });
       shiftSideUp(rowIndex, side);
       renderGrid();
-      setStatus(side === 'work' ? '技術側を削除して詰めました' : '部品側を削除して詰めました');
+      pendingFocus = { i: rowIndex, k: side === 'work' ? 'mid' : 'partMid' };
+      applyPendingFocus();
+      setStatus((side === 'work' ? '技術側を削除して詰めました' : '部品側を削除して詰めました') + '（Escで元に戻せます）');
     }
 
     function midsFor(major) {
@@ -4000,10 +4092,12 @@
       hideComboLists(keep);
       if (k === 'mid') {
         if (items[i] && items[i].mid === v) return;
+        rememberClearUndo_(input);
         items[i].mid = v;
         onMidChosen(i);
       } else if (k === 'partMid') {
         if (items[i] && items[i].partMid === v) return;
+        rememberClearUndo_(input);
         items[i].partMid = v;
         onPartMidChosen(i);
       } else if (k === 'workerCode') {
@@ -4035,6 +4129,7 @@
         if (force || changed || fromList) recalc();
         return;
       }
+      if (changed) rememberClearUndo_(el);
       items[i][k] = el.value;
       if (force || changed) {
         comboIgnoreBlur = true;
@@ -4318,7 +4413,22 @@
       hideWorkerPicker();
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') hideWorkerPicker();
+      if (e.key !== 'Escape') return;
+      if (typeof isSearchKeyboardActive === 'function' && isSearchKeyboardActive() && isSearchPopupOpen()) return;
+      if ($('workerPicker') && !$('workerPicker').hidden) {
+        hideWorkerPicker();
+        return;
+      }
+      if (!document.body.classList.contains('is-input-view') || ($('viewInput') && $('viewInput').hidden)) return;
+      if (restoreFieldOrigin_()) {
+        e.preventDefault();
+        return;
+      }
+      if (restoreGridUndo_()) {
+        e.preventDefault();
+        return;
+      }
+      hideComboLists();
     });
     $('tbody').addEventListener('click', function (e) {
       var pick = e.target.closest('button.staff-pick');
@@ -4375,6 +4485,7 @@
     });
     $('tbody').addEventListener('focusin', function (e) {
       if (!e.target.dataset) return;
+      if (e.target.dataset.i != null && e.target.dataset.k) captureFieldOrigin_(e.target);
       if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid' || e.target.dataset.k === 'workerCode') {
         hideComboLists();
         hideWorkerPicker();
@@ -4432,8 +4543,18 @@
           return;
         }
         if (e.key === 'Escape') {
+          e.preventDefault();
+          if (restoreFieldOrigin_()) {
+            e.stopPropagation();
+            return;
+          }
+          if (restoreGridUndo_()) {
+            e.stopPropagation();
+            return;
+          }
           hideComboLists();
           hideWorkerPicker();
+          e.stopPropagation();
         }
       }
     });
@@ -4454,6 +4575,7 @@
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') return;
+      if (filled(items[i][k]) && !filled(t.value)) rememberGridUndo_({ i: i, k: k });
       items[i][k] = t.value;
       if (k === 'major') {
         items[i].mid = '';
