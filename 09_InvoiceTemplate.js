@@ -1,8 +1,8 @@
 /**
  * 入力アプリ用のテンプレート。
  * シート「テンプレートリスト」：同じテンプレート名の行＝1つの明細セット。
- * ヘッダー初期値は整備部門・整備種別。同じ名前のうち最初の値。
- * 順番列と図形ボタン refreshInvoiceTemplateList で並べ替える。入力画面から保存できる。
+ * ヘッダー初期値は整備部門・整備種別。同じ名前のうち順番が一番小さい行（先頭行）の値。
+ * 順番はテンプレート名ごとに 10,20,30…。更新ボタンで振り直す。
  */
 
 var INVOICE_TEMPLATE_NAME_HEADER_ = 'テンプレート名';
@@ -299,6 +299,7 @@ function parseInvoiceTemplateSheet_() {
   }
   const linesByName = {};
   const headerByName = {};
+  const headerPick = {};
   const lineMeta = {};
   for (let i = CONFIG.invoiceTemplate.headerRow; i < values.length; i++) {
     const raw = values[i];
@@ -306,10 +307,11 @@ function parseInvoiceTemplateSheet_() {
     if (!tmpl) {
       continue;
     }
-    if (!headerByName[tmpl]) {
-      headerByName[tmpl] = {};
+    const ord = toOrderNumber_(cell_(raw, cols.order));
+    const prev = headerPick[tmpl];
+    if (!prev || ord < prev.order || (ord === prev.order && i < prev.idx)) {
+      headerPick[tmpl] = { order: ord, idx: i, header: pickTemplateHeader_(raw, cols) };
     }
-    mergeTemplateHeaderFirstWins_(headerByName[tmpl], pickTemplateHeader_(raw, cols));
     const line = {
       major: normalize_(cell_(raw, cols.major)),
       mid: normalize_(cell_(raw, cols.mid)),
@@ -323,9 +325,8 @@ function parseInvoiceTemplateSheet_() {
     };
     const hasLine = !!(line.major || line.mid || isFilled_(line.fee) || line.partMajor || line.partMid ||
       isFilled_(line.qty) || isFilled_(line.unitPrice) || isFilled_(line.discYen));
-    const ord = toOrderNumber_(cell_(raw, cols.order));
     if (!hasLine) {
-      if (!lineMeta[tmpl] && Object.keys(headerByName[tmpl]).length) {
+      if (!lineMeta[tmpl] && headerPick[tmpl]) {
         lineMeta[tmpl] = [];
         linesByName[tmpl] = [];
       }
@@ -337,6 +338,9 @@ function parseInvoiceTemplateSheet_() {
     }
     lineMeta[tmpl].push({ order: ord, idx: i, line: line });
   }
+  Object.keys(headerPick).forEach(function (tmpl) {
+    headerByName[tmpl] = headerPick[tmpl].header || {};
+  });
   Object.keys(lineMeta).forEach(function (tmpl) {
     lineMeta[tmpl].sort(function (a, b) {
       if (a.order !== b.order) {
@@ -373,14 +377,6 @@ function takeTemplateText_(h, key, raw, cols) {
   }
 }
 
-function mergeTemplateHeaderFirstWins_(dst, src) {
-  Object.keys(src || {}).forEach(function (key) {
-    if (dst[key] === undefined || dst[key] === '') {
-      dst[key] = src[key];
-    }
-  });
-}
-
 function templateHeaderForClient_(header) {
   const h = header || {};
   const out = {};
@@ -398,8 +394,8 @@ function templateSummaryForClient_(header) {
 
 function invoiceTemplateSheetNote_() {
   return '同じテンプレート名の行が、入力アプリで選んだときの明細になります。\n' +
-    '整備部門・整備種別は同じ名前のうち最初に入っている値をヘッダー初期値にします。空欄は画面の値を残します。\n' +
-    '順番列でテンプレート名の並びと、同じ名前の中の行順を決めます。空欄は図形ボタン（refreshInvoiceTemplateList）で 10,20,… と埋まります。手で入れた番号は残します。\n' +
+    '整備部門・整備種別は同じ名前のうち順番が一番小さい行（先頭行）の値をヘッダー初期値にします。空欄は画面の値を残します。\n' +
+    '順番はテンプレート名ごとに 10,20,30…。図形ボタン（refreshInvoiceTemplateList）で振り直します。\n' +
     '中項目列には、画面の中項目（作業内容）を書いてください。\n' +
     '部品は同じ行に横並びでも、作業だけの行／部品だけの行に分けても構いません。\n' +
     '合計は数量×単価から自動計算します。値引額は円（空欄可）。';
@@ -412,7 +408,15 @@ function writeInvoiceTemplateSample_(sh) {
   sh.getRange(1, 1, 1, colCount).setValues(headers);
   sh.getRange(1, 1, 1, colCount).setFontWeight('bold').setBackground('#e8f0ec');
 
-  const body = defaultInvoiceTemplateRows_().map(function (r, i) {
+  const step = invoiceTemplateOrderStep_();
+  const nextByName = {};
+  const body = defaultInvoiceTemplateRows_().map(function (r) {
+    const name = r.name || '';
+    if (nextByName[name] == null) {
+      nextByName[name] = step;
+    }
+    const order = nextByName[name];
+    nextByName[name] += step;
     return [
       r.name,
       r.dept || '', r.serviceType || '',
@@ -420,7 +424,7 @@ function writeInvoiceTemplateSample_(sh) {
       r.partMajor || '', r.partMid || '', r.unitPrice === '' || r.unitPrice == null ? '' : r.unitPrice,
       r.qty === '' || r.qty == null ? '' : r.qty,
       r.discYen === '' || r.discYen == null ? '' : r.discYen,
-      (i + 1) * invoiceTemplateOrderStep_()
+      order
     ];
   });
   sh.getRange(2, 1, body.length, colCount).setValues(body);
@@ -717,7 +721,7 @@ function invoiceTemplateOrderStep_() {
 }
 
 /**
- * 図形のボタンに割り当てる。空の順番を埋め、同じテンプレート名を固めて並べ替える。
+ * 図形のボタンに割り当てる。同じテンプレート名を固め、名前ごとに 10,20,30… と振り直す。
  */
 function refreshInvoiceTemplateList() {
   const sh = findInvoiceTemplateSheet_();
@@ -733,7 +737,7 @@ function refreshInvoiceTemplateList() {
     refreshInvoiceTemplateList_(sh);
   });
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    sh.getName() + ' を順番で並べ替えました',
+    sh.getName() + ' を名前ごとに10刻みで並べ替えました',
     '請求書入力',
     5
   );
@@ -744,12 +748,12 @@ function refreshInvoiceTemplateList_(sh) {
     return;
   }
   ensureInvoiceTemplateHeaderCols_(sh);
-  assignMissingTemplateOrders_(sh);
   sortTemplateListRows_(sh);
+  renumberTemplateOrdersByName_(sh);
   applyInvoiceTemplateDropdowns_(sh);
 }
 
-function assignMissingTemplateOrders_(sh) {
+function renumberTemplateOrdersByName_(sh) {
   const orderCol = ensureInvoiceTemplateOrderCol_(sh);
   const lastRow = sh.getLastRow();
   if (lastRow <= 1) {
@@ -764,14 +768,12 @@ function assignMissingTemplateOrders_(sh) {
   const formulas = sh.getRange(2, 1, height, lastCol).getFormulas();
   const orders = sh.getRange(2, orderCol, height, 1).getValues();
   const step = invoiceTemplateOrderStep_();
-  const groups = {};
-  const keys = [];
-  let globalMax = 0;
+  const nextByName = {};
+  const out = orders.map(function (row) {
+    return [row[0]];
+  });
+  let changed = false;
   for (let i = 0; i < height; i++) {
-    const n = toOrderNumber_(orders[i][0]);
-    if (isFinite(n) && n > globalMax) {
-      globalMax = n;
-    }
     if (listRowIsEmpty_(data[i], formulas[i])) {
       continue;
     }
@@ -779,46 +781,16 @@ function assignMissingTemplateOrders_(sh) {
     if (!name) {
       continue;
     }
-    if (!groups[name]) {
-      groups[name] = [];
-      keys.push(name);
+    if (nextByName[name] == null) {
+      nextByName[name] = step;
     }
-    groups[name].push(i);
-  }
-  const out = orders.map(function (row) {
-    return [row[0]];
-  });
-  let changed = false;
-  keys.forEach(function (name) {
-    const idxs = groups[name];
-    let maxOrd = 0;
-    let hasFilled = false;
-    idxs.forEach(function (i) {
-      const n = toOrderNumber_(out[i][0]);
-      if (isFinite(n)) {
-        hasFilled = true;
-        if (n > maxOrd) {
-          maxOrd = n;
-        }
-      }
-    });
-    let next = hasFilled ? maxOrd + step : (globalMax > 0 ? globalMax + step : step);
-    idxs.forEach(function (i) {
-      const n = toOrderNumber_(out[i][0]);
-      if (isFinite(n)) {
-        if (n > globalMax) {
-          globalMax = n;
-        }
-        return;
-      }
+    const next = nextByName[name];
+    nextByName[name] += step;
+    if (out[i][0] !== next) {
       out[i][0] = next;
       changed = true;
-      if (next > globalMax) {
-        globalMax = next;
-      }
-      next += step;
-    });
-  });
+    }
+  }
   if (changed) {
     sh.getRange(2, orderCol, height, 1).setValues(out);
   }
@@ -990,23 +962,6 @@ function invoiceTemplateScanNameOrders_(block, cols) {
   return { byName: byName, maxOrder: maxOrder, emptyIdx: emptyIdx };
 }
 
-function invoiceTemplateFillEmptyOrdersInBlock_(block, cols, emptyIdx, maxOrder) {
-  const orderCol = cols.order;
-  const step = invoiceTemplateOrderStep_();
-  if (!orderCol || !emptyIdx.length) {
-    return maxOrder;
-  }
-  let next = maxOrder > 0 ? maxOrder + step : step;
-  emptyIdx.forEach(function (i) {
-    block[i][orderCol - 1] = next;
-    if (next > maxOrder) {
-      maxOrder = next;
-    }
-    next += step;
-  });
-  return maxOrder;
-}
-
 function writeInvoiceTemplateBlock_(sh, existingRows, body, width) {
   const nNew = body.length;
   if (!existingRows || !existingRows.length) {
@@ -1109,21 +1064,11 @@ function saveInvoiceTemplate(payload) {
     const width = lastDataHeaderCol_(headers);
     const last = sh.getLastRow();
     const block = last >= 2 ? sh.getRange(2, 1, last - 1, width).getValues() : [];
-    let scan = invoiceTemplateScanNameOrders_(block, cols);
-    if (scan.emptyIdx.length && cols.order) {
-      invoiceTemplateFillEmptyOrdersInBlock_(block, cols, scan.emptyIdx, scan.maxOrder);
-      sh.getRange(2, cols.order, block.length, 1).setValues(block.map(function (row) {
-        return [row[cols.order - 1]];
-      }));
-      scan = invoiceTemplateScanNameOrders_(block, cols);
-    }
+    const scan = invoiceTemplateScanNameOrders_(block, cols);
     const found = scan.byName[name] || { rows: [], minOrder: Number.POSITIVE_INFINITY };
     overwritten = found.rows.length > 0;
     const step = invoiceTemplateOrderStep_();
-    const startOrder = overwritten && isFinite(found.minOrder)
-      ? found.minOrder
-      : (scan.maxOrder > 0 ? scan.maxOrder + step : step);
-    const body = invoiceTemplateBodyRows_(cols, width, name, header, items, startOrder, step);
+    const body = invoiceTemplateBodyRows_(cols, width, name, header, items, step, step);
     writeInvoiceTemplateBlock_(sh, found.rows, body, width);
     names = listInvoiceTemplateNamesFast_();
   });

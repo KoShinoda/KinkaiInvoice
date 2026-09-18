@@ -1,8 +1,8 @@
 /**
  * 作業リスト／部品リストの並べ替えと、欠けている順番・列の補完。
  * 更新は図形ボタンまたはメニューから refreshAllMasterLists を実行する（チェックは置かない）。
- * テンプレートリストは作業リストの順番ロジックを使わず、refreshInvoiceTemplateList で並べ替える。
- * 既存の順番は上書きしない。
+ * テンプレートリストは作業リストの順番ロジックを使わず、refreshInvoiceTemplateList で名前ごとに 10,20,30… と振り直す。
+ * 作業／部品リストの既存の順番は上書きしない。
  */
 
 function isListRefreshSheet_(sheetName) {
