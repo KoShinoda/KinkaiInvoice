@@ -15,12 +15,18 @@
       --danger: #b42318;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       font-family: "Segoe UI", "Hiragino Sans", Meiryo, sans-serif;
       background: var(--bg);
       color: var(--text);
       font-size: 13px;
+    }
+    body.is-input-view {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
     header {
       background: #16382c;
@@ -212,7 +218,38 @@
     }
     #editBadge.editing { color: var(--accent); font-weight: 600; }
     main { padding: 14px 18px 18px; }
-    body.is-input-view main { padding-bottom: 132px; }
+    body.is-input-view header,
+    body.is-input-view .draft-bar {
+      flex: 0 0 auto;
+    }
+    body.is-input-view #viewInput {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 18px 8px;
+      margin-bottom: 0;
+      padding-bottom: 132px;
+    }
+    body.is-input-view #viewInput .card-header-fields {
+      flex: 0 1 auto;
+      margin-bottom: 8px;
+    }
+    body.is-input-view #viewInput .card-items {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 0;
+    }
+    body.is-input-view #viewInput .card-items .card-head {
+      flex: 0 0 auto;
+    }
+    body.is-input-view #viewInput .table-wrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+    }
     .card {
       background: var(--card);
       border: 1px solid var(--line);
@@ -276,6 +313,9 @@
       overscroll-behavior: contain;
       border: 1px solid var(--line);
       border-radius: 8px;
+    }
+    body.is-input-view .table-wrap {
+      max-height: none;
     }
     .table-wrap table {
       width: 100%;
@@ -982,7 +1022,7 @@
     <span class="draft-operator" id="workOperator"></span>
   </div>
   <main id="viewInput">
-    <section class="card">
+    <section class="card card-header-fields">
       <div class="card-head">
         <h2>ヘッダー</h2>
         <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
@@ -1039,7 +1079,7 @@
         </div>
       </div>
     </section>
-    <section class="card">
+    <section class="card card-items">
       <div class="card-head">
         <h2>明細</h2>
         <button type="button" class="ghost" id="btnClearItems">明細全消去</button>
@@ -1941,7 +1981,15 @@
         window.requestAnimationFrame(fitGridWrapToFooter_);
       } else {
         var wrap = document.querySelector('#viewInput .table-wrap');
-        if (wrap) wrap.style.maxHeight = '';
+        var headerCard = document.querySelector('#viewInput .card-header-fields');
+        if (wrap) {
+          wrap.style.height = '';
+          wrap.style.maxHeight = '';
+        }
+        if (headerCard) {
+          headerCard.style.maxHeight = '';
+          headerCard.style.overflow = '';
+        }
       }
       $('navInput').classList.toggle('on', view === 'input');
       if ($('navSearch')) $('navSearch').classList.toggle('on', search);
@@ -3224,6 +3272,7 @@
       for (i = 0; i <= until && i < n; i++) refreshRowSelects(i);
       gridPaintedUntil = filled;
       recalc();
+      fitGridWrapToFooter_();
       applyPendingFocus();
     }
 
@@ -3241,7 +3290,6 @@
     function focusGridEl_(el) {
       var wx = window.pageXOffset || 0;
       var wy = window.pageYOffset || 0;
-      fitGridWrapToFooter_();
       try {
         el.focus({ preventScroll: true });
       } catch (err) {
@@ -3266,13 +3314,39 @@
       var wrap = document.querySelector('#viewInput .table-wrap');
       if (!wrap) return;
       var footer = $('appFooter');
+      var headerCard = document.querySelector('#viewInput .card-header-fields');
       if (!footer || footer.hidden || $('viewInput').hidden) {
+        wrap.style.height = '';
         wrap.style.maxHeight = '';
+        if (headerCard) {
+          headerCard.style.maxHeight = '';
+          headerCard.style.overflow = '';
+        }
         return;
       }
-      var h = Math.floor(gridVisibleBottom_() - wrap.getBoundingClientRect().top);
-      if (!isFinite(h)) return;
-      wrap.style.maxHeight = Math.max(160, h) + 'px';
+      if (headerCard) {
+        headerCard.style.maxHeight = '';
+        headerCard.style.overflow = '';
+      }
+      wrap.style.height = '';
+      wrap.style.maxHeight = '';
+      var head = wrap.querySelector('thead');
+      var headH = head ? head.offsetHeight : 32;
+      var rowH = gridTypicalRowHeight_(null);
+      var want = headH + rowH * 20 + 8;
+      var foot = gridVisibleBottom_();
+      var avail = foot - wrap.getBoundingClientRect().top;
+      if (headerCard && avail < want) {
+        var steal = want - avail;
+        var hh = headerCard.getBoundingClientRect().height;
+        var next = Math.max(140, Math.floor(hh - steal));
+        headerCard.style.maxHeight = next + 'px';
+        headerCard.style.overflow = 'auto';
+        avail = foot - wrap.getBoundingClientRect().top;
+      }
+      var h = Math.max(160, Math.floor(avail));
+      wrap.style.height = h + 'px';
+      wrap.style.maxHeight = h + 'px';
     }
     function gridTypicalRowHeight_(row) {
       var h = row ? row.getBoundingClientRect().height : 0;
@@ -3282,7 +3356,6 @@
       return Math.max(36, h0 || 36);
     }
     function scrollGridCellIntoView_(el) {
-      fitGridWrapToFooter_();
       var wrap = document.querySelector('#viewInput .table-wrap');
       if (!wrap || !el || !wrap.contains(el)) return;
       var row = el.closest('tr') || el;
@@ -3291,13 +3364,8 @@
       var head = wrap.querySelector('thead');
       var headH = head ? head.offsetHeight : 0;
       var topLimit = wrapRect.top + headH + 4;
-      var rowH = gridTypicalRowHeight_(row);
-      var botLimit = Math.min(
-        wrapRect.bottom - 4,
-        gridVisibleBottom_() - 4,
-        topLimit + rowH * 7
-      );
-      if (botLimit < topLimit + rowH) {
+      var botLimit = Math.min(wrapRect.bottom, gridVisibleBottom_()) - 8;
+      if (botLimit < topLimit + 24) {
         botLimit = Math.min(wrapRect.bottom, gridVisibleBottom_()) - 4;
       }
       var delta = 0;
@@ -3892,6 +3960,18 @@
       }
       return -1;
     }
+    function comboStoredValue_(input) {
+      var k = input && input.dataset ? input.dataset.k : '';
+      if (!k) return '';
+      if (input.getAttribute('data-list-work') != null) {
+        var li = Number(input.getAttribute('data-list-work'));
+        return listWorkRows[li] ? String(listWorkRows[li][k] || '') : '';
+      }
+      var i = Number(input.dataset.i);
+      if (!items[i]) return '';
+      if (k === 'workerCode') return workerEditValue(items[i]);
+      return String(items[i][k] == null ? '' : items[i][k]);
+    }
     function confirmComboIfOpen(input) {
       if (!input || (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid' && input.dataset.k !== 'workerCode')) {
         return false;
@@ -3900,7 +3980,10 @@
       if (!list || list.hidden || !list.children.length) return false;
       var typed = isMidPartCombo(input) ? comboFilterQuery : String(input.value || '');
       var idx = comboActiveIndex;
-      if (idx < 0) idx = comboExactOptionIndex(list, typed);
+      if (idx < 0) {
+        if (String(typed || '') === comboStoredValue_(input)) return false;
+        idx = comboExactOptionIndex(list, typed);
+      }
       if (idx < 0 || !list.children[idx]) return false;
       var picked = comboDivValue(list.children[idx]);
       comboActiveIndex = idx;
@@ -3963,7 +4046,7 @@
         return;
       }
       items[i][k] = el.value;
-      if (force || changed || fromList) {
+      if (force || changed) {
         comboIgnoreBlur = true;
         if (k === 'mid') onMidChosen(i);
         else onPartMidChosen(i);
