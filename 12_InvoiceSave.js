@@ -156,9 +156,10 @@ function saveInvoiceDraftUnlocked_(payload, savedAtOpt) {
   const saveId = Utilities.getUuid();
   const placed = writeInvoiceSaveDetails_(index.getParent(), saveId, items, savedAtOpt);
   index.appendRow(invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items));
+  const stamp = persistInvoiceIndexSavedAt_(index, index.getLastRow(), placed.savedAt);
   return {
     saveId: saveId,
-    savedAt: invoiceSavedAtStamp_(placed.savedAt),
+    savedAt: stamp,
     lineCount: items.length,
     kNo: kNo,
     overwritten: false,
@@ -172,8 +173,8 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
     throw new Error('上書きする保存データが見つかりません。');
   }
   const currentStamp = invoiceSavedAtStamp_(found.row[2]);
-  const expected = String(payload.expectedSavedAt || '').trim();
-  if (expected && currentStamp && expected !== currentStamp) {
+  const expected = invoiceSavedAtStamp_(payload.expectedSavedAt);
+  if (expected && currentStamp && !invoiceSavedAtMatches_(expected, currentStamp)) {
     throw new Error('他の人が先に保存しています。検索から開き直してから保存してください。');
   }
   const ss = index.getParent();
@@ -188,9 +189,10 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
   const printName = invoicePrintSheetName_(found.row);
   index.getRange(found.sheetRow, 1, 1, INVOICE_INDEX_HEADERS_.length)
     .setValues([invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items, printName)]);
+  const stamp = persistInvoiceIndexSavedAt_(index, found.sheetRow, placed.savedAt);
   return {
     saveId: saveId,
-    savedAt: invoiceSavedAtStamp_(placed.savedAt),
+    savedAt: stamp,
     lineCount: items.length,
     kNo: kNo,
     overwritten: true,
@@ -371,7 +373,55 @@ function invoiceSavedAtStamp_(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   }
-  return String(value == null ? '' : value).trim();
+  const s = String(value == null ? '' : value).trim();
+  if (!s) {
+    return '';
+  }
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (!m) {
+    return s;
+  }
+  const pad = function (n) {
+    return ('0' + Number(n)).slice(-2);
+  };
+  const time = m[4] != null
+    ? (' ' + pad(m[4]) + ':' + pad(m[5] || 0) + ':' + pad(m[6] || 0))
+    : '';
+  return m[1] + '/' + pad(m[2]) + '/' + pad(m[3]) + time;
+}
+
+function invoiceSavedAtMatches_(expected, current) {
+  const a = invoiceSavedAtStamp_(expected);
+  const b = invoiceSavedAtStamp_(current);
+  if (!a || !b) {
+    return true;
+  }
+  if (a === b) {
+    return true;
+  }
+  const da = invoiceSavedAtParse_(a);
+  const db = invoiceSavedAtParse_(b);
+  return !!(da && db && Math.abs(da.getTime() - db.getTime()) < 2000);
+}
+
+function invoiceSavedAtParse_(stamp) {
+  const s = invoiceSavedAtStamp_(stamp);
+  const m = s.match(/^(\d{4})\/(\d{2})\/(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/);
+  if (!m) {
+    return null;
+  }
+  return new Date(
+    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+    Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)
+  );
+}
+
+function persistInvoiceIndexSavedAt_(index, sheetRow, savedAt) {
+  const text = invoiceSavedAtStamp_(savedAt);
+  const cell = index.getRange(sheetRow, 3);
+  cell.setNumberFormat('@');
+  cell.setValue(text);
+  return text;
 }
 
 function formatInvoiceYmd_(value) {

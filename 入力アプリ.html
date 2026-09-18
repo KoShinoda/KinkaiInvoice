@@ -2718,6 +2718,9 @@
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
+          bindCurrentSave(res.saveId, res.kNo || payload.header.kNo, res.savedAt);
+          snapshotActiveJob(true);
+          renderDraftTabs();
           finishWorkJobAfterPrint();
           var opened = openPdfDownload(res);
           setStatus(
