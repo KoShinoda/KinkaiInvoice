@@ -273,6 +273,7 @@
     .table-wrap {
       max-height: min(62vh, 640px);
       overflow: auto;
+      overscroll-behavior: contain;
       border: 1px solid var(--line);
       border-radius: 8px;
     }
@@ -3229,10 +3230,42 @@
       if (!tr) return;
       var el = (tr._cells && tr._cells[k]) || tr.querySelector('[data-k="' + k + '"]');
       if (!el) return;
-      el.focus();
-      if (el.select) {
-        try { el.select(); } catch (err) {}
+      focusGridEl_(el);
+    }
+    function focusGridEl_(el) {
+      var wx = window.pageXOffset || 0;
+      var wy = window.pageYOffset || 0;
+      try {
+        el.focus({ preventScroll: true });
+      } catch (err) {
+        el.focus();
       }
+      if (el.select) {
+        try { el.select(); } catch (err2) {}
+      }
+      window.scrollTo(wx, wy);
+      scrollGridCellIntoView_(el);
+      window.requestAnimationFrame(function () {
+        window.scrollTo(wx, wy);
+        scrollGridCellIntoView_(el);
+      });
+    }
+    function scrollGridCellIntoView_(el) {
+      var wrap = document.querySelector('#viewInput .table-wrap');
+      if (!wrap || !el || !wrap.contains(el)) return;
+      var row = el.closest('tr') || el;
+      var wrapRect = wrap.getBoundingClientRect();
+      var rowRect = row.getBoundingClientRect();
+      var head = wrap.querySelector('thead');
+      var topGap = (head ? head.offsetHeight : 0) + 4;
+      var botGap = 12;
+      var delta = 0;
+      if (rowRect.top < wrapRect.top + topGap) {
+        delta = rowRect.top - (wrapRect.top + topGap);
+      } else if (rowRect.bottom > wrapRect.bottom - botGap) {
+        delta = rowRect.bottom - (wrapRect.bottom - botGap);
+      }
+      if (delta) wrap.scrollTop += delta;
     }
 
     function rowIsEmpty(r) {
