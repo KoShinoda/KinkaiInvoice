@@ -3274,6 +3274,13 @@
       if (!isFinite(h)) return;
       wrap.style.maxHeight = Math.max(160, h) + 'px';
     }
+    function gridTypicalRowHeight_(row) {
+      var h = row ? row.getBoundingClientRect().height : 0;
+      if (h >= 28 && h <= 72) return h;
+      var r0 = $('tbody') && $('tbody').rows[0];
+      var h0 = r0 ? r0.getBoundingClientRect().height : 0;
+      return Math.max(36, h0 || 36);
+    }
     function scrollGridCellIntoView_(el) {
       fitGridWrapToFooter_();
       var wrap = document.querySelector('#viewInput .table-wrap');
@@ -3282,16 +3289,27 @@
       var wrapRect = wrap.getBoundingClientRect();
       var rowRect = row.getBoundingClientRect();
       var head = wrap.querySelector('thead');
-      var topGap = (head ? head.offsetHeight : 0) + 4;
-      var botLimit = Math.min(wrapRect.bottom, gridVisibleBottom_()) - 4;
-      var topLimit = wrapRect.top + topGap;
+      var headH = head ? head.offsetHeight : 0;
+      var topLimit = wrapRect.top + headH + 4;
+      var rowH = gridTypicalRowHeight_(row);
+      var botLimit = Math.min(
+        wrapRect.bottom - 4,
+        gridVisibleBottom_() - 4,
+        topLimit + rowH * 7
+      );
+      if (botLimit < topLimit + rowH) {
+        botLimit = Math.min(wrapRect.bottom, gridVisibleBottom_()) - 4;
+      }
       var delta = 0;
-      if (rowRect.top < topLimit) {
+      if (rowRect.height > botLimit - topLimit) {
+        delta = rowRect.top - topLimit;
+      } else if (rowRect.top < topLimit) {
         delta = rowRect.top - topLimit;
       } else if (rowRect.bottom > botLimit) {
         delta = rowRect.bottom - botLimit;
       }
-      if (delta) wrap.scrollTop += delta;
+      if (Math.abs(delta) < 1) return;
+      wrap.scrollTop += delta;
     }
 
     function rowIsEmpty(r) {
