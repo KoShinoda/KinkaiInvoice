@@ -69,16 +69,20 @@ function refreshAllMasterLists() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let promoted = 0;
   writeInternal_(function () {
-    ensureListMasterSheets_();
+    ensureListMasterSheets_(true);
     CONFIG.listRefresh.sheets.forEach(function (name) {
       const sheet = ss.getSheetByName(name);
       if (sheet) {
-        const n = refreshMasterListSheet_(sheet);
+        const n = refreshMasterListSheet_(sheet, { skipDropdowns: true });
         if (sheet.getName() === CONFIG.workList.sheetName) {
           promoted = n || 0;
         }
       }
     });
+    const work = ss.getSheetByName(CONFIG.workList.sheetName);
+    if (work) {
+      applyWorkListOpenDropdowns_(ss, work);
+    }
     const tmpl = findInvoiceTemplateSheet_(ss);
     if (tmpl) {
       refreshInvoiceTemplateList_(tmpl);
@@ -88,6 +92,31 @@ function refreshAllMasterLists() {
     ? 'リストを更新しました。作業内容が空で技術料がある ' + promoted + ' 件に、中項目名を入れました。'
     : 'リストを順番で並べ替え、選択肢を更新しました';
   ss.toast(msg, '請求書入力', 8);
+}
+
+function refreshWorkListSheet() {
+  refreshNamedMasterList_(CONFIG.workList.sheetName, '作業リスト');
+}
+
+function refreshPartsListSheet() {
+  refreshNamedMasterList_(CONFIG.parts.sheetName, '部品リスト');
+}
+
+function refreshNamedMasterList_(sheetName, label) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    ss.toast('シート「' + sheetName + '」がありません', '請求書入力', 5);
+    return;
+  }
+  let promoted = 0;
+  writeInternal_(function () {
+    promoted = refreshMasterListSheet_(sheet) || 0;
+  });
+  const extra = promoted
+    ? '。作業内容が空で技術料がある ' + promoted + ' 件に、中項目名を入れました。'
+    : '';
+  ss.toast(label + 'を順番で並べ替え、選択肢を更新しました' + extra, '請求書入力', 5);
 }
 
 /**
@@ -125,7 +154,7 @@ function refreshActiveMasterList() {
   );
 }
 
-function ensureListMasterSheets_() {
+function ensureListMasterSheets_(skipDropdowns) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   unprotectListMasterSheets_(ss);
   const work = ss.getSheetByName(CONFIG.workList.sheetName);
@@ -136,7 +165,9 @@ function ensureListMasterSheets_() {
     ensureOrderColumnOnSheet_(work);
     layoutWorkListColumns_(work);
     fillWorkListWorkerCodesFromNames_(work);
-    applyWorkListOpenDropdowns_(ss, work);
+    if (!skipDropdowns) {
+      applyWorkListOpenDropdowns_(ss, work);
+    }
   }
   const parts = ss.getSheetByName(CONFIG.parts.sheetName);
   if (parts) {
@@ -151,7 +182,9 @@ function ensureListMasterSheets_() {
   const tmpl = findInvoiceTemplateSheet_(ss);
   if (tmpl) {
     ensureInvoiceTemplateHeaderCols_(tmpl);
-    applyInvoiceTemplateDropdowns_(tmpl);
+    if (!skipDropdowns) {
+      applyInvoiceTemplateDropdowns_(tmpl);
+    }
   }
 }
 
@@ -506,7 +539,7 @@ function removeWorkerOrderColumn_(sheet) {
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  */
-function refreshMasterListSheet_(sheet) {
+function refreshMasterListSheet_(sheet, opts) {
   const headerRow = 1;
   let promoted = 0;
   if (sheet.getName() === CONFIG.workList.sheetName) {
@@ -532,10 +565,9 @@ function refreshMasterListSheet_(sheet) {
   invalidateContext_();
   if (sheet.getName() === CONFIG.workList.sheetName) {
     fillWorkListWorkerCodesFromNames_(sheet);
-  }
-  const work = sheet.getParent().getSheetByName(CONFIG.workList.sheetName);
-  if (work) {
-    applyWorkListOpenDropdowns_(sheet.getParent(), work);
+    if (!(opts && opts.skipDropdowns)) {
+      applyWorkListOpenDropdowns_(sheet.getParent(), sheet);
+    }
   }
   log_('%s refreshMasterListSheet_: %s を順番で並べ替えました', CONFIG.logPrefix, sheet.getName());
   return promoted;

@@ -385,7 +385,6 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   let cursor = 1;
   let serial = 0;
   const breakRows = [];
-  const pageMetas = [];
   for (let p = 0; p < pageCount; p++) {
     const slice = pages[p] || [];
     const showHeader = p === 0;
@@ -398,16 +397,10 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
       showHeader: showHeader,
       showFooter: showFooter,
       summary: payload.summary || {},
-      slotH: slotH
+      slotH: slotH,
+      skipDropdowns: String(sheetName || '').indexOf('_pdf_') === 0
     });
     serial += slice.length;
-    pageMetas.push({
-      start: cursor,
-      L: L,
-      showHeader: showHeader,
-      showFooter: showFooter,
-      slotH: slotH
-    });
     const end = cursor + L.pageRows - 1;
     if (p < pageCount - 1) {
       breakRows.push(end + 1);
@@ -417,11 +410,6 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
 
   trimPrintSheet_(sheet, cursor - 1);
   applyPrintPageBreaksAt_(sheet, breakRows);
-  SpreadsheetApp.flush();
-  for (let i = 0; i < pageMetas.length; i++) {
-    const meta = pageMetas[i];
-    fitPrintPagePad_(sheet, meta.start, meta.L, meta.showHeader, meta.showFooter, meta.slotH);
-  }
   SpreadsheetApp.flush();
   return { sheet: sheet, pageCount: pageCount };
 }
@@ -798,7 +786,7 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
       .setFontSize(20)
       .setFontWeight('bold')
       .setHorizontalAlignment('left');
-    fillPrintHeader_(sheet, start, L, header);
+    fillPrintHeader_(sheet, start, L, header, opts.skipDropdowns);
   }
 
   const headRow = start + L.colHead;
@@ -829,7 +817,6 @@ function fillPrintPage_(sheet, start, header, lines, opts) {
   sheet.getRange(start, 1, L.pageRows, cols).setVerticalAlignment('middle');
   fillPrintBodyFonts_(sheet, first, lines);
   applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, plan);
-  fitPrintPagePad_(sheet, start, L, showHeader, showFooter, slotH);
   return L;
 }
 
@@ -1036,29 +1023,6 @@ function applyPrintPageHeights_(sheet, start, L, showHeader, showFooter, slotH, 
   setPrintRowHeight_(sheet, start + L.pageNo, PRINT_PAGE_NO_H_);
 }
 
-/** 折返しで行が伸びた分だけ空行を縮める。測りが小さすぎてもフッター分まで空行を広げない。 */
-function fitPrintPagePad_(sheet, start, L, showHeader, showFooter, slotH) {
-  if (!L || L.pad == null) {
-    return;
-  }
-  const target = printTargetInnerPx_();
-  const padRow = start + L.pad;
-  const last = start + L.pageRows - 1;
-  let used = 0;
-  for (let r = start; r <= last; r++) {
-    if (r !== padRow) {
-      used += Number(sheet.getRowHeight(r)) || 0;
-    }
-  }
-  const measured = target - used - PRINT_PAGE_SAFETY_PX_;
-  const formulaPad = printPadHeight_(showHeader, showFooter, slotH);
-  const padH = Math.max(PRINT_PAD_MIN_, Math.min(formulaPad, measured));
-  try {
-    sheet.getRange(padRow, 1, 1, CONFIG.print.colCount).setWrap(false).clearContent();
-  } catch (err) {}
-  setPrintRowHeight_(sheet, padRow, padH);
-}
-
 function mergePrintPage_(sheet, start, L, showHeader, showFooter) {
   if (showHeader && L.title != null) {
     sheet.getRange(start + L.title, 2, 1, 7).merge();
@@ -1097,7 +1061,7 @@ function formatPrintKNo_(value) {
   return ('0000' + d).slice(-4);
 }
 
-function fillPrintHeader_(sheet, start, L, header) {
+function fillPrintHeader_(sheet, start, L, header, skipDropdowns) {
   const l1 = start + L.metaL1;
   const v1 = start + L.metaV1;
   const l2 = start + L.metaL2;
@@ -1118,9 +1082,11 @@ function fillPrintHeader_(sheet, start, L, header) {
   sheet.getRange(v2, 2).setValue(header.dept || '').setFontSize(12);
   sheet.getRange(v2, 3).setValue(header.serviceType || '').setFontSize(12);
   sheet.getRange(v2, 6).setValue(header.receptionist || header.staff || '').setFontSize(12);
-  applyPrintDeptDropdown_(sheet.getRange(v2, 2), header.dept || '');
-  applyPrintServiceTypeDropdown_(sheet.getRange(v2, 3), header.dept || '', header.serviceType || '');
-  applyPrintReceptionistDropdown_(sheet.getRange(v2, 6), header.receptionist || header.staff || '');
+  if (!skipDropdowns) {
+    applyPrintDeptDropdown_(sheet.getRange(v2, 2), header.dept || '');
+    applyPrintServiceTypeDropdown_(sheet.getRange(v2, 3), header.dept || '', header.serviceType || '');
+    applyPrintReceptionistDropdown_(sheet.getRange(v2, 6), header.receptionist || header.staff || '');
+  }
 
   sheet.getRange(l3, 2).setValue('入庫日').setFontSize(12).setFontWeight('bold');
   sheet.getRange(l3, 3).setValue('出庫日').setFontSize(12).setFontWeight('bold');

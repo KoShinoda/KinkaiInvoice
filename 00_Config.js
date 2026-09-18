@@ -109,9 +109,10 @@ const CONFIG = {
   },
 
   /**
-   * 作業リスト／部品リスト。図形に refreshAllMasterLists を割り当てて更新する。
+   * 作業リスト／部品リスト。図形に refreshAllMasterLists を割り当ててまとめて更新できる。
+   * 普段はシートごと（refreshWorkListSheet / refreshPartsListSheet / 表示中は refreshActiveMasterList）。
    * 空の順番は更新時だけまとめて付ける。手で入れた順番は残す。
-   * テンプレートリストは含めない（refreshInvoiceTemplateList）。
+   * テンプレートリストは含めない（refreshInvoiceTemplateList）。ただしまとめて更新では同時に回す。
    */
   listRefresh: {
     sheets: ['作業リスト', '部品リスト'],

@@ -490,7 +490,6 @@ function publishInvoicePdf(payload) {
       tmp.showSheet();
     } catch (errShow) {}
     SpreadsheetApp.flush();
-    Utilities.sleep(400);
     const pdfBase64 = exportSheetPdf_(ss, tmp);
     return invoiceJsonSafe_({
       pageCount: printed.pageCount,

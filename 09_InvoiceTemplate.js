@@ -657,6 +657,7 @@ function coerceWorkerCodeColumn_(sh, range, col) {
   const cells = sh.getRange(from, col, to - from + 1, 1);
   const vals = cells.getValues();
   const labels = workerCodeLabelsForTemplateDropdown_();
+  const bulk = vals.length > 5;
   let changed = false;
   for (let i = 0; i < vals.length; i++) {
     const parsed = parseTemplateWorkerCodeCell_(vals[i][0]);
@@ -671,7 +672,9 @@ function coerceWorkerCodeColumn_(sh, range, col) {
       vals[i][0] = writeVal;
       changed = true;
     }
-    applyOpenListValidation_(sh.getRange(from + i, col), labels.concat([parsed]));
+    if (!bulk) {
+      applyOpenListValidation_(sh.getRange(from + i, col), labels.concat([parsed]));
+    }
   }
   if (changed) {
     cells.setValues(vals);
