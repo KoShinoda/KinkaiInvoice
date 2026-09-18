@@ -284,7 +284,7 @@ function ensureOrderColumnOnSheet_(sheet) {
 }
 
 /**
- * 作業内容が空で技術料がある行に、中項目名を書いてシートへ残す。
+ * 作業内容が空で技術料があるパックは、先頭の空行だけ中項目名を書いてシートへ残す。
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @return {number}

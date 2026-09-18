@@ -147,7 +147,7 @@ function listMaintainCanonicalWorkLine_(mid, line) {
     unitPrice: line.unitPrice
   } : {};
   if (isFilled_(out.fee) && !normalize_(out.content)) {
-    out.content = mid;
+    throw new Error('作業内容が空の行に技術料があります。作業内容を入力するか、技術料を消してください。');
   }
   if (!normalize_(out.content)) {
     out.fee = '';

@@ -952,7 +952,8 @@
     #listStatus { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
     #listStatus.err { color: var(--danger); font-weight: 600; }
     #tbody input.list-num-err,
-    .list-pack input.list-num-err {
+    .list-pack input.list-num-err,
+    .list-pack textarea.list-num-err {
       border-color: var(--danger);
       background: #fde8e8;
     }
@@ -5659,7 +5660,7 @@
       var root = $(rootId);
       if (!root) return;
       (bad || []).forEach(function (item) {
-        var inp = root.querySelector('input[' + rowAttr + '="' + item.i + '"][data-k="' + item.k + '"]');
+        var inp = root.querySelector('input[' + rowAttr + '="' + item.i + '"][data-k="' + item.k + '"], textarea[' + rowAttr + '="' + item.i + '"][data-k="' + item.k + '"]');
         if (inp) inp.classList.add('list-num-err');
       });
     }
@@ -5676,13 +5677,19 @@
       }
       collectListWorkRows();
       seedListWorkContent(mid);
-      listWorkRows.forEach(function (r) {
-        if (!r) return;
-        if (filled(r.fee) && !filled(r.content)) r.content = mid;
-        if (!filled(r.content)) r.fee = '';
+      var feeBad = [];
+      listWorkRows.forEach(function (r, i) {
+        if (r && filled(r.fee) && !filled(r.content)) {
+          feeBad.push({ i: i, k: 'fee', label: '技術料' });
+        }
       });
       var numberBad = coerceListNumberRows(listWorkRows, ['fee', 'unitPrice', 'qty']);
       renderListWorkTable();
+      if (feeBad.length) {
+        markListNumberErrors('listWorkBody', 'data-list-work', feeBad);
+        setListStatus('作業内容が空の行に技術料があるため保存できません（' + listNumberErrorText(feeBad) + '）。作業内容を入れるか、技術料を消してください。', true);
+        return;
+      }
       if (numberBad.length) {
         markListNumberErrors('listWorkBody', 'data-list-work', numberBad);
         setListStatus('数値以外があるため保存できません（' + listNumberErrorText(numberBad) + '）。', true);

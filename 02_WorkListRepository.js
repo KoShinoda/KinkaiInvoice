@@ -264,8 +264,8 @@ function getRecordsForSelection_(ctx, major, mid) {
 }
 
 /**
- * 作業内容が空で技術料がある行は、リスト追加と同じく作業内容＝中項目名にする。
- * 技術料は動かさない（その行の作業内容に載せる）。
+ * 作業内容が空で技術料がある行は、パック内の先頭1行だけ作業内容＝中項目名にする。
+ * 技術料は動かさない。2行目以降の技術料のみは触れない。
  *
  * @param {object[]} rows
  * @return {number} 埋めた件数
@@ -274,12 +274,19 @@ function promoteMidFeesToWorkContent_(rows) {
   if (!rows || !rows.length) {
     return 0;
   }
+  const seen = {};
   let filled = 0;
   rows.forEach(function (row) {
     const mid = normalize_(row && row.mid);
+    const major = normalize_(row && row.major);
     if (!mid || hasWorkContent_(row) || !isFilled_(row.fee)) {
       return;
     }
+    const key = major + '\t' + mid;
+    if (seen[key]) {
+      return;
+    }
+    seen[key] = true;
     row.content = mid;
     filled += 1;
   });
