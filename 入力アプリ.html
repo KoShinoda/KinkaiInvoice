@@ -239,8 +239,8 @@
     .header-fold-bar {
       display: none;
       align-items: center;
-      gap: 10px;
-      min-height: 0;
+      gap: 12px;
+      min-height: 40px;
     }
     body.header-folded .header-fold-bar {
       display: flex;
@@ -249,8 +249,10 @@
       display: none;
     }
     body.header-folded #viewInput .card-header-fields {
-      padding: 8px 14px;
+      padding: 8px 10px;
       margin-bottom: 6px;
+      background: #f3f8f5;
+      cursor: pointer;
     }
     .header-fold-summary {
       flex: 1;
@@ -260,7 +262,6 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      cursor: pointer;
     }
     .header-fold-summary:empty::before,
     .header-fold-summary.is-empty {
@@ -269,7 +270,7 @@
     .card-head-title {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       min-width: 0;
     }
     .card-head-actions {
@@ -280,9 +281,11 @@
     }
     .header-fold-toggle {
       flex: 0 0 auto;
-      padding: 3px 9px;
-      font-size: 12px;
-      line-height: 1.3;
+      min-height: 40px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.2;
       white-space: nowrap;
     }
     body.is-input-view #viewInput .card-items {
@@ -1116,8 +1119,8 @@
   <main id="viewInput">
     <section class="card card-header-fields">
       <div class="header-fold-bar" id="headerFoldBar">
+        <button type="button" class="sub header-fold-toggle" id="btnHeaderUnfold">▼ ヘッダーを開く</button>
         <div class="header-fold-summary is-empty" id="headerFoldSummary" title="クリックでヘッダーを開く">ヘッダー（未入力）</div>
-        <button type="button" class="sub header-fold-toggle" id="btnHeaderUnfold">▼ 開く</button>
       </div>
       <div class="grid header-grid">
         <div class="header-template">
@@ -4959,13 +4962,10 @@
         setHeaderFolded(!document.body.classList.contains('header-folded'));
       });
     }
-    if ($('btnHeaderUnfold')) {
-      $('btnHeaderUnfold').addEventListener('click', function () {
-        setHeaderFolded(false);
-      });
-    }
-    if ($('headerFoldSummary')) {
-      $('headerFoldSummary').addEventListener('click', function () {
+    if ($('headerFoldBar')) {
+      var headerCard = document.querySelector('#viewInput .card-header-fields');
+      (headerCard || $('headerFoldBar')).addEventListener('click', function () {
+        if (!document.body.classList.contains('header-folded')) return;
         setHeaderFolded(false);
       });
     }
