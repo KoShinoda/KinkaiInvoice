@@ -4825,11 +4825,7 @@
       if (filled(items[i][k]) && !filled(t.value)) rememberGridUndo_({ i: i, k: k });
       items[i][k] = t.value;
       t.classList.remove('list-num-err');
-      if (k === 'major') {
-        items[i].mid = '';
-        refreshRowSelects(i);
-      } else if (k === 'partMajor') {
-        items[i].partMid = '';
+      if (k === 'major' || k === 'partMajor') {
         refreshRowSelects(i);
       } else {
         recalc();
