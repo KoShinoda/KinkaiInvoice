@@ -329,15 +329,28 @@
       color: var(--muted);
       font-weight: 600;
     }
-    button.ghost {
+    button.ghost,
+    button.btn-clear-all {
       background: #fff;
       color: var(--danger);
       border: 1px solid #f0c4c0;
-      padding: 5px 12px;
-      font-size: 12px;
       flex: 0 0 auto;
     }
-    button.ghost:hover { background: #fde8e8; }
+    button.ghost {
+      padding: 5px 12px;
+      font-size: 12px;
+    }
+    button.btn-clear-all {
+      box-sizing: border-box;
+      height: 32px;
+      padding: 0 12px;
+      font-size: 13px;
+      line-height: 1;
+      align-self: center;
+      white-space: nowrap;
+    }
+    button.ghost:hover,
+    button.btn-clear-all:hover { background: #fde8e8; }
     button.sub {
       background: #fff;
       color: var(--accent);
@@ -757,7 +770,6 @@
       font-size: 13px;
     }
     .header-grid .header-template #btnClearHeader {
-      flex: 0 0 auto;
       margin-left: auto;
     }
     .date-wrap {
@@ -1129,7 +1141,7 @@
           <div class="template-wrap">
             <select id="invoiceTemplate"></select>
             <button type="button" id="btnSaveTemplate" class="sub">テンプレートとして保存</button>
-            <button type="button" class="ghost" id="btnClearHeader">ヘッダー全消去</button>
+            <button type="button" class="btn-clear-all" id="btnClearHeader">ヘッダー全消去</button>
           </div>
         </div>
         <div><label>ユーザー</label><input id="userName"></div>
@@ -1183,7 +1195,7 @@
           <button type="button" class="sub header-fold-toggle" id="btnHeaderFold">▲ ヘッダーを畳む</button>
         </div>
         <div class="card-head-actions">
-          <button type="button" class="ghost" id="btnClearItems">明細全消去</button>
+          <button type="button" class="btn-clear-all" id="btnClearItems">明細全消去</button>
         </div>
       </div>
       <div class="table-wrap">
