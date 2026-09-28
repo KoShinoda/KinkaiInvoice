@@ -155,6 +155,16 @@ function listMaintainCanonicalWorkLine_(mid, line) {
   return out;
 }
 
+function listMaintainStampCreateOrder_(lines) {
+  (lines || []).forEach(function (line, i) {
+    if (!line) {
+      return;
+    }
+    line.order = i + 1;
+  });
+  return lines;
+}
+
 function listMaintainWorkRow_(cols, width, major, mid, line) {
   const row = listMaintainBlankRow_(width);
   listMaintainSetCell_(row, cols.major, major);
@@ -167,6 +177,9 @@ function listMaintainWorkRow_(cols, width, major, mid, line) {
   listMaintainSetCell_(row, cols.partMid, normalize_(line && line.partMid));
   listMaintainSetCell_(row, cols.qty, listMaintainNumeric_(line && line.qty));
   listMaintainSetCell_(row, cols.unitPrice, listMaintainNumeric_(line && line.unitPrice));
+  if (cols.order && line && line.order != null && line.order !== '') {
+    listMaintainSetCell_(row, cols.order, line.order);
+  }
   return row;
 }
 
@@ -187,7 +200,7 @@ function saveWorkListPack(payload) {
     .map(function (line) {
       return listMaintainCanonicalWorkLine_(mid, line);
     });
-  const bodyLines = lines.length ? lines : [{}];
+  const bodyLines = listMaintainStampCreateOrder_(lines.length ? lines : [{}]);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.workList.sheetName);
   if (!sh) {
@@ -195,6 +208,7 @@ function saveWorkListPack(payload) {
   }
   let overwritten = false;
   writeInternal_(function () {
+    ensureOrderColumnOnSheet_(sh);
     const lastCol = Math.max(sh.getLastColumn(), 1);
     const values = sh.getDataRange().getValues();
     const headers = values[CONFIG.workList.headerRow - 1] || [];
@@ -274,6 +288,9 @@ function listMaintainPartsRow_(cols, width, major, mid, line) {
   listMaintainSetCell_(row, cols.name, setName);
   listMaintainSetCell_(row, cols.qty, listMaintainNumeric_(line && line.qty));
   listMaintainSetCell_(row, cols.unitPrice, listMaintainNumeric_(line && line.unitPrice));
+  if (cols.order && line && line.order != null && line.order !== '') {
+    listMaintainSetCell_(row, cols.order, line.order);
+  }
   return row;
 }
 
@@ -297,6 +314,7 @@ function savePartsListPack(payload) {
   if (!lines.length) {
     throw new Error('セット（部品名）か単価・数量を1行以上入力してください。');
   }
+  listMaintainStampCreateOrder_(lines);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.parts.sheetName);
   if (!sh) {
@@ -304,6 +322,7 @@ function savePartsListPack(payload) {
   }
   let overwritten = false;
   writeInternal_(function () {
+    ensureOrderColumnOnSheet_(sh);
     ensurePartsSetHeader_(sh);
     const lastCol = Math.max(sh.getLastColumn(), 1);
     const values = sh.getDataRange().getValues();

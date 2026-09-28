@@ -293,6 +293,53 @@ function rowsHaveEmptyOrder_(records) {
 }
 
 /**
+ * リスト追加で上から 1,2,3… と付けた塊は、レーンで並べ替えない。
+ *
+ * @param {object[]} records
+ * @return {boolean}
+ */
+function ordersAreCreateSequence_(records) {
+  if (!records || !records.length) {
+    return false;
+  }
+  const seen = {};
+  for (let i = 0; i < records.length; i++) {
+    const n = toOrderNumber_(records[i].order);
+    if (n === Number.POSITIVE_INFINITY || seen[n]) {
+      return false;
+    }
+    seen[n] = true;
+  }
+  return true;
+}
+
+/**
+ * 番号が一塊の連番なら、作成順のまま比較する。
+ *
+ * @param {object[]} records
+ */
+function releaseExplicitOrderLanes_(records) {
+  const grouped = {};
+  (records || []).forEach(function (row) {
+    const key = normalize_(row.major) + '\t' + normalize_(row.mid);
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(row);
+  });
+  Object.keys(grouped).forEach(function (key) {
+    const g = grouped[key];
+    if (!ordersAreCreateSequence_(g)) {
+      return;
+    }
+    g.forEach(function (row) {
+      row._midLane = 1;
+      row._isMidAnchor = false;
+    });
+  });
+}
+
+/**
  * 同じ中項目内：先頭 → 作業内容（順番） → 追加部品（順番）。
  *
  * @param {object} a
@@ -356,6 +403,7 @@ function groupFirstSeen_(records, keyFn) {
  */
 function sortWorkListRecords_(records) {
   tagMidGroups_(records);
+  releaseExplicitOrderLanes_(records);
   const majorMin = {};
   const majorSeen = {};
   const midSeen = {};

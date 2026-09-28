@@ -1260,7 +1260,7 @@
         </div>
       </div>
       <p id="listStatus"></p>
-      <p class="list-hint">請求入力では中項目は選択肢です。作業は作業内容、部品は部品_セットが明細になります。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。並びの確定はシートのリスト更新です。</p>
+      <p class="list-hint">請求入力では中項目は選択肢です。作業は作業内容、部品は部品_セットが明細になります。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。保存した行は上から番号を付け、その並びのまま請求入力に出します。</p>
       <div id="listPanelWork">
         <div class="grid">
           <div>
@@ -1552,6 +1552,10 @@
     function setStatus(msg, isErr) {
       $('status').textContent = msg;
       $('status').className = isErr ? 'err' : '';
+    }
+    function withOrderNote_(msg) {
+      if (!master || !master.ordersPending) return msg;
+      return msg + ' 順番が空の行があるため並びは仮です。確定するにはシートのリスト更新を押してください。';
     }
     function emptyRow() {
       return {
@@ -2030,7 +2034,7 @@
       applyTemplateLines(t.lines, name, true);
       if (!quiet) {
         var n = items.filter(function (r) { return !rowIsEmpty(r); }).length;
-        setStatus('テンプレート「' + name + '」から明細 ' + n + ' 行' + (headerApplied ? 'とヘッダー初期値' : '') + 'を入れました');
+        setStatus(withOrderNote_('テンプレート「' + name + '」から明細 ' + n + ' 行' + (headerApplied ? 'とヘッダー初期値' : '') + 'を入れました'));
       }
     }
     function mergeTemplateIntoPayload(payload, data) {
@@ -2899,7 +2903,7 @@
           snapshotActiveJob(true);
           renderDraftTabs();
           var kind = res.overwritten ? '上書き保存' : '新規保存';
-          setStatus(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）');
+          setStatus(withOrderNote_(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）'));
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -2931,11 +2935,11 @@
           renderDraftTabs();
           finishWorkJobAfterPrint();
           var opened = openPdfDownload(res);
-          setStatus(
+          setStatus(withOrderNote_(
             'PDF「' + (res.pdfName || '請求書.pdf') + '」を作成しました（' +
             res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）。' +
             (opened ? ' ダウンロードします。' : ' ダウンロードできないときは、もう一度作成してください。')
-          );
+          ));
         })
         .withFailureHandler(function (err) {
           setBusy(false);
@@ -3205,6 +3209,22 @@
         if (v === '' || v == null) return Number.POSITIVE_INFINITY;
         var n = Number(String(v).replace(/,/g, '').trim());
         return isFinite(n) ? n : Number.POSITIVE_INFINITY;
+      }
+      var seen = {};
+      var explicit = list.length > 0;
+      var ei;
+      for (ei = 0; ei < list.length; ei++) {
+        var en = ord(list[ei].order);
+        if (en === Number.POSITIVE_INFINITY || seen[en]) {
+          explicit = false;
+          break;
+        }
+        seen[en] = true;
+      }
+      if (explicit) {
+        return list.sort(function (a, b) {
+          return ord(a.order) - ord(b.order);
+        });
       }
       function hasContent(r) {
         return !!String(r.content == null ? '' : r.content).replace(/\u3000/g, ' ').trim();
@@ -3594,6 +3614,7 @@
       focusGridEl_(el);
     }
     var focusGridRaf_ = 0;
+    var enterMoveAt_ = 0;
     function focusGridEl_(el) {
       var wrap = document.querySelector('#viewInput .table-wrap');
       var wx = window.pageXOffset || 0;
@@ -3613,8 +3634,8 @@
       if (focusGridRaf_) window.cancelAnimationFrame(focusGridRaf_);
       focusGridRaf_ = window.requestAnimationFrame(function () {
         focusGridRaf_ = 0;
+        if (!el.isConnected || document.activeElement !== el) return;
         window.scrollTo(wx, wy);
-        if (wrap) wrap.scrollTop = wt;
         scrollGridCellIntoView_(el);
       });
     }
@@ -4815,7 +4836,9 @@
       if (e.key === 'Enter') {
         if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
-        if (e.repeat) return;
+        var now = Date.now();
+        if (e.repeat && now - enterMoveAt_ < 160) return;
+        enterMoveAt_ = now;
         confirmComboIfOpen(e.target);
         moveDown(e.target, e.shiftKey ? -1 : 1);
         return;
@@ -5735,7 +5758,7 @@
           setBusy(false);
           applyListMaster(res);
           var msg = (res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（作業「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。';
+            'しました（作業「' + major + ' / ' + mid + '」）。上から1、2、3…の順で、その並びのまま請求入力に出します。';
           clearListWorkForm(msg);
         })
         .withFailureHandler(function (err) {
@@ -5778,7 +5801,7 @@
           setBusy(false);
           applyListMaster(res);
           var msg = (res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（部品「' + major + ' / ' + mid + '」）。並びを確定するにはシートのリスト更新を押してください。';
+            'しました（部品「' + major + ' / ' + mid + '」）。上から1、2、3…の順で、その並びのまま請求入力に出します。';
           clearListPartForm(msg);
         })
         .withFailureHandler(function (err) {
@@ -6281,6 +6304,12 @@
       .getInvoiceMaster();
 
     showAppView(START_VIEW === 'search' ? 'search' : 'input');
+    if (START_VIEW !== 'search') {
+      applyDefaultDates();
+      applyDiscPctDefaults();
+      renderGrid();
+      setStatus('読み込み中…');
+    }
   </script>
 </body>
 </html>
