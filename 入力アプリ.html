@@ -1260,7 +1260,7 @@
         </div>
       </div>
       <p id="listStatus"></p>
-      <p class="list-hint">請求入力では中項目は選択肢です。作業は作業内容、部品は部品_セットが明細になります。同じ中項目や氏名を選ぶと、今の内容を出して上書きできます。保存した行は上から番号を付け、その並びのまま請求入力に出します。</p>
+      <p class="list-hint">請求入力では中項目は選択肢です。既存の中項目を選ぶと、現在の内容を出して上書きできます。</p>
       <div id="listPanelWork">
         <div class="grid">
           <div>
@@ -5252,6 +5252,18 @@
     function listPartRowHasContent(r) {
       return !!(r && (filled(r.set) || filled(r.unitPrice) || filled(r.qty)));
     }
+    function listWorkNameOnly_(r, mid) {
+      if (!r) return false;
+      var content = String(r.content || '').replace(/\u3000/g, ' ').trim();
+      if (!content || content !== mid) return false;
+      return !filled(r.fee) && !filled(r.workerCode) && !listWorkHasPart(r);
+    }
+    function listPartNameOnly_(r, mid) {
+      if (!r) return false;
+      var setName = String(r.set || '').replace(/\u3000/g, ' ').trim();
+      if (!setName || setName !== mid) return false;
+      return !filled(r.unitPrice) && !filled(r.qty);
+    }
     function seedListFirstName(rows, field, mid, seedHolder) {
       mid = String(mid == null ? '' : mid).replace(/\u3000/g, ' ').trim();
       if (!rows[0]) return;
@@ -5748,7 +5760,13 @@
         setListStatus('数値以外があるため保存できません（' + listNumberErrorText(numberBad) + '）。', true);
         return;
       }
-      var lines = listWorkRows.filter(listWorkRowHasContent);
+      var lines = listWorkRows.filter(function (r) {
+        return listWorkRowHasContent(r) && !listWorkNameOnly_(r, mid);
+      });
+      if (!lines.length) {
+        setListStatus('作業内容か部品を1行以上入力してください。中項目名だけでは保存しません。', true);
+        return;
+      }
       var exists = listWorkPackExists(major, mid);
       if (exists && !window.confirm('作業「' + major + ' / ' + mid + '」を上書きします')) return;
       setBusy(true);
@@ -5787,9 +5805,11 @@
         setListStatus('数値以外があるため保存できません（' + listNumberErrorText(numberBad) + '）。', true);
         return;
       }
-      var lines = listPartRows.filter(listPartRowHasContent);
+      var lines = listPartRows.filter(function (r) {
+        return listPartRowHasContent(r) && !listPartNameOnly_(r, mid);
+      });
       if (!lines.length) {
-        setListStatus('セット（部品名）か単価・数量を1行以上入力してください。', true);
+        setListStatus('セット（部品名）か単価・数量を1行以上入力してください。中項目名だけでは保存しません。', true);
         return;
       }
       var exists = listPartPackExists(major, mid);

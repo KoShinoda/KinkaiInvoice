@@ -199,8 +199,20 @@ function saveWorkListPack(payload) {
   const lines = (payload.lines || []).filter(listMaintainWorkLineHasContent_)
     .map(function (line) {
       return listMaintainCanonicalWorkLine_(mid, line);
+    })
+    .filter(function (line) {
+      const content = normalize_(line.content);
+      if (content !== mid) {
+        return true;
+      }
+      return isFilled_(line.fee) || normalize_(line.workerCode) ||
+        normalize_(line.partMajor) || normalize_(line.partMid) ||
+        isFilled_(line.qty) || isFilled_(line.unitPrice);
     });
-  const bodyLines = listMaintainStampCreateOrder_(lines.length ? lines : [{}]);
+  if (!lines.length) {
+    throw new Error('作業内容か部品を1行以上入力してください。中項目名だけでは保存しません。');
+  }
+  const bodyLines = listMaintainStampCreateOrder_(lines);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.workList.sheetName);
   if (!sh) {
@@ -310,9 +322,16 @@ function savePartsListPack(payload) {
   const lines = (payload.lines || []).filter(listMaintainPartsLineHasContent_)
     .map(function (line) {
       return listMaintainCanonicalPartsLine_(mid, line);
+    })
+    .filter(function (line) {
+      const setName = normalize_(line.set || line.content);
+      if (setName !== mid) {
+        return true;
+      }
+      return isFilled_(line.qty) || isFilled_(line.unitPrice);
     });
   if (!lines.length) {
-    throw new Error('セット（部品名）か単価・数量を1行以上入力してください。');
+    throw new Error('セット（部品名）か単価・数量を1行以上入力してください。中項目名だけでは保存しません。');
   }
   listMaintainStampCreateOrder_(lines);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
