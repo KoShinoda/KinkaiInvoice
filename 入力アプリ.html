@@ -2241,6 +2241,7 @@
       });
     }
     function showAppView(view) {
+      var enteringInput = view === 'input' && !document.body.classList.contains('is-input-view');
       if (workJobs.length && view !== 'input') snapshotActiveJob(false);
       var lists = view === 'lists';
       var search = view === 'search';
@@ -2251,7 +2252,8 @@
       if ($('draftBar')) $('draftBar').hidden = view !== 'input';
       document.body.classList.toggle('is-input-view', view === 'input');
       if (view === 'input') {
-        window.requestAnimationFrame(fitGridWrapToFooter_);
+        if (enteringInput) setHeaderFolded(false);
+        else window.requestAnimationFrame(fitGridWrapToFooter_);
       } else {
         var wrap = document.querySelector('#viewInput .table-wrap');
         var headerCard = document.querySelector('#viewInput .card-header-fields');
@@ -3657,7 +3659,6 @@
     }
     function setHeaderFolded(on) {
       document.body.classList.toggle('header-folded', !!on);
-      try { localStorage.setItem(HEADER_FOLD_STORE, on ? '1' : '0'); } catch (e) {}
       hideComboLists();
       refreshHeaderFold_();
       if (document.body.classList.contains('is-input-view')) {
@@ -3665,11 +3666,8 @@
       }
     }
     function initHeaderFold_() {
-      var folded = false;
-      try {
-        if (localStorage.getItem(HEADER_FOLD_STORE) === '1') folded = true;
-      } catch (e) {}
-      document.body.classList.toggle('header-folded', folded);
+      try { localStorage.removeItem(HEADER_FOLD_STORE); } catch (e) {}
+      document.body.classList.remove('header-folded');
       refreshHeaderFold_();
     }
     function scrollGridCellIntoView_(el) {
