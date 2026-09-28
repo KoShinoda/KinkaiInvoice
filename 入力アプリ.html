@@ -342,11 +342,20 @@
     }
     button.btn-clear-all {
       box-sizing: border-box;
+      width: 8.75em;
       height: 32px;
-      padding: 0 12px;
+      min-width: 8.75em;
+      min-height: 32px;
+      max-width: 8.75em;
+      max-height: 32px;
+      margin-top: 0;
+      margin-bottom: 0;
+      padding: 0;
       font-size: 13px;
-      line-height: 1;
+      line-height: 30px;
+      text-align: center;
       align-self: center;
+      flex: 0 0 8.75em;
       white-space: nowrap;
     }
     button.ghost:hover,
@@ -771,6 +780,7 @@
     }
     .header-grid .header-template #btnClearHeader {
       margin-left: auto;
+      align-self: center;
     }
     .date-wrap {
       display: flex;
