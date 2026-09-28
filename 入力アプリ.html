@@ -2676,7 +2676,7 @@
       renderDraftTabs();
       persistWorkJobs();
     }
-    function loadWorkJob(id, quietStatus) {
+    function loadWorkJob(id, quietStatus, skipPersist) {
       var job = findWorkJob(id);
       if (!job) return;
       workJobHydrating = true;
@@ -2694,7 +2694,7 @@
       } finally {
         workJobHydrating = false;
       }
-      persistWorkJobs(false);
+      if (!skipPersist) persistWorkJobs(false);
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
     }
     function renderDraftTabs() {
@@ -2811,12 +2811,22 @@
     }
     function initWorkJobs() {
       setWorkOperatorLabel();
+      var local = readLocalWorkJobState();
+      if (local && local.jobs && local.jobs.length) {
+        workJobs = local.jobs;
+        workJobId = local.activeId && findWorkJob(local.activeId) ? local.activeId : workJobs[0].id;
+        loadWorkJob(workJobId, true, true);
+      } else {
+        applyDefaultDates();
+        applyDefaultReceptionist();
+        applyDiscPctDefaults();
+      }
       google.script.run
         .withSuccessHandler(function (state) {
           applyWorkOperator(state);
-          var local = readLocalWorkJobState();
+          var again = readLocalWorkJobState();
           if (workIsolated && state && state.jobs && state.jobs.length) {
-            applyWorkJobState(mergeWorkJobState(local, state));
+            applyWorkJobState(mergeWorkJobState(again, state));
             return;
           }
           initWorkJobsFromLocal();
@@ -2824,7 +2834,7 @@
         .withFailureHandler(function () {
           workIsolated = false;
           setWorkOperatorLabel();
-          initWorkJobsFromLocal();
+          if (!(workJobs && workJobs.length)) initWorkJobsFromLocal();
         })
         .listWorkJobs();
     }
