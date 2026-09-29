@@ -1107,19 +1107,15 @@
       max-width: 100%;
       box-sizing: border-box;
     }
-    #viewLists .card-head {
-      align-items: stretch;
-      gap: 16px;
-    }
     #viewLists .list-seg {
-      flex: 1;
-      gap: 8px;
+      margin-left: auto;
     }
-    #viewLists .list-seg button.list-kind {
-      flex: 1;
-      min-height: 44px;
-      padding: 12px 16px;
-      font-size: 15px;
+    #viewLists .list-actions {
+      width: 100%;
+      margin-bottom: 12px;
+    }
+    #viewLists .list-actions .btn-clear-all {
+      margin-left: auto;
     }
     #viewLists .list-pack-wrap {
       max-height: 420px;
@@ -1302,7 +1298,7 @@
         <div class="list-actions">
           <button type="button" id="btnListWorkAddRow" class="sub">行を追加</button>
           <button type="button" id="btnListWorkSave">作業リストに保存</button>
-          <button type="button" id="btnListWorkClear" class="ghost">全消去</button>
+          <button type="button" id="btnListWorkClear" class="btn-clear-all">全消去</button>
         </div>
         <div class="list-pack-wrap">
           <table class="list-pack">
@@ -1357,7 +1353,7 @@
         <div class="list-actions">
           <button type="button" id="btnListPartAddRow" class="sub">行を追加</button>
           <button type="button" id="btnListPartSave">部品リストに保存</button>
-          <button type="button" id="btnListPartClear" class="ghost">全消去</button>
+          <button type="button" id="btnListPartClear" class="btn-clear-all">全消去</button>
         </div>
         <div class="list-pack-wrap">
           <table class="list-pack list-pack-parts">
@@ -1395,7 +1391,7 @@
         </div>
         <div class="list-actions">
           <button type="button" id="btnListWorkerSave">作業者リストに保存</button>
-          <button type="button" id="btnListWorkerClear" class="ghost">全消去</button>
+          <button type="button" id="btnListWorkerClear" class="btn-clear-all">全消去</button>
         </div>
       </div>
     </section>
