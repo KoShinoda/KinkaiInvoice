@@ -1131,7 +1131,7 @@
     <nav class="app-tabs">
       <button type="button" id="navInput" class="tab on">請求入力</button>
       <button type="button" id="navSearch" class="tab">請求書検索</button>
-      <button type="button" id="navLists" class="tab">リスト追加</button>
+      <button type="button" id="navLists" class="tab">データ追加</button>
     </nav>
   </header>
   <div class="draft-bar" id="draftBar">
@@ -1252,7 +1252,7 @@
   <main id="viewLists" hidden>
     <section class="card">
       <div class="card-head">
-        <h2>リスト追加</h2>
+        <h2>データ追加</h2>
         <div class="list-seg" id="listKindBar">
           <button type="button" class="list-kind on" data-list-kind="work">作業</button>
           <button type="button" class="list-kind" data-list-kind="parts">部品</button>
@@ -2283,7 +2283,7 @@
       $('navInput').classList.toggle('on', view === 'input');
       if ($('navSearch')) $('navSearch').classList.toggle('on', search);
       if ($('navLists')) $('navLists').classList.toggle('on', lists);
-      $('appTitle').textContent = lists ? 'リスト追加' : (search ? '請求書検索' : '車検 請求入力');
+      $('appTitle').textContent = lists ? 'データ追加' : (search ? '請求書検索' : '車検 請求入力');
       $('appSub').textContent = '';
       if (lists) initListAddView();
       if (search) {
