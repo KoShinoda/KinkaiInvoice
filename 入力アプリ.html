@@ -1913,7 +1913,7 @@
       el.dataset.comboBound = '1';
       initPlateAreaCombo();
       el.addEventListener('focus', function () {
-        showComboList(el, false, true);
+        showComboList(el);
       });
       el.addEventListener('input', function () {
         showComboList(el);
@@ -4957,7 +4957,7 @@
         hideWorkerPicker();
         if (e.target.dataset.k === 'workerCode') {
           e.target.value = workerEditValue(items[Number(e.target.dataset.i)]);
-          showComboList(e.target, false, true);
+          showComboList(e.target);
           e.target.select();
         } else {
           rememberComboQuery(e.target);
@@ -5962,7 +5962,7 @@
           setBusy(false);
           applyListMaster(res);
           var msg = (res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（作業「' + major + ' / ' + mid + '」）。上から1、2、3…の順で、その並びのまま請求入力に出します。';
+            'しました（作業「' + major + ' / ' + mid + '」）。';
           clearListWorkForm(msg);
         })
         .withFailureHandler(function (err) {
@@ -6007,7 +6007,7 @@
           setBusy(false);
           applyListMaster(res);
           var msg = (res && res.overwritten ? '上書き保存' : '保存') +
-            'しました（部品「' + major + ' / ' + mid + '」）。上から1、2、3…の順で、その並びのまま請求入力に出します。';
+            'しました（部品「' + major + ' / ' + mid + '」）。';
           clearListPartForm(msg);
         })
         .withFailureHandler(function (err) {
@@ -6191,7 +6191,7 @@
         if (isListSuggestCombo_(t)) {
           hideComboLists();
           rememberComboQuery(t);
-          showComboList(t, false, true);
+          showComboList(t);
           try { t.select(); } catch (err) {}
         }
         if (isGrowTextarea(t)) fitMidHeight(t);
@@ -6288,7 +6288,7 @@
         var t = e.target;
         if (!isListSuggestCombo_(t)) return;
         hideComboLists();
-        showComboList(t, false, true);
+        showComboList(t);
         try { t.select(); } catch (err) {}
       });
       $('listPartBody').addEventListener('mousedown', function (e) {
