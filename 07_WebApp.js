@@ -499,7 +499,8 @@ function publishInvoicePdf(payload) {
       overwritten: !!saved.overwritten,
       kNo: saved.kNo,
       pdfName: invoicePdfFileName_(payload),
-      pdfBase64: pdfBase64
+      pdfBase64: pdfBase64,
+      blankDebug: printed.blankDebug || ''
     });
   } finally {
     if (tmp) {
@@ -538,7 +539,8 @@ function publishInvoices(payload, sheetName) {
     pageCount: printed.pageCount,
     lineCount: filled.length,
     sheetNames: printed.sheetNames,
-    sheet: printed.sheet
+    sheet: printed.sheet,
+    blankDebug: invoiceBlankRowDebug_(payload.items)
   };
 }
 
@@ -577,6 +579,104 @@ function rowHasContent_(it) {
     return true;
   }
   return isFilled_(it.fee) && !isZeroNumber_(it.fee);
+}
+
+function debugFieldText_(value) {
+  const s = String(value == null ? '' : value);
+  if (!s) {
+    return '（空）';
+  }
+  const codes = [];
+  for (let i = 0; i < s.length && codes.length < 8; i++) {
+    const c = s.charCodeAt(i);
+    if (c <= 32 || c === 0x3000 || c === 0xFEFF || c === 0x200B) {
+      codes.push('U+' + c.toString(16).toUpperCase());
+    }
+  }
+  const shown = s.replace(/\r/g, '').replace(/\n/g, '↵').replace(/ /g, '·');
+  const short = shown.length > 24 ? shown.slice(0, 24) + '…' : shown;
+  return short + (codes.length ? ' [' + codes.join(' ') + ']' : '');
+}
+
+function rowKeepReasons_(it) {
+  const reasons = [];
+  if (!it) {
+    return reasons;
+  }
+  if (isFilled_(it.mid)) {
+    reasons.push('中項目=' + debugFieldText_(it.mid));
+  }
+  if (isFilled_(it.name)) {
+    reasons.push('name=' + debugFieldText_(it.name));
+  }
+  if (isSpaceOnly_(it.mid)) {
+    reasons.push('中項目はスペースのみ ' + debugFieldText_(it.mid));
+  }
+  if (isSpaceOnly_(it.name)) {
+    reasons.push('nameはスペースのみ ' + debugFieldText_(it.name));
+  }
+  if (isFilled_(it.partMid)) {
+    reasons.push('部品中項目=' + debugFieldText_(it.partMid));
+  }
+  if (isFilled_(it.part)) {
+    reasons.push('part=' + debugFieldText_(it.part));
+  }
+  if (isSpaceOnly_(it.partMid)) {
+    reasons.push('部品中項目はスペースのみ ' + debugFieldText_(it.partMid));
+  }
+  if (isSpaceOnly_(it.part)) {
+    reasons.push('partはスペースのみ ' + debugFieldText_(it.part));
+  }
+  if (isFilled_(it.fee) && !isZeroNumber_(it.fee)) {
+    reasons.push('技術料=' + it.fee);
+  }
+  return reasons;
+}
+
+function debugBlankPrintLines_(text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!raw) {
+    return 0;
+  }
+  let n = 0;
+  raw.split('\n').forEach(function (line) {
+    if (normalize_(line) === '') {
+      n++;
+    }
+  });
+  return n;
+}
+
+/** 部品欄が空に見えるのに残した行と、改行で高くなった行。 */
+function invoiceBlankRowDebug_(items) {
+  const lines = [];
+  (items || []).forEach(function (it, i) {
+    const reasons = rowKeepReasons_(it);
+    if (!reasons.length) {
+      return;
+    }
+    const no = (i + 1) + '行目';
+    const partText = isFilled_(it.partMid) || isFilled_(it.part);
+    if (!partText) {
+      lines.push(no + ' 部品欄は空。残した理由: ' + reasons.join(' / '));
+    }
+    const work = printFittedText_(it.mid || it.name || '', printScaledColWidth_(1));
+    const part = printFittedText_(printPartSource_(it), printScaledColWidth_(4));
+    const workBlank = debugBlankPrintLines_(work);
+    const partBlank = debugBlankPrintLines_(part);
+    const tall = Math.max(newlineCount_(work), newlineCount_(part));
+    if (tall > 1 || workBlank || partBlank) {
+      lines.push(no + ' この明細の高さ' + tall + '行（作業の空行' + workBlank + '、部品の空行' + partBlank + '）');
+    }
+  });
+  if (!lines.length) {
+    return '部品欄が空なのに残した行はありません。';
+  }
+  const shown = lines.slice(0, 12);
+  if (lines.length > shown.length) {
+    shown.push('他 ' + (lines.length - shown.length) + ' 件');
+  }
+  return shown.join('\n');
 }
 
 function lineAmount_(it, qty, price) {
