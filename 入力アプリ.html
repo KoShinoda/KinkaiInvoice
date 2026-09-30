@@ -6096,7 +6096,7 @@
       $('listWorkBody').addEventListener('focusin', function (e) {
         var t = e.target;
         if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
-        if (isListWorkCombo_(t)) {
+        if (isListSuggestCombo_(t)) {
           hideComboLists();
           rememberComboQuery(t);
           showComboList(t);
