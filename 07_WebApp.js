@@ -542,13 +542,19 @@ function publishInvoices(payload, sheetName) {
   };
 }
 
+function isSpaceOnly_(value) {
+  const s = String(value == null ? '' : value);
+  return s.length > 0 && normalize_(s) === '';
+}
+
 function rowHasContent_(it) {
   if (!it) {
     return false;
   }
   return isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
     isFilled_(it.partMajor) || isFilled_(it.partMid) || isFilled_(it.part) ||
-    isFilled_(it.qty) || isFilled_(it.unitPrice) || isFilled_(it.amount) || isFilled_(it.workerCode);
+    isFilled_(it.qty) || isFilled_(it.unitPrice) || isFilled_(it.amount) || isFilled_(it.workerCode) ||
+    isSpaceOnly_(it.mid) || isSpaceOnly_(it.name) || isSpaceOnly_(it.partMid) || isSpaceOnly_(it.part);
 }
 
 function lineAmount_(it, qty, price) {

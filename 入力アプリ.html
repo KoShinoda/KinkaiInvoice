@@ -3949,9 +3949,21 @@
       return false;
     }
 
+    function spaceOnlyText_(v) {
+      var s = String(v == null ? '' : v);
+      return s.length > 0 && s.replace(/\u3000/g, ' ').trim() === '';
+    }
     function onMidChosen(rowIndex) {
       var it = items[rowIndex];
-      var mid = String(it.mid || '').trim();
+      var rawMid = String(it.mid == null ? '' : it.mid);
+      if (spaceOnlyText_(rawMid)) {
+        lastExpandKey = '';
+        it.mid = rawMid;
+        refreshKind(it);
+        renderGrid();
+        return;
+      }
+      var mid = rawMid.replace(/\u3000/g, ' ').trim();
       it.mid = mid;
       it.kind = it.kind === 'part' ? it.kind : 'mid';
       if (!mid) {
@@ -4023,7 +4035,15 @@
 
     function onPartMidChosen(rowIndex) {
       var it = items[rowIndex];
-      var mid = String(it.partMid || '').trim();
+      var rawMid = String(it.partMid == null ? '' : it.partMid);
+      if (spaceOnlyText_(rawMid)) {
+        lastExpandKey = '';
+        it.partMid = rawMid;
+        refreshKind(it);
+        renderGrid();
+        return;
+      }
+      var mid = rawMid.replace(/\u3000/g, ' ').trim();
       it.partMid = mid;
       if (!mid) {
         lastExpandKey = '';
