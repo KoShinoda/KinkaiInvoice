@@ -542,19 +542,25 @@ function publishInvoices(payload, sheetName) {
   };
 }
 
+/** スペースだけ。改行だけの欄は文字が無いので空とみなす。 */
 function isSpaceOnly_(value) {
-  const s = String(value == null ? '' : value);
-  return s.length > 0 && normalize_(s) === '';
+  const s = String(value == null ? '' : value).replace(/\u3000/g, ' ');
+  if (!s || normalize_(s) !== '') {
+    return false;
+  }
+  return s.indexOf(' ') !== -1;
 }
 
 function rowHasContent_(it) {
   if (!it) {
     return false;
   }
-  return isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
-    isFilled_(it.partMajor) || isFilled_(it.partMid) || isFilled_(it.part) ||
-    isFilled_(it.qty) || isFilled_(it.unitPrice) || isFilled_(it.amount) || isFilled_(it.workerCode) ||
-    isSpaceOnly_(it.mid) || isSpaceOnly_(it.name) || isSpaceOnly_(it.partMid) || isSpaceOnly_(it.part);
+  if (isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
+      isFilled_(it.workerCode) || isSpaceOnly_(it.mid) || isSpaceOnly_(it.name)) {
+    return true;
+  }
+  return isFilled_(it.partMajor) || isFilled_(it.partMid) || isFilled_(it.part) ||
+    isSpaceOnly_(it.partMid) || isSpaceOnly_(it.part);
 }
 
 function lineAmount_(it, qty, price) {

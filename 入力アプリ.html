@@ -3951,8 +3951,9 @@
     }
 
     function spaceOnlyText_(v) {
-      var s = String(v == null ? '' : v);
-      return s.length > 0 && s.replace(/\u3000/g, ' ').trim() === '';
+      var s = String(v == null ? '' : v).replace(/\u3000/g, ' ');
+      if (!s || s.replace(/[ \t\r\n\u3000]/g, '') !== '') return false;
+      return s.indexOf(' ') !== -1;
     }
     function onMidChosen(rowIndex) {
       var it = items[rowIndex];
@@ -4047,7 +4048,7 @@
       it.partMid = mid;
       if (!mid) {
         lastExpandKey = '';
-        it.partMajor = '';
+        clearPartSide(it);
         refreshKind(it);
         renderGrid();
         return;
