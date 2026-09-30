@@ -4078,10 +4078,79 @@
       Array.prototype.forEach.call(document.querySelectorAll('.combo-list'), function (el) {
         if (keepList && el === keepList) return;
         el.hidden = true;
+        resetLiftedCombo_(el);
       });
       if (!keepList) comboActiveIndex = -1;
       if (!keepInput) hideComboPreview();
     }
+    function resetLiftedCombo_(list) {
+      if (!list || list.dataset.lifted !== '1') return;
+      list.dataset.lifted = '';
+      list.style.position = '';
+      list.style.left = '';
+      list.style.right = '';
+      list.style.top = '';
+      list.style.bottom = '';
+      list.style.width = '';
+      list.style.maxHeight = '';
+      list.style.zIndex = '';
+    }
+    function placeLiftedCombo_(input) {
+      var list = comboListEl(input);
+      if (!list) return;
+      if (list.hidden || !input.closest || !input.closest('#viewLists')) {
+        resetLiftedCombo_(list);
+        return;
+      }
+      var wrap = input.closest('.list-pack-wrap');
+      var ir = input.getBoundingClientRect();
+      if (wrap) {
+        var wr = wrap.getBoundingClientRect();
+        var visible = ir.bottom > wr.top + 8 && ir.top < wr.bottom - 8 && ir.right > wr.left + 8 && ir.left < wr.right - 8;
+        if (!visible) {
+          list.hidden = true;
+          resetLiftedCombo_(list);
+          return;
+        }
+      }
+      var gap = 2;
+      var maxH = 180;
+      var spaceBelow = window.innerHeight - ir.bottom - 8;
+      var spaceAbove = ir.top - 8;
+      var openUp = spaceBelow < 120 && spaceAbove > spaceBelow;
+      var room = Math.max(72, openUp ? spaceAbove : spaceBelow);
+      var height = Math.min(maxH, room);
+      var width = Math.max(ir.width, 160);
+      var left = ir.left;
+      if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - width);
+      if (left < 8) left = 8;
+      list.dataset.lifted = '1';
+      list.style.position = 'fixed';
+      list.style.zIndex = '80';
+      list.style.left = left + 'px';
+      list.style.width = width + 'px';
+      list.style.right = 'auto';
+      list.style.maxHeight = height + 'px';
+      if (openUp) {
+        list.style.top = 'auto';
+        list.style.bottom = (window.innerHeight - ir.top + gap) + 'px';
+      } else {
+        list.style.bottom = 'auto';
+        list.style.top = (ir.bottom + gap) + 'px';
+      }
+    }
+    function repositionLiftedCombos_() {
+      Array.prototype.forEach.call(document.querySelectorAll('#viewLists .combo-list'), function (list) {
+        if (list.hidden) return;
+        var input = list.parentNode && list.parentNode.querySelector('textarea, input');
+        if (input) placeLiftedCombo_(input);
+      });
+    }
+    document.addEventListener('scroll', function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('combo-list')) return;
+      repositionLiftedCombos_();
+    }, true);
+    window.addEventListener('resize', repositionLiftedCombos_);
     function isComboField(el) {
       return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid' || el.dataset.k === 'workerCode'));
     }
@@ -4156,20 +4225,6 @@
       out.sort(function (a, b) { return a.localeCompare(b, 'ja'); });
       return out;
     }
-    function partWorkOptions_() {
-      var seen = {};
-      var out = [];
-      function add(v) {
-        var s = String(v || '').replace(/\u3000/g, ' ').trim();
-        if (!s || seen[s]) return;
-        seen[s] = true;
-        out.push(s);
-      }
-      (master.allPartMids || []).forEach(add);
-      (master.workLines || []).forEach(function (r) { add(r && r.partMid); });
-      out.sort(function (a, b) { return a.localeCompare(b, 'ja'); });
-      return out;
-    }
     function partSetOptions_() {
       var seen = {};
       var out = [];
@@ -4213,9 +4268,9 @@
         return;
       }
       if (input.getAttribute('data-list-work') != null && input.dataset.k === 'partMid') {
-        var partKey = 'workParts:' + listSuggestRev;
+        var partKey = 'partSets:' + listSuggestRev;
         if (input.dataset.optKey !== partKey || !input.dataset.options) {
-          input.dataset.options = JSON.stringify(partWorkOptions_());
+          input.dataset.options = JSON.stringify(partSetOptions_());
           input.dataset.optKey = partKey;
         }
         return;
@@ -4347,7 +4402,7 @@
       }
       if (idx >= 0 && nodes[idx]) nodes[idx].scrollIntoView({ block: 'nearest' });
       var input = list.parentNode && list.parentNode.querySelector('[data-k="mid"], [data-k="partMid"], [data-k="workerCode"]');
-      if (!input || idx < 0 || !nodes[idx]) {
+      if (!input || isListSuggestCombo_(input) || idx < 0 || !nodes[idx]) {
         hideComboPreview();
         return;
       }
@@ -4357,9 +4412,11 @@
       var list = comboListEl(input);
       if (!list) return;
       ensureMidOptions(input);
-      var rawQ = unfiltered ? '' : (isMidPartCombo(input) ? comboFilterQuery : String(input.value || ''));
+      var plainSuggest = isListSuggestCombo_(input);
+      var midCombo = !plainSuggest && isMidPartCombo(input);
+      var rawQ = unfiltered ? '' : (midCombo ? comboFilterQuery : String(input.value || ''));
       var q = String(rawQ || '').toLowerCase();
-      var qBody = isMidPartCombo(input) ? comboBody(rawQ) : '';
+      var qBody = midCombo ? comboBody(rawQ) : '';
       list.innerHTML = '';
       var opts = [];
       if (input.dataset.k === 'workerCode') {
@@ -4376,13 +4433,13 @@
         opts = comboOptions(input).filter(function (v) {
           if (!rawQ) return true;
           if (String(v).toLowerCase().indexOf(q) !== -1) return true;
-          if (!isMidPartCombo(input) || !qBody) return false;
+          if (!midCombo || !qBody) return false;
           return comboBody(v).indexOf(qBody) !== -1;
         });
         opts.forEach(function (v) {
           var label = v === '' ? '　' : comboOptionLabel(v);
-          if (isMidPartCombo(input) && v) label = comboOptionLabel(stripPosPrefixDisplay(v));
-          if (isMidPartCombo(input)) appendComboOption(list, input, v, label);
+          if (midCombo && v) label = comboOptionLabel(stripPosPrefixDisplay(v));
+          if (midCombo) appendComboOption(list, input, v, label);
           else {
             var d = document.createElement('div');
             d.setAttribute('data-value', v);
@@ -4395,6 +4452,7 @@
       if (!keepActive) comboActiveIndex = -1;
       if (comboActiveIndex >= opts.length) comboActiveIndex = opts.length - 1;
       highlightCombo(list, comboActiveIndex);
+      placeLiftedCombo_(input);
     }
     function moveComboHighlight(input, dir) {
       var list = comboListEl(input);
@@ -4410,7 +4468,7 @@
       }
       highlightCombo(list, comboActiveIndex);
       var full = comboDivValue(list.children[comboActiveIndex]);
-      input.value = isMidPartCombo(input) ? comboChosenValue(comboFilterQuery, full) : full;
+      input.value = (isMidPartCombo(input) && !isListSuggestCombo_(input)) ? comboChosenValue(comboFilterQuery, full) : full;
     }
     function comboExactOptionIndex(list, typed) {
       var t = String(typed || '').replace(/\u3000/g, ' ').trim();
@@ -4451,7 +4509,7 @@
       var picked = comboDivValue(list.children[idx]);
       comboActiveIndex = idx;
       highlightCombo(list, comboActiveIndex);
-      input.value = isMidPartCombo(input) ? comboChosenValue(comboFilterQuery, picked) : picked;
+      input.value = (isMidPartCombo(input) && !isListSuggestCombo_(input)) ? comboChosenValue(comboFilterQuery, picked) : picked;
       return true;
     }
     function commitCombo(input) {
@@ -4869,7 +4927,7 @@
       var list = opt.parentNode;
       if (!list || list.hidden) return;
       var input = list.parentNode && list.parentNode.querySelector('[data-k="mid"], [data-k="partMid"]');
-      if (!input) return;
+      if (!input || isListSuggestCombo_(input)) return;
       showComboPreview(input, comboDivValue(opt));
     });
     $('tbody').addEventListener('focusin', function (e) {
@@ -5587,8 +5645,8 @@
           inp.dataset.optKey = 'workContents:' + listSuggestRev;
         }
         if (k === 'partMid') {
-          inp.dataset.options = JSON.stringify(partWorkOptions_());
-          inp.dataset.optKey = 'workParts:' + listSuggestRev;
+          inp.dataset.options = JSON.stringify(partSetOptions_());
+          inp.dataset.optKey = 'partSets:' + listSuggestRev;
         }
         if (inp.tagName === 'TEXTAREA') fitMidHeight(inp);
       });
@@ -6125,9 +6183,7 @@
         e.preventDefault();
         var input = opt.parentNode.parentNode.querySelector('textarea[data-k="partMid"], textarea[data-k="content"]');
         if (!input) return;
-        var chosen = input.getAttribute('data-k') === 'content'
-          ? comboDivValue(opt)
-          : comboChosenValue(comboFilterQuery, comboDivValue(opt));
+        var chosen = comboDivValue(opt);
         input.value = chosen;
         hideComboLists();
         comboIgnoreBlur = true;
