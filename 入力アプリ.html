@@ -955,7 +955,7 @@
       color: #fff;
     }
     button:disabled { opacity: .5; cursor: wait; }
-    #status { color: var(--muted); font-size: 13px; white-space: pre-wrap; }
+    #status { color: var(--muted); font-size: 13px; }
     #status.err { color: var(--danger); }
     .list-seg { display: flex; gap: 6px; flex-wrap: wrap; }
     .list-seg button.list-kind {
@@ -2963,13 +2963,11 @@
           renderDraftTabs();
           finishWorkJobAfterPrint();
           var opened = openPdfDownload(res);
-          var debugText = res.blankDebug ? ('\n' + res.blankDebug) : '';
-          if (debugText && window.console && console.log) console.log(res.blankDebug);
           setStatus(withOrderNote_(
             'PDF「' + (res.pdfName || '請求書.pdf') + '」を作成しました（' +
             res.pageCount + ' 枚 / 明細 ' + res.lineCount + ' 行）。' +
             (opened ? ' ダウンロードします。' : ' ダウンロードできないときは、もう一度作成してください。')
-          ) + debugText);
+          ));
         })
         .withFailureHandler(function (err) {
           setBusy(false);

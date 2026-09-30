@@ -370,9 +370,7 @@ function reservedPrintSheetNames_() {
  * @return {{sheet: GoogleAppsScript.Spreadsheet.Sheet, pageCount: number}}
  */
 function buildInvoicePrintSheet_(ss, sheetName, payload) {
-  const items = (payload.items || []).filter(function (it) {
-    return rowHasContent_(it);
-  });
+  const items = packPrintSides_(payload.items);
   const pages = paginatePrintItems_(items);
   const pageCount = Math.max(1, pages.length);
   printWorkerValue_.maps_ = null;
