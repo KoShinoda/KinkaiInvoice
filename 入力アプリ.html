@@ -3972,7 +3972,6 @@
         it.fee = '';
         it.kind = it.kind === 'part' ? it.kind : '';
         refreshKind(it);
-        compactItems();
         renderGrid();
         return;
       }
@@ -4049,7 +4048,6 @@
         lastExpandKey = '';
         it.partMajor = '';
         refreshKind(it);
-        compactItems();
         renderGrid();
         return;
       }
@@ -4089,7 +4087,6 @@
         return row;
       });
       if (details.length) writeBelow(rowIndex, 'part', details);
-      compactItems();
       renderGrid();
       setStatus('部品中項目「' + mid + '」からセット ' + sets.length + ' 件を入力しました');
     }
