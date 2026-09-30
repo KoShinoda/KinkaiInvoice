@@ -868,6 +868,7 @@
       border-radius: 7px;
       box-sizing: border-box;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
       word-break: break-word;
     }
     td.mid, td.part-mid { vertical-align: top; }
@@ -4169,6 +4170,11 @@
       repositionLiftedCombos_();
     }, true);
     window.addEventListener('resize', repositionLiftedCombos_);
+    function caretStaysInText_(el) {
+      if (!el || String(el.value || '').indexOf('\n') === -1) return false;
+      var list = comboListEl(el);
+      return !(list && !list.hidden && list.children.length);
+    }
     function isComboField(el) {
       return !!(el && el.dataset && (el.dataset.k === 'mid' || el.dataset.k === 'partMid' || el.dataset.k === 'workerCode'));
     }
@@ -4190,7 +4196,7 @@
       if (!isGrowTextarea(el)) return;
       var v = el.value || '';
       el.style.whiteSpace = 'pre-wrap';
-      if (!v || v.indexOf('\n') === -1) {
+      if (!v) {
         el.style.height = '28px';
         el.style.overflow = 'hidden';
         return;
@@ -5034,6 +5040,7 @@
       if (k === 'workerCode' || k === 'mid' || k === 'partMid') {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           if ((k === 'mid' || k === 'partMid') && (e.isComposing || e.keyCode === 229)) return;
+          if ((k === 'mid' || k === 'partMid') && caretStaysInText_(e.target)) return;
           e.preventDefault();
           moveComboHighlight(e.target, e.key === 'ArrowDown' ? 1 : -1);
           return;
