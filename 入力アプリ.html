@@ -2962,6 +2962,8 @@
           snapshotActiveJob(true);
           renderDraftTabs();
           finishWorkJobAfterPrint();
+          scrollGridToTop_();
+          window.requestAnimationFrame(scrollGridToTop_);
           var opened = openPdfDownload(res);
           setStatus(withOrderNote_(
             'PDF「' + (res.pdfName || '請求書.pdf') + '」を作成しました（' +
@@ -3644,6 +3646,10 @@
     }
     var focusGridRaf_ = 0;
     var enterMoveAt_ = 0;
+    function scrollGridToTop_() {
+      var wrap = document.querySelector('#viewInput .table-wrap');
+      if (wrap) wrap.scrollTop = 0;
+    }
     function focusGridEl_(el) {
       var wrap = document.querySelector('#viewInput .table-wrap');
       var wx = window.pageXOffset || 0;
@@ -6469,24 +6475,11 @@
         if (rows[i] === tr) idx = i;
       }
       if (idx >= 0) highlightSearchRow(idx);
-      var btn = e.target.closest('button[data-act]');
-      if (btn && btn.getAttribute('data-act') === 'edit') {
-        restoreInvoice(tr.getAttribute('data-save-id'), false);
-      }
+      restoreInvoice(tr.getAttribute('data-save-id'), false);
     }
     $('popupSearchBody').addEventListener('click', onSearchResultEdit);
-    $('popupSearchBody').addEventListener('dblclick', function (e) {
-      var tr = e.target.closest('tr[data-save-id]');
-      if (!tr) return;
-      restoreInvoice(tr.getAttribute('data-save-id'), false);
-    });
     if ($('searchBody')) {
       $('searchBody').addEventListener('click', onSearchResultEdit);
-      $('searchBody').addEventListener('dblclick', function (e) {
-        var tr = e.target.closest('tr[data-save-id]');
-        if (!tr) return;
-        restoreInvoice(tr.getAttribute('data-save-id'), false);
-      });
     }
     $('draftTabs').addEventListener('click', function (e) {
       var closeId = e.target.getAttribute && e.target.getAttribute('data-close-id');
