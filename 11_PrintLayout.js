@@ -414,14 +414,16 @@ function buildInvoicePrintSheet_(ss, sheetName, payload) {
   return { sheet: sheet, pageCount: pageCount };
 }
 
-/** 1 ページの枠数（既定 30）。複数行の明細はその行数を消費し、余りは次ページ。 */
+/** 1 ページの枠数（既定 30）。複数行の明細はその行数を消費し、余りは次ページ。
+ * 手入力の改行に加え、最小文字でも1行に入らない作業内容・部品は印刷時だけ折り返す。
+ */
 function printItemUnits_(it) {
   const per = CONFIG.print.linesPerPage;
   if (!it) {
     return 1;
   }
-  const work = it.mid || it.name || '';
-  const part = it.partMid || it.part || '';
+  const work = printFittedText_(it.mid || it.name || '', printScaledColWidth_(1));
+  const part = printFittedText_(it.partMid || it.part || '', printScaledColWidth_(4));
   const n = Math.max(newlineCount_(work), newlineCount_(part));
   return Math.max(1, Math.min(per, n));
 }
@@ -878,10 +880,10 @@ function fillPrintBody_(sheet, first, lines, serialOffset, bodyRowCount) {
     const amount = lineAmount_(it, qty, price);
     body.push([
       serialOffset + i + 1,
-      it.mid || it.name || '',
+      printFittedText_(it.mid || it.name || '', printScaledColWidth_(1)),
       it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
       printWorkerValue_(it),
-      it.partMid || it.part || '',
+      printFittedText_(it.partMid || it.part || '', printScaledColWidth_(4)),
       qty,
       price,
       amount
@@ -908,8 +910,8 @@ function fillPrintBodyFonts_(sheet, first, lines) {
     if (!it) {
       continue;
     }
-    const work = it.mid || it.name || '';
-    const part = it.partMid || it.part || '';
+    const work = printFittedText_(it.mid || it.name || '', printScaledColWidth_(1));
+    const part = printFittedText_(it.partMid || it.part || '', printScaledColWidth_(4));
     const workBreak = hasPrintNewline_(work);
     const partBreak = hasPrintNewline_(part);
     const workCell = sheet.getRange(first + i, 2);
@@ -931,6 +933,38 @@ function newlineCount_(text) {
     return 1;
   }
   return s.split('\n').length;
+}
+
+/** 最小文字でも1行に入らない段落だけ、印刷シート用に折り返す。元データは変えない。 */
+function printFittedText_(text, colWidth) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!raw) {
+    return '';
+  }
+  const cap = printColCapacity_(colWidth, PRINT_FONT_MIN_);
+  const paras = raw.split('\n');
+  const lines = [];
+  paras.forEach(function (para) {
+    if (displayUnits_(para) + 0.5 <= cap) {
+      lines.push(para);
+      return;
+    }
+    let buf = '';
+    for (let i = 0; i < para.length; i++) {
+      const ch = para.charAt(i);
+      const next = buf + ch;
+      if (!buf || displayUnits_(next) + 0.5 <= cap) {
+        buf = next;
+      } else {
+        lines.push(buf);
+        buf = ch;
+      }
+    }
+    if (buf) {
+      lines.push(buf);
+    }
+  });
+  return lines.join('\n');
 }
 
 function printCharPx_(fontPt) {
