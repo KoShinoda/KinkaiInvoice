@@ -3620,6 +3620,7 @@
       recalc();
       fitGridWrapToFooter_();
       applyPendingFocus();
+      scheduleFitMidHeights_();
     }
 
     function applyPendingFocus() {
@@ -4167,7 +4168,8 @@
     function isNewlineEnter(e) {
       return !!(e && e.key === 'Enter' && (e.ctrlKey || e.altKey) && !e.shiftKey);
     }
-    function fitMidHeight(el) {
+    var fitMidRaf_ = 0;
+    function fitMidHeight(el, allowDefer) {
       if (!isGrowTextarea(el)) return;
       var v = el.value || '';
       el.style.whiteSpace = 'pre-wrap';
@@ -4176,14 +4178,31 @@
         el.style.overflow = 'hidden';
         return;
       }
-      el.style.height = 'auto';
+      el.style.overflow = 'hidden';
+      el.style.height = '0px';
       var minH = 28;
       var maxH = 160;
       var h = el.scrollHeight;
+      if (!h) {
+        el.style.height = '28px';
+        if (allowDefer !== false) scheduleFitMidHeights_();
+        return;
+      }
       if (h < minH) h = minH;
       if (h > maxH) h = maxH;
       el.style.height = h + 'px';
-      el.style.overflow = el.scrollHeight > maxH ? 'auto' : 'hidden';
+      el.style.overflow = el.scrollHeight > h ? 'auto' : 'hidden';
+    }
+    function scheduleFitMidHeights_() {
+      if (fitMidRaf_) return;
+      fitMidRaf_ = window.requestAnimationFrame(function () {
+        fitMidRaf_ = 0;
+        var tb = $('tbody');
+        if (!tb) return;
+        Array.prototype.forEach.call(tb.querySelectorAll('textarea[data-k="mid"], textarea[data-k="partMid"]'), function (el) {
+          fitMidHeight(el, false);
+        });
+      });
     }
     function insertMidNewline(el) {
       if (!isGrowTextarea(el)) return;
