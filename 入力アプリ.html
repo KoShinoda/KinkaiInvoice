@@ -1324,7 +1324,7 @@
                 <th>作業コード</th>
                 <th class="del-h" title="技術側">削</th>
                 <th class="ins-h"></th>
-                <th>部品_中項目</th>
+                <th>部品</th>
                 <th>単価</th>
                 <th>数量</th>
                 <th class="del-h" title="部品側">削</th>
@@ -1344,7 +1344,7 @@
             <datalist id="listPartMajorOpts"></datalist>
           </div>
           <div>
-            <label>部品_中項目</label>
+            <label>部品</label>
             <input id="listPartMid" list="listPartMidOpts" autocomplete="off">
             <datalist id="listPartMidOpts"></datalist>
           </div>
@@ -4156,6 +4156,20 @@
       out.sort(function (a, b) { return a.localeCompare(b, 'ja'); });
       return out;
     }
+    function partWorkOptions_() {
+      var seen = {};
+      var out = [];
+      function add(v) {
+        var s = String(v || '').replace(/\u3000/g, ' ').trim();
+        if (!s || seen[s]) return;
+        seen[s] = true;
+        out.push(s);
+      }
+      (master.allPartMids || []).forEach(add);
+      (master.workLines || []).forEach(function (r) { add(r && r.partMid); });
+      out.sort(function (a, b) { return a.localeCompare(b, 'ja'); });
+      return out;
+    }
     function partSetOptions_() {
       var seen = {};
       var out = [];
@@ -4198,6 +4212,14 @@
         }
         return;
       }
+      if (input.getAttribute('data-list-work') != null && input.dataset.k === 'partMid') {
+        var partKey = 'workParts:' + listSuggestRev;
+        if (input.dataset.optKey !== partKey || !input.dataset.options) {
+          input.dataset.options = JSON.stringify(partWorkOptions_());
+          input.dataset.optKey = partKey;
+        }
+        return;
+      }
       if (input.getAttribute('data-list-part') != null && input.dataset.k === 'set') {
         var setKey = 'partSets:' + listSuggestRev;
         if (input.dataset.optKey !== setKey || !input.dataset.options) {
@@ -4207,13 +4229,6 @@
         return;
       }
       if (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid') return;
-      if (input.getAttribute('data-list-work') != null) {
-        if (input.dataset.optKey !== 'allPartMids' || !input.dataset.options) {
-          input.dataset.options = JSON.stringify(master.allPartMids || []);
-          input.dataset.optKey = 'allPartMids';
-        }
-        return;
-      }
       var i = Number(input.dataset.i);
       var it = items[i] || emptyRow();
       if (input.dataset.k === 'mid') {
@@ -5572,8 +5587,8 @@
           inp.dataset.optKey = 'workContents:' + listSuggestRev;
         }
         if (k === 'partMid') {
-          inp.dataset.options = JSON.stringify(master.allPartMids || []);
-          inp.dataset.optKey = 'allPartMids';
+          inp.dataset.options = JSON.stringify(partWorkOptions_());
+          inp.dataset.optKey = 'workParts:' + listSuggestRev;
         }
         if (inp.tagName === 'TEXTAREA') fitMidHeight(inp);
       });
@@ -6099,7 +6114,7 @@
         if (isListSuggestCombo_(t)) {
           hideComboLists();
           rememberComboQuery(t);
-          showComboList(t);
+          showComboList(t, false, true);
           try { t.select(); } catch (err) {}
         }
         if (isGrowTextarea(t)) fitMidHeight(t);
@@ -6198,7 +6213,7 @@
         var t = e.target;
         if (!isListSuggestCombo_(t)) return;
         hideComboLists();
-        showComboList(t);
+        showComboList(t, false, true);
         try { t.select(); } catch (err) {}
       });
       $('listPartBody').addEventListener('mousedown', function (e) {
