@@ -423,7 +423,7 @@ function printItemUnits_(it) {
     return 1;
   }
   const work = printFittedText_(it.mid || it.name || '', printScaledColWidth_(1));
-  const part = printFittedText_(it.partMid || it.part || '', printScaledColWidth_(4));
+  const part = printFittedText_(printPartSource_(it), printScaledColWidth_(4));
   const n = Math.max(newlineCount_(work), newlineCount_(part));
   return Math.max(1, Math.min(per, n));
 }
@@ -883,7 +883,7 @@ function fillPrintBody_(sheet, first, lines, serialOffset, bodyRowCount) {
       printFittedText_(it.mid || it.name || '', printScaledColWidth_(1)),
       it.fee === undefined || it.fee === null || it.fee === '' ? '' : it.fee,
       printWorkerValue_(it),
-      printFittedText_(it.partMid || it.part || '', printScaledColWidth_(4)),
+      printFittedText_(printPartSource_(it), printScaledColWidth_(4)),
       qty,
       price,
       amount
@@ -911,7 +911,7 @@ function fillPrintBodyFonts_(sheet, first, lines) {
       continue;
     }
     const work = printFittedText_(it.mid || it.name || '', printScaledColWidth_(1));
-    const part = printFittedText_(it.partMid || it.part || '', printScaledColWidth_(4));
+    const part = printFittedText_(printPartSource_(it), printScaledColWidth_(4));
     const workBreak = hasPrintNewline_(work);
     const partBreak = hasPrintNewline_(part);
     const workCell = sheet.getRange(first + i, 2);
@@ -925,6 +925,45 @@ function fillPrintBodyFonts_(sheet, first, lines) {
 
 function hasPrintNewline_(text) {
   return /[\r\n]/.test(String(text || ''));
+}
+
+/** 印刷の部品列だけ。全角カタカナを半角にする。漢字・ひらがな・英数はそのまま。 */
+function printPartSource_(it) {
+  return printHalfKatakana_(it && (it.partMid || it.part) || '');
+}
+
+function printHalfKatakana_(text) {
+  const from = 'ァアィイゥウェエォオカキクケコサシスセソタチッツテトナニヌネノハヒフヘホマミムメモャヤュユョヨラリルレロワヲン';
+  const to = 'ｧｱｨｲｩｳｪｴｫｵｶｷｸｹｺｻｼｽｾｿﾀﾁｯﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓｬﾔｭﾕｮﾖﾗﾘﾙﾚﾛﾜｦﾝ';
+  const dakuFrom = 'ガギグゲゴザジズゼゾダヂヅデドバビブベボヴ';
+  const dakuBase = 'カキクケコサシスセソタチツテトハヒフヘホウ';
+  const handakuFrom = 'パピプペポ';
+  const handakuBase = 'ハヒフヘホ';
+  const extra = { '・': '･', 'ー': 'ｰ', 'ヮ': 'ﾜ', 'ヰ': 'ｲ', 'ヱ': 'ｴ', 'ヵ': 'ｶ', 'ヶ': 'ｹ' };
+  const s = String(text || '');
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charAt(i);
+    const plain = from.indexOf(ch);
+    if (plain !== -1) {
+      out += to.charAt(plain);
+      continue;
+    }
+    const daku = dakuFrom.indexOf(ch);
+    if (daku !== -1) {
+      const base = from.indexOf(dakuBase.charAt(daku));
+      out += (base === -1 ? ch : to.charAt(base)) + 'ﾞ';
+      continue;
+    }
+    const handaku = handakuFrom.indexOf(ch);
+    if (handaku !== -1) {
+      const base = from.indexOf(handakuBase.charAt(handaku));
+      out += (base === -1 ? ch : to.charAt(base)) + 'ﾟ';
+      continue;
+    }
+    out += extra[ch] || ch;
+  }
+  return out;
 }
 
 function newlineCount_(text) {
