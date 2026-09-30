@@ -555,11 +555,11 @@ function rowHasContent_(it) {
   if (!it) {
     return false;
   }
-  if (isFilled_(it.major) || isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
-      isFilled_(it.workerCode) || isSpaceOnly_(it.mid) || isSpaceOnly_(it.name)) {
+  if (isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
+      isSpaceOnly_(it.mid) || isSpaceOnly_(it.name)) {
     return true;
   }
-  return isFilled_(it.partMajor) || isFilled_(it.partMid) || isFilled_(it.part) ||
+  return isFilled_(it.partMid) || isFilled_(it.part) ||
     isSpaceOnly_(it.partMid) || isSpaceOnly_(it.part);
 }
 

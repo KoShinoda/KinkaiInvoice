@@ -3972,6 +3972,8 @@
         lastExpandKey = '';
         it.major = '';
         it.fee = '';
+        it.workerCode = '';
+        it.workerName = '';
         it.kind = it.kind === 'part' ? it.kind : '';
         refreshKind(it);
         renderGrid();
@@ -4049,6 +4051,12 @@
       if (!mid) {
         lastExpandKey = '';
         clearPartSide(it);
+        var workText = String(it.mid || '');
+        if (!spaceOnlyText_(workText) && !workText.replace(/\u3000/g, ' ').trim() && !filled(it.fee)) {
+          it.major = '';
+          it.workerCode = '';
+          it.workerName = '';
+        }
         refreshKind(it);
         renderGrid();
         return;
