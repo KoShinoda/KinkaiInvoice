@@ -1591,6 +1591,13 @@
       if (v === 0 || v === '0') return true;
       return String(v == null ? '' : v).replace(/\u3000/g, ' ').trim() !== '';
     }
+    function zeroNumber_(v) {
+      if (v === 0 || v === '0') return true;
+      var s = String(v == null ? '' : v).replace(/,/g, '').replace(/\u3000/g, ' ').trim();
+      if (!s) return false;
+      var n = Number(s);
+      return isFinite(n) && n === 0;
+    }
     function numericCell(v) {
       if (v === '' || v == null) return false;
       if (typeof v === 'number') return isFinite(v);
@@ -4052,8 +4059,9 @@
         lastExpandKey = '';
         clearPartSide(it);
         var workText = String(it.mid || '');
-        if (!spaceOnlyText_(workText) && !workText.replace(/\u3000/g, ' ').trim() && !filled(it.fee)) {
+        if (!spaceOnlyText_(workText) && !workText.replace(/\u3000/g, ' ').trim() && (!filled(it.fee) || zeroNumber_(it.fee))) {
           it.major = '';
+          it.fee = '';
           it.workerCode = '';
           it.workerName = '';
         }

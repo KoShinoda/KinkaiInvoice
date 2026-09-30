@@ -551,16 +551,32 @@ function isSpaceOnly_(value) {
   return s.indexOf(' ') !== -1;
 }
 
+function isZeroNumber_(value) {
+  if (value === 0 || value === '0') {
+    return true;
+  }
+  if (value === '' || value == null) {
+    return false;
+  }
+  const s = String(value).replace(/,/g, '').replace(/\u3000/g, ' ').trim();
+  if (!s) {
+    return false;
+  }
+  const n = Number(s);
+  return isFinite(n) && n === 0;
+}
+
 function rowHasContent_(it) {
   if (!it) {
     return false;
   }
-  if (isFilled_(it.mid) || isFilled_(it.name) || isFilled_(it.fee) ||
-      isSpaceOnly_(it.mid) || isSpaceOnly_(it.name)) {
+  if (isFilled_(it.mid) || isFilled_(it.name) || isSpaceOnly_(it.mid) || isSpaceOnly_(it.name)) {
     return true;
   }
-  return isFilled_(it.partMid) || isFilled_(it.part) ||
-    isSpaceOnly_(it.partMid) || isSpaceOnly_(it.part);
+  if (isFilled_(it.partMid) || isFilled_(it.part) || isSpaceOnly_(it.partMid) || isSpaceOnly_(it.part)) {
+    return true;
+  }
+  return isFilled_(it.fee) && !isZeroNumber_(it.fee);
 }
 
 function lineAmount_(it, qty, price) {
@@ -578,9 +594,13 @@ function toNumberOrBlank_(value) {
   if (value === '' || value === null || value === undefined) {
     return '';
   }
-  if (typeof value === 'number' && isFinite(value)) {
-    return value;
+  if (typeof value === 'number') {
+    return isFinite(value) ? value : '';
   }
-  const n = Number(String(value).replace(/,/g, '').trim());
+  const s = String(value).replace(/,/g, '').replace(/\u3000/g, ' ').trim();
+  if (!s) {
+    return '';
+  }
+  const n = Number(s);
   return isFinite(n) ? n : '';
 }
