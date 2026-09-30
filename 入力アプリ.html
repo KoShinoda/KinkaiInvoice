@@ -4144,11 +4144,69 @@
       var a = el.getAttribute('data-value');
       return a == null ? '' : a;
     }
+    function workContentOptions_() {
+      var seen = {};
+      var out = [];
+      (master.workLines || []).forEach(function (r) {
+        var s = String(r && r.content || '').replace(/\u3000/g, ' ').trim();
+        if (!s || seen[s]) return;
+        seen[s] = true;
+        out.push(s);
+      });
+      out.sort(function (a, b) { return a.localeCompare(b, 'ja'); });
+      return out;
+    }
+    function partSetOptions_() {
+      var seen = {};
+      var out = [];
+      (master.partLines || []).forEach(function (r) {
+        if (!r || !r.fromParts) return;
+        var s = String(r.set || '').replace(/\u3000/g, ' ').trim();
+        if (!s || numericCell(s) || seen[s]) return;
+        seen[s] = true;
+        out.push(s);
+      });
+      out.sort(function (a, b) { return a.localeCompare(b, 'ja'); });
+      return out;
+    }
+    function isListSuggestCombo_(el) {
+      if (!el || !el.getAttribute) return false;
+      var k = el.getAttribute('data-k');
+      if (el.getAttribute('data-list-work') != null) return k === 'partMid' || k === 'content';
+      if (el.getAttribute('data-list-part') != null) return k === 'set';
+      return false;
+    }
+    function hideComboListLater_(input) {
+      setTimeout(function () {
+        if (document.activeElement === input) return;
+        if (isListSuggestCombo_(document.activeElement)) return;
+        var list = comboListEl(input);
+        if (list) list.hidden = true;
+        hideComboPreview();
+      }, 120);
+    }
     function comboOptions(input) {
       try { return JSON.parse(input.dataset.options || '[]'); } catch (e) { return []; }
     }
     function ensureMidOptions(input) {
-      if (!input || (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid')) return;
+      if (!input) return;
+      if (input.getAttribute('data-list-work') != null && input.dataset.k === 'content') {
+        var contentKey = 'workContents:' + listSuggestRev;
+        if (input.dataset.optKey !== contentKey || !input.dataset.options) {
+          input.dataset.options = JSON.stringify(workContentOptions_());
+          input.dataset.optKey = contentKey;
+        }
+        return;
+      }
+      if (input.getAttribute('data-list-part') != null && input.dataset.k === 'set') {
+        var setKey = 'partSets:' + listSuggestRev;
+        if (input.dataset.optKey !== setKey || !input.dataset.options) {
+          input.dataset.options = JSON.stringify(partSetOptions_());
+          input.dataset.optKey = setKey;
+        }
+        return;
+      }
+      if (input.dataset.k !== 'mid' && input.dataset.k !== 'partMid') return;
       if (input.getAttribute('data-list-work') != null) {
         if (input.dataset.optKey !== 'allPartMids' || !input.dataset.options) {
           input.dataset.options = JSON.stringify(master.allPartMids || []);
@@ -4172,6 +4230,7 @@
         }
       }
     }
+    var listSuggestRev = 0;
     var comboFilterQuery = '';
     function rememberComboQuery(input) {
       if (!isMidPartCombo(input)) return;
@@ -5440,6 +5499,7 @@
         'partMidsByMajor', 'partLines', 'workers', 'workerHeaders', 'workerCodes', 'ordersPending'].forEach(function (k) {
         if (m[k] !== undefined) master[k] = m[k];
       });
+      listSuggestRev++;
       listDatalistsReady = false;
       refreshOptionCache();
       fillWorkerPicker();
@@ -5485,7 +5545,10 @@
       tb.innerHTML = listWorkRows.map(function (r, i) {
         return '<tr>' +
           '<td class="ins side-work">' + listInsButtons('data-list-work-ins', i, 'work', '技術側') + '</td>' +
-          '<td class="side-work"><textarea data-list-work="' + i + '" data-k="content" rows="1" autocomplete="off" title="Alt+Enter または Ctrl+Enter で改行"></textarea></td>' +
+          '<td class="side-work"><div class="combo">' +
+            '<textarea data-list-work="' + i + '" data-k="content" rows="1" autocomplete="off" title="Alt+Enter または Ctrl+Enter で改行"></textarea>' +
+            '<div class="combo-list" hidden></div>' +
+          '</div></td>' +
           '<td class="gap side-work"></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="fee" inputmode="decimal" value=""></td>' +
           '<td class="side-work"><input data-list-work="' + i + '" data-k="workerCode" list="listWorkWorkerOpts" value=""></td>' +
@@ -5504,6 +5567,10 @@
         var i = Number(inp.getAttribute('data-list-work'));
         var k = inp.getAttribute('data-k');
         inp.value = listWorkRows[i][k] == null ? '' : listWorkRows[i][k];
+        if (k === 'content') {
+          inp.dataset.options = JSON.stringify(workContentOptions_());
+          inp.dataset.optKey = 'workContents:' + listSuggestRev;
+        }
         if (k === 'partMid') {
           inp.dataset.options = JSON.stringify(master.allPartMids || []);
           inp.dataset.optKey = 'allPartMids';
@@ -5520,7 +5587,10 @@
       tb.innerHTML = listPartRows.map(function (r, i) {
         return '<tr>' +
           '<td class="ins side-part">' + listInsButtons('data-list-part-ins', i, 'part', '') + '</td>' +
-          '<td class="side-part"><input data-list-part="' + i + '" data-k="set" value=""></td>' +
+          '<td class="side-part"><div class="combo">' +
+            '<input data-list-part="' + i + '" data-k="set" value="" autocomplete="off">' +
+            '<div class="combo-list" hidden></div>' +
+          '</div></td>' +
           '<td class="side-part"><input data-list-part="' + i + '" data-k="unitPrice" inputmode="decimal" value=""></td>' +
           '<td class="side-part"><input data-list-part="' + i + '" data-k="qty" inputmode="decimal" value=""></td>' +
           '<td class="del side-part"><button type="button" class="row-del" data-list-part-del="' + i + '" title="行を削除">×</button></td>' +
@@ -5530,6 +5600,10 @@
         var i = Number(inp.getAttribute('data-list-part'));
         var k = inp.getAttribute('data-k');
         inp.value = listPartRows[i][k] == null ? '' : listPartRows[i][k];
+        if (k === 'set') {
+          inp.dataset.options = JSON.stringify(partSetOptions_());
+          inp.dataset.optKey = 'partSets:' + listSuggestRev;
+        }
       });
       updateListPartPreview();
     }
@@ -6012,7 +6086,7 @@
         var k = t.getAttribute('data-k');
         if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
         listWorkRows[i][k] = t.value;
-        if (k === 'partMid') {
+        if (k === 'partMid' || k === 'content') {
           rememberComboQuery(t);
           showComboList(t);
         }
@@ -6022,7 +6096,7 @@
       $('listWorkBody').addEventListener('focusin', function (e) {
         var t = e.target;
         if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
-        if (t.getAttribute('data-k') === 'partMid') {
+        if (isListWorkCombo_(t)) {
           hideComboLists();
           rememberComboQuery(t);
           showComboList(t);
@@ -6034,15 +6108,17 @@
         var opt = e.target.closest('.combo-list div');
         if (!opt) return;
         e.preventDefault();
-        var input = opt.parentNode.parentNode.querySelector('textarea[data-k="partMid"]');
+        var input = opt.parentNode.parentNode.querySelector('textarea[data-k="partMid"], textarea[data-k="content"]');
         if (!input) return;
-        var chosen = comboChosenValue(comboFilterQuery, comboDivValue(opt));
+        var chosen = input.getAttribute('data-k') === 'content'
+          ? comboDivValue(opt)
+          : comboChosenValue(comboFilterQuery, comboDivValue(opt));
         input.value = chosen;
         hideComboLists();
         comboIgnoreBlur = true;
         var i = Number(input.getAttribute('data-list-work'));
         if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
-        listWorkRows[i].partMid = chosen;
+        listWorkRows[i][input.getAttribute('data-k')] = chosen;
         fitMidHeight(input);
       });
       $('listWorkBody').addEventListener('keydown', function (e) {
@@ -6058,17 +6134,17 @@
         if (e.key === 'Enter') {
           if (e.isComposing || e.keyCode === 229) return;
           e.preventDefault();
-          if (k === 'partMid') confirmComboIfOpen(t);
-          if (k === 'partMid') {
+          if (k === 'partMid' || k === 'content') confirmComboIfOpen(t);
+          if (k === 'partMid' || k === 'content') {
             var i = Number(t.getAttribute('data-list-work'));
             if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
-            listWorkRows[i].partMid = t.value;
+            listWorkRows[i][k] = t.value;
           }
           hideComboLists();
           moveListWorkField(t, e.shiftKey ? -1 : 1);
           return;
         }
-        if (k === 'partMid' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        if ((k === 'partMid' || k === 'content') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
           if (e.isComposing || e.keyCode === 229) return;
           e.preventDefault();
           moveComboHighlight(t, e.key === 'ArrowDown' ? 1 : -1);
@@ -6087,14 +6163,11 @@
           listWorkRows[i][k] = next.value;
           if (t.value !== next.value) t.value = next.value;
         }
-        if (k === 'partMid') {
+        if (k === 'partMid' || k === 'content') {
           var pi = Number(t.getAttribute('data-list-work'));
           if (!listWorkRows[pi]) listWorkRows[pi] = emptyListWorkRow();
-          listWorkRows[pi].partMid = t.value;
-          setTimeout(function () {
-            if (document.activeElement === t) return;
-            hideComboLists();
-          }, 120);
+          listWorkRows[pi][k] = t.value;
+          hideComboListLater_(t);
         }
       });
       $('listWorkBody').addEventListener('click', function (e) {
@@ -6118,7 +6191,64 @@
         var k = t.getAttribute('data-k');
         if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
         listPartRows[i][k] = t.value;
+        if (k === 'set') showComboList(t);
         updateListPartPreview();
+      });
+      $('listPartBody').addEventListener('focusin', function (e) {
+        var t = e.target;
+        if (!isListSuggestCombo_(t)) return;
+        hideComboLists();
+        showComboList(t);
+        try { t.select(); } catch (err) {}
+      });
+      $('listPartBody').addEventListener('mousedown', function (e) {
+        var opt = e.target.closest('.combo-list div');
+        if (!opt) return;
+        e.preventDefault();
+        var input = opt.parentNode.parentNode.querySelector('input[data-k="set"]');
+        if (!input) return;
+        var chosen = comboDivValue(opt);
+        input.value = chosen;
+        hideComboLists();
+        comboIgnoreBlur = true;
+        var i = Number(input.getAttribute('data-list-part'));
+        if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
+        listPartRows[i].set = chosen;
+      });
+      $('listPartBody').addEventListener('keydown', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || t.getAttribute('data-k') !== 'set') return;
+        if (e.key === 'Enter') {
+          if (e.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          var list = comboListEl(t);
+          if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
+            t.value = comboDivValue(list.children[comboActiveIndex]);
+          }
+          var i = Number(t.getAttribute('data-list-part'));
+          if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
+          listPartRows[i].set = t.value;
+          hideComboLists();
+          return;
+        }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          if (e.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          moveComboHighlight(t, e.key === 'ArrowDown' ? 1 : -1);
+          var ai = Number(t.getAttribute('data-list-part'));
+          if (!listPartRows[ai]) listPartRows[ai] = emptyListPartRow();
+          listPartRows[ai].set = t.value;
+          return;
+        }
+        if (e.key === 'Escape') hideComboLists();
+      });
+      $('listPartBody').addEventListener('focusout', function (e) {
+        var t = e.target;
+        if (!t.getAttribute || t.getAttribute('data-k') !== 'set') return;
+        var i = Number(t.getAttribute('data-list-part'));
+        if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
+        listPartRows[i].set = t.value;
+        hideComboListLater_(t);
       });
       $('listPartBody').addEventListener('focusout', function (e) {
         var t = e.target;
@@ -6289,6 +6419,7 @@
       .withSuccessHandler(function (data) {
         try {
         master = data || master;
+        listSuggestRev++;
         if (master.operatorEmail) {
           workOperator = String(master.operatorEmail);
           workIsolated = true;
