@@ -153,23 +153,25 @@ function replaceWorkJobsForUser_(jobs, activeId, user, now) {
   const width = WORK_JOB_INDEX_HEADERS_.length;
   const last = index.getLastRow();
   const kept = [];
-  const dropIds = {};
+  const oldBlocks = [];
   if (last >= 2) {
     const vals = index.getRange(2, 1, last - 1, width).getValues();
     for (let i = 0; i < vals.length; i++) {
       const id = String(vals[i][0] || '').trim();
       const owner = String(vals[i][18] || '').trim().toLowerCase();
       if (owner === user) {
-        if (id) {
-          dropIds[id] = true;
+        const start = Number(vals[i][15]) || 0;
+        const count = Number(vals[i][14]) || 0;
+        if (start >= 2 && count > 0) {
+          oldBlocks.push({ start: start, count: count });
         }
       } else {
         kept.push(vals[i]);
       }
     }
   }
-  clearWorkJobLinesByIds_(detail, dropIds);
   const newRows = [];
+  let firstNew = 0;
   jobs.forEach(function (job) {
     const id = String(job.id || '').trim();
     const payload = job.payload || {};
@@ -182,6 +184,9 @@ function replaceWorkJobsForUser_(jobs, activeId, user, now) {
     let start = '';
     if (items.length) {
       start = detail.getLastRow() + 1;
+      if (!firstNew) {
+        firstNew = start;
+      }
       const lines = items.map(function (it, n) {
         return invoiceSaveDetailRow_(id, n + 1, it);
       });
@@ -210,12 +215,15 @@ function replaceWorkJobsForUser_(jobs, activeId, user, now) {
     ]);
   });
   const all = kept.concat(newRows);
-  if (last >= 2) {
-    index.getRange(2, 1, last - 1, width).clearContent();
-  }
   if (all.length) {
     index.getRange(2, 1, all.length, width).setValues(all);
   }
+  if (last > all.length + 1) {
+    index.getRange(all.length + 2, 1, last - all.length - 1, width).clearContent();
+  }
+  oldBlocks.forEach(function (block) {
+    clearWorkJobBlock_(detail, block.start, block.count, firstNew);
+  });
   index.getRange('C:C').setNumberFormat('@');
 }
 
@@ -232,26 +240,24 @@ function loadWorkJobLines_(ss, jobId, lineCount, detailStart) {
   });
 }
 
-function clearWorkJobLinesByIds_(sh, idMap) {
-  const last = sh.getLastRow();
-  if (last < 2) {
+function clearWorkJobBlock_(sh, start, count, firstNew) {
+  start = Number(start) || 0;
+  count = Number(count) || 0;
+  if (!sh || start < 2 || count < 1) {
     return;
   }
-  const ids = sh.getRange(2, 1, last - 1, 1).getValues();
-  let i = 0;
-  while (i < ids.length) {
-    const id = String(ids[i][0] || '').trim();
-    if (!idMap[id]) {
-      i += 1;
-      continue;
-    }
-    let j = i + 1;
-    while (j < ids.length && idMap[String(ids[j][0] || '').trim()]) {
-      j += 1;
-    }
-    sh.getRange(i + 2, 1, j - i, INVOICE_DETAIL_HEADERS_.length).clearContent();
-    i = j;
+  const last = sh.getLastRow();
+  if (start > last) {
+    return;
   }
+  count = Math.min(count, last - start + 1);
+  if (firstNew > start) {
+    count = Math.min(count, firstNew - start);
+  }
+  if (count < 1) {
+    return;
+  }
+  sh.getRange(start, 1, count, INVOICE_DETAIL_HEADERS_.length).clearContent();
 }
 
 function ensureWorkJobIndexSheet_() {

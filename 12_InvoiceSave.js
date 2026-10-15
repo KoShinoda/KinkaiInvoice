@@ -152,7 +152,7 @@ function saveInvoiceDraftUnlocked_(payload, savedAtOpt) {
   const overwriteId = payload.saveMode === 'new' ? '' : String(payload.saveId || '').trim();
   if (overwriteId) {
     if (!findInvoiceIndexRow_(index, overwriteId)) {
-      throw new Error('上書きする保存データが見つかりません。検索から開き直してください。');
+      throw new Error('上書きする保存データが見つかりません。この画面の入力は残っています。残すには「新規保存」を押してください。');
     }
     return overwriteInvoiceDraft_(index, overwriteId, payload, items, kNo, savedAtOpt);
   }
@@ -265,7 +265,7 @@ function invoiceConflictError_(found) {
   const idx = INVOICE_INDEX_HEADERS_.indexOf('保存アカウント');
   const who = invoiceAccountLabel_(idx >= 0 && found && found.row ? found.row[idx] : '');
   const whoText = who ? '（' + who + '）' : '';
-  return new Error('他の人が先に保存しています' + whoText + '。検索から開き直してから保存してください。');
+  return new Error('他の人が先に保存しています' + whoText + '。この画面の入力は残っています。残すには「新規保存」を押してください。');
 }
 
 function invoicePrintSheetName_(row) {

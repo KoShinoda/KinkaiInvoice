@@ -2908,6 +2908,17 @@
       snapshotActiveJob();
       renderDraftTabs();
     }
+    function keepDraftAfterSaveFailure_(err) {
+      setBusy(false);
+      try {
+        snapshotActiveJob(true);
+      } catch (e) {}
+      var msg = (err && err.message) || String(err || '保存に失敗しました。');
+      if (msg.indexOf('この画面の入力は残っています') === -1) {
+        msg += ' この画面の入力は残っています。もう一度保存できます。';
+      }
+      setStatus(msg, true);
+    }
     function runSave(mode) {
       if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
@@ -2934,8 +2945,7 @@
           setStatus(withOrderNote_(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）'));
         })
         .withFailureHandler(function (err) {
-          setBusy(false);
-          setStatus(err.message || String(err), true);
+          keepDraftAfterSaveFailure_(err);
         })
         .saveInvoiceDraft(payload);
     }
@@ -2972,8 +2982,7 @@
           ));
         })
         .withFailureHandler(function (err) {
-          setBusy(false);
-          setStatus(err.message || String(err), true);
+          keepDraftAfterSaveFailure_(err);
         })
         .publishInvoicePdf(payload);
     }
