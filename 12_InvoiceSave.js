@@ -6,7 +6,7 @@
 var INVOICE_INDEX_HEADERS_ = [
   '保存ID', 'K-No', '保存日時', '年', 'ユーザー', '登録番号', '請求日',
   '入庫日', '出庫日', '整備部門', '整備種別', '受付', '値引技術%', '値引部品%',
-  '明細件数', '明細開始行', '明細シート', '中項目1', '印刷シート'
+  '明細件数', '明細開始行', '明細シート', '中項目1', '印刷シート', '保存アカウント'
 ];
 
 var INVOICE_DETAIL_HEADERS_ = [
@@ -150,7 +150,10 @@ function saveInvoiceDraftUnlocked_(payload, savedAtOpt) {
   });
   const index = ensureInvoiceSaveIndexSheet_(true);
   const overwriteId = payload.saveMode === 'new' ? '' : String(payload.saveId || '').trim();
-  if (overwriteId && findInvoiceIndexRow_(index, overwriteId)) {
+  if (overwriteId) {
+    if (!findInvoiceIndexRow_(index, overwriteId)) {
+      throw new Error('上書きする保存データが見つかりません。検索から開き直してください。');
+    }
     return overwriteInvoiceDraft_(index, overwriteId, payload, items, kNo, savedAtOpt);
   }
   const saveId = Utilities.getUuid();
@@ -175,21 +178,18 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
   const currentStamp = invoiceSavedAtStamp_(found.row[2]);
   const expected = invoiceSavedAtStamp_(payload.expectedSavedAt);
   if (expected && currentStamp && !invoiceSavedAtMatches_(expected, currentStamp)) {
-    throw new Error('他の人が先に保存しています。検索から開き直してから保存してください。');
+    throw invoiceConflictError_(found);
   }
   const ss = index.getParent();
   const oldSheet = String(found.row[16] || '');
-  if (oldSheet) {
-    const oldSh = ss.getSheetByName(oldSheet);
-    if (oldSh) {
-      clearInvoiceSaveLinesById_(oldSh, saveId);
-    }
-  }
+  const oldStart = Number(found.row[15]) || 0;
+  const oldCount = Number(found.row[14]) || 0;
   const placed = writeInvoiceSaveDetails_(ss, saveId, items, savedAtOpt);
   const printName = invoicePrintSheetName_(found.row);
   index.getRange(found.sheetRow, 1, 1, INVOICE_INDEX_HEADERS_.length)
     .setValues([invoiceIndexRow_(saveId, kNo, placed, payload.header, payload.summary, items, printName)]);
   const stamp = persistInvoiceIndexSavedAt_(index, found.sheetRow, placed.savedAt);
+  clearPreviousInvoiceLines_(ss, saveId, oldSheet, oldStart, oldCount, placed);
   return {
     saveId: saveId,
     savedAt: stamp,
@@ -243,8 +243,29 @@ function invoiceIndexRow_(saveId, kNo, placed, header, summary, items, printShee
     items.length ? placed.start : '',
     placed.sheetName,
     firstMid,
-    printSheetName || ''
+    printSheetName || '',
+    invoiceSaverAccount_()
   ];
+}
+
+function invoiceSaverAccount_() {
+  return workJobUserKey_();
+}
+
+function invoiceAccountLabel_(account) {
+  const s = String(account || '').trim();
+  if (!s) {
+    return '';
+  }
+  const at = s.indexOf('@');
+  return at > 0 ? s.slice(0, at) : s;
+}
+
+function invoiceConflictError_(found) {
+  const idx = INVOICE_INDEX_HEADERS_.indexOf('保存アカウント');
+  const who = invoiceAccountLabel_(idx >= 0 && found && found.row ? found.row[idx] : '');
+  const whoText = who ? '（' + who + '）' : '';
+  return new Error('他の人が先に保存しています' + whoText + '。検索から開き直してから保存してください。');
 }
 
 function invoicePrintSheetName_(row) {
@@ -257,28 +278,42 @@ function setInvoicePrintSheetName_(saveId, sheetName) {
   if (!found) {
     return;
   }
-  index.getRange(found.sheetRow, INVOICE_INDEX_HEADERS_.length).setValue(sheetName || '');
+  const col = INVOICE_INDEX_HEADERS_.indexOf('印刷シート') + 1;
+  index.getRange(found.sheetRow, col).setValue(sheetName || '');
 }
 
-function clearInvoiceSaveLinesById_(sh, saveId) {
-  const last = sh.getLastRow();
-  if (last < 2) {
+function clearPreviousInvoiceLines_(ss, saveId, oldSheet, oldStart, oldCount, placed) {
+  oldStart = Number(oldStart) || 0;
+  oldCount = Number(oldCount) || 0;
+  if (!oldSheet || oldStart < 2 || oldCount < 1) {
     return;
   }
-  const ids = sh.getRange(2, 1, last - 1, 1).getValues();
-  let i = 0;
-  while (i < ids.length) {
-    if (String(ids[i][0] || '').trim() !== saveId) {
-      i += 1;
-      continue;
-    }
-    let j = i + 1;
-    while (j < ids.length && String(ids[j][0] || '').trim() === saveId) {
-      j += 1;
-    }
-    sh.getRange(i + 2, 1, j - i, INVOICE_DETAIL_HEADERS_.length).clearContent();
-    i = j;
+  const sh = ss.getSheetByName(oldSheet);
+  if (!sh) {
+    return;
   }
+  const last = sh.getLastRow();
+  if (oldStart > last) {
+    return;
+  }
+  let count = Math.min(oldCount, last - oldStart + 1);
+  const sameSheet = placed && placed.sheetName === oldSheet;
+  const newStart = sameSheet ? Number(placed.start) || 0 : 0;
+  if (newStart > oldStart) {
+    count = Math.min(count, newStart - oldStart);
+  }
+  if (count < 1) {
+    return;
+  }
+  const ids = sh.getRange(oldStart, 1, count, 1).getValues();
+  let n = 0;
+  while (n < ids.length && String(ids[n][0] || '').trim() === saveId) {
+    n += 1;
+  }
+  if (!n) {
+    return;
+  }
+  sh.getRange(oldStart, 1, n, INVOICE_DETAIL_HEADERS_.length).clearContent();
 }
 
 function invoiceNumericOrBlank_(v) {
@@ -494,12 +529,16 @@ function writeInvoiceIndexHeader_(sh) {
 }
 
 function ensureInvoiceIndexPrintCol_(sh) {
-  const lastCol = INVOICE_INDEX_HEADERS_.length;
-  if (sh.getMaxColumns() < lastCol) {
-    sh.insertColumnsAfter(sh.getMaxColumns(), lastCol - sh.getMaxColumns());
+  const saverCol = INVOICE_INDEX_HEADERS_.indexOf('保存アカウント') + 1;
+  const printCol = INVOICE_INDEX_HEADERS_.indexOf('印刷シート') + 1;
+  if (sh.getMaxColumns() < saverCol) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), saverCol - sh.getMaxColumns());
   }
-  if (normalize_(sh.getRange(1, lastCol).getValue()) !== '印刷シート') {
-    sh.getRange(1, lastCol).setValue('印刷シート').setFontWeight('bold').setBackground('#e8f0ec');
+  if (normalize_(sh.getRange(1, printCol).getValue()) !== '印刷シート') {
+    sh.getRange(1, printCol).setValue('印刷シート').setFontWeight('bold').setBackground('#e8f0ec');
+  }
+  if (normalize_(sh.getRange(1, saverCol).getValue()) !== '保存アカウント') {
+    sh.getRange(1, saverCol).setValue('保存アカウント').setFontWeight('bold').setBackground('#e8f0ec');
   }
 }
 
