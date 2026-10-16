@@ -6,7 +6,7 @@
 var WORK_JOB_INDEX_HEADERS_ = [
   '作業ID', '保存ID', 'K-No', '更新日時', 'ユーザー', '登録番号', '請求日',
   '入庫日', '出庫日', '整備部門', '整備種別', '受付', '値引技術%', '値引部品%',
-  '明細件数', '明細開始行', 'テンプレート', 'アクティブ', '作成者'
+  '明細件数', '明細開始行', 'テンプレート', 'アクティブ', '作成者', '編集中'
 ];
 
 function listWorkJobs() {
@@ -44,6 +44,7 @@ function listWorkJobs() {
     jobs.push({
       id: id,
       saveId: String(vals[i][1] || '').trim(),
+      editing: String(vals[i][19] || '').trim() === '1' ? '1' : '',
       boundKNo: kNo,
       templateName: invoicePlain_(vals[i][16]),
       touchedAt: workJobTouchedAt_(vals[i][3]),
@@ -211,7 +212,8 @@ function replaceWorkJobsForUser_(jobs, activeId, user, now) {
       items.length ? start : '',
       job.templateName || '',
       id === activeId ? '1' : '',
-      user
+      user,
+      String(job.editing || '').trim() === '1' ? '1' : ''
     ]);
   });
   const all = kept.concat(newRows);
@@ -272,7 +274,21 @@ function ensureWorkJobIndexSheet_() {
     sh.getRange('C:C').setNumberFormat('@');
     sh.hideSheet();
   }
+  ensureWorkJobEditingCol_(sh);
   return sh;
+}
+
+function ensureWorkJobEditingCol_(sh) {
+  const col = WORK_JOB_INDEX_HEADERS_.indexOf('編集中') + 1;
+  if (col < 1) {
+    return;
+  }
+  if (sh.getMaxColumns() < col) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), col - sh.getMaxColumns());
+  }
+  if (normalize_(sh.getRange(1, col).getValue()) !== '編集中') {
+    sh.getRange(1, col).setValue('編集中').setFontWeight('bold').setBackground('#e8f0ec');
+  }
 }
 
 function ensureWorkJobDetailSheet_() {
@@ -322,6 +338,9 @@ function listWorkJobConflicts(saveId) {
       continue;
     }
     const owner = String(vals[i][18] || '').trim().toLowerCase();
+    if (String(vals[i][19] || '').trim() !== '1') {
+      continue;
+    }
     if (!owner || owner === me || seen[owner]) {
       continue;
     }

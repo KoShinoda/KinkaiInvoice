@@ -2420,13 +2420,18 @@
       a.hidden = false;
       a.textContent = label || 'スプレッドシートを開く';
     }
+    function accountLabel_(value) {
+      var s = String(value || '').trim();
+      var at = s.indexOf('@');
+      return at > 0 ? s.slice(0, at) : (s || '他の人');
+    }
     function warnIfOthersWorking_(saveId) {
       if (!saveId) return;
       google.script.run
         .withSuccessHandler(function (list) {
-          if (!list || !list.length) return;
-          var names = list.map(function (r) { return r.operator || '他の人'; }).join('、');
-          setStatus('呼び出しました。同じ請求書を ' + names + ' が作業中です。後から上書き保存した側は失敗します。');
+          if (!list || !list.length || invoiceDirty) return;
+          var names = list.map(function (r) { return accountLabel_(r.operator); }).join('、');
+          setStatus('同じ請求書を ' + names + ' が編集しています。見るだけならそのままで、直すときは保存前に内容を合わせてください。');
         })
         .listWorkJobConflicts(saveId);
     }
@@ -2731,6 +2736,7 @@
       job.templateName = $('invoiceTemplate').value;
       job.savedAt = boundSavedAt;
       job.touchedAt = Date.now();
+      job.editing = invoiceDirty ? '1' : '';
       persistWorkJobs(immediate !== false);
     }
     function syncActiveTabKNo() {
@@ -2761,8 +2767,15 @@
         workJobHydrating = false;
       }
       if (!skipPersist) persistWorkJobs(false);
+      invoiceDirty = String(job.editing || '') === '1';
       clearSaveLock_();
-      checkBoundSaveStamp_();
+      if (invoiceDirty) {
+        startEditWatch_();
+        checkBoundSaveStamp_();
+        checkSameInvoiceEditors_();
+      } else {
+        stopEditWatch_();
+      }
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
     }
     function renderDraftTabs() {
@@ -2936,6 +2949,63 @@
     }
     var saveLock = null;
     var saveStampCheckToken = 0;
+    var invoiceDirty = false;
+    var editWatchTimer = null;
+    var lastEditorWarn = '';
+    var EDIT_WATCH_MS = 45000;
+    function markInvoiceDirty_() {
+      if (workJobHydrating || !boundSaveId()) return;
+      var was = invoiceDirty;
+      invoiceDirty = true;
+      var job = findWorkJob(workJobId);
+      if (job) job.editing = '1';
+      if (was) return;
+      try { snapshotActiveJob(true); } catch (e) {}
+      startEditWatch_();
+      checkBoundSaveStamp_();
+      checkSameInvoiceEditors_();
+    }
+    function clearInvoiceDirty_() {
+      invoiceDirty = false;
+      lastEditorWarn = '';
+      var job = findWorkJob(workJobId);
+      if (job) job.editing = '';
+      stopEditWatch_();
+    }
+    function startEditWatch_() {
+      if (editWatchTimer) return;
+      editWatchTimer = setInterval(function () {
+        if (!invoiceDirty || !boundSaveId()) {
+          stopEditWatch_();
+          return;
+        }
+        checkBoundSaveStamp_();
+        checkSameInvoiceEditors_();
+      }, EDIT_WATCH_MS);
+    }
+    function stopEditWatch_() {
+      if (!editWatchTimer) return;
+      clearInterval(editWatchTimer);
+      editWatchTimer = null;
+    }
+    function checkSameInvoiceEditors_() {
+      var id = boundSaveId();
+      if (!invoiceDirty || !id || workJobHydrating || saveLock) return;
+      google.script.run
+        .withSuccessHandler(function (list) {
+          if (!invoiceDirty || boundSaveId() !== id || saveLock) return;
+          if (!list || !list.length) {
+            lastEditorWarn = '';
+            return;
+          }
+          var names = list.map(function (r) { return accountLabel_(r.operator); }).join('、');
+          if (names === lastEditorWarn) return;
+          lastEditorWarn = names;
+          setStatus(names + ' もこの請求書を編集しています。保存する前に内容を合わせてください。', true);
+        })
+        .withFailureHandler(function () {})
+        .listWorkJobConflicts(id);
+    }
     function clearSaveLock_() {
       saveLock = null;
       if ($('saveLock')) $('saveLock').hidden = true;
@@ -2963,7 +3033,7 @@
     }
     function checkBoundSaveStamp_() {
       var id = boundSaveId();
-      if (!id || !boundSavedAt || workJobHydrating) {
+      if (!invoiceDirty || !id || !boundSavedAt || workJobHydrating) {
         if (!id) clearSaveLock_();
         return;
       }
@@ -3091,6 +3161,7 @@
           .withSuccessHandler(function (res) {
             setBusy(false);
             clearSaveLock_();
+            clearInvoiceDirty_();
             bindCurrentSave(res.saveId, res.kNo || body.header.kNo, res.savedAt);
             snapshotActiveJob(true);
             renderDraftTabs();
@@ -3124,6 +3195,7 @@
         .withSuccessHandler(function (res) {
           setBusy(false);
           clearSaveLock_();
+          clearInvoiceDirty_();
           bindCurrentSave(res.saveId, res.kNo || body.header.kNo, res.savedAt);
           snapshotActiveJob(true);
           renderDraftTabs();
@@ -4128,6 +4200,9 @@
       lastExpandKey = key;
       return false;
     }
+    function finishExpand_() {
+      lastExpandKey = '';
+    }
 
     function spaceOnlyText_(v) {
       var s = String(v == null ? '' : v).replace(/\u3000/g, ' ');
@@ -4159,6 +4234,7 @@
         return;
       }
       if (alreadyExpanded('mid:' + rowIndex + ':' + mid)) return;
+      try {
       var group = linesForMid(it.major, mid);
       if (!group.length) group = linesForMid('', mid);
       var works = group.filter(function (r) { return filled(r.content); });
@@ -4213,6 +4289,9 @@
       if (details.length) writeBelow(rowIndex, 'work', details);
       renderGrid();
       setStatus('中項目「' + mid + '」から作業内容 ' + works.length + ' 件を入力しました');
+      } finally {
+        finishExpand_();
+      }
     }
 
     function onPartMidChosen(rowIndex) {
@@ -4242,6 +4321,7 @@
         return;
       }
       if (alreadyExpanded('part:' + rowIndex + ':' + foldKey(it.partMajor || '') + ':' + foldKey(mid))) return;
+      try {
       var group = linesForPartMid(it.partMajor, mid);
       if (!group.length) group = linesForPartMid('', mid);
       var sets = group.filter(function (r) { return filled(partSetName(r)); });
@@ -4279,6 +4359,9 @@
       if (details.length) writeBelow(rowIndex, 'part', details);
       renderGrid();
       setStatus('部品中項目「' + mid + '」からセット ' + sets.length + ' 件を入力しました');
+      } finally {
+        finishExpand_();
+      }
     }
 
     function hideComboLists(keepInput) {
@@ -5280,6 +5363,7 @@
     $('tbody').addEventListener('input', function (e) {
       var t = e.target;
       if (!t.dataset || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+      markInvoiceDirty_();
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
       if (!(e.isComposing || e.keyCode === 229) && isInvoiceHalfWidthField_(k)) {
@@ -5422,11 +5506,13 @@
     if (headerGrid) {
       headerGrid.addEventListener('input', function (e) {
         if (e.target && e.target.id === 'invoiceTemplate') return;
+        markInvoiceDirty_();
         updateSaveChrome();
         snapshotActiveJob(false);
       });
       headerGrid.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'invoiceTemplate') return;
+        markInvoiceDirty_();
         updateSaveChrome();
         snapshotActiveJob(false);
       });
