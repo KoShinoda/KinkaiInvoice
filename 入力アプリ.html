@@ -217,6 +217,25 @@
       color: var(--muted);
     }
     #editBadge.editing { color: var(--accent); font-weight: 600; }
+    .save-lock {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      background: #fff6e8;
+      border: 1px solid #e8c98a;
+      border-radius: 8px;
+    }
+    .save-lock p {
+      margin: 0;
+      flex: 1 1 220px;
+    }
+    #viewInput.is-save-locked > .card {
+      pointer-events: none;
+      opacity: 0.72;
+    }
     main { padding: 14px 18px 18px; }
     body.is-input-view header,
     body.is-input-view .draft-bar {
@@ -1161,6 +1180,11 @@
     <span class="draft-operator" id="workOperator"></span>
   </div>
   <main id="viewInput">
+    <div id="saveLock" class="save-lock" hidden>
+      <p id="saveLockText"></p>
+      <button type="button" id="btnSeeSaved" class="sub">保存された内容を見る</button>
+      <button type="button" id="btnForceOverwrite">この内容で上書きする</button>
+    </div>
     <section class="card card-header-fields">
       <div class="header-fold-bar" id="headerFoldBar">
         <button type="button" class="sub header-fold-toggle" id="btnHeaderUnfold">▼ ヘッダーを開く</button>
@@ -1452,8 +1476,8 @@
           <tr>
             <th></th>
             <th>小計</th>
-            <th>値引額</th>
             <th>値引％</th>
+            <th>値引額</th>
             <th>差引</th>
           </tr>
         </thead>
@@ -1461,19 +1485,19 @@
           <tr>
             <th>技術料</th>
             <td id="techSub">0</td>
-            <td id="techDiscShow">0</td>
             <td>
               <div class="pct"><input id="techPct" type="number" min="0" max="100" step="1" value="3">％</div>
             </td>
+            <td id="techDiscShow">0</td>
             <td id="techTotal">0</td>
           </tr>
           <tr>
             <th>部品</th>
             <td id="partSub">0</td>
-            <td id="partDiscShow">0</td>
             <td>
               <div class="pct"><input id="partPct" type="number" min="0" max="100" step="1" value="10">％</div>
             </td>
+            <td id="partDiscShow">0</td>
             <td id="partTotal">0</td>
           </tr>
           <tr class="grand">
@@ -2737,6 +2761,8 @@
         workJobHydrating = false;
       }
       if (!skipPersist) persistWorkJobs(false);
+      clearSaveLock_();
+      checkBoundSaveStamp_();
       if (!quietStatus) setStatus('作業中の請求書を表示しています');
     }
     function renderDraftTabs() {
@@ -2908,18 +2934,142 @@
       snapshotActiveJob();
       renderDraftTabs();
     }
+    var saveLock = null;
+    var saveStampCheckToken = 0;
+    function clearSaveLock_() {
+      saveLock = null;
+      if ($('saveLock')) $('saveLock').hidden = true;
+      if ($('viewInput')) $('viewInput').classList.remove('is-save-locked');
+      if ($('btnSave')) $('btnSave').disabled = false;
+      if ($('btnSaveNew')) $('btnSaveNew').disabled = false;
+      if ($('btnPrintSheet')) $('btnPrintSheet').disabled = false;
+    }
+    function showSaveLock_(info) {
+      info = info || {};
+      var id = boundSaveId();
+      if (!id) return;
+      saveLock = { saveId: id, savedAt: info.savedAt || '', saver: info.saver || '' };
+      var who = info.saver || '他の人';
+      var text = info.found === false
+        ? 'この保存データが見つかりません。編集を止めています。今の入力はこのタブに残しています。'
+        : who + ' が保存しました。編集を止めています。今の入力はこのタブに残しています。';
+      if ($('saveLockText')) $('saveLockText').textContent = text;
+      if ($('saveLock')) $('saveLock').hidden = false;
+      if ($('viewInput')) $('viewInput').classList.add('is-save-locked');
+      if ($('btnSave')) $('btnSave').disabled = true;
+      if ($('btnSaveNew')) $('btnSaveNew').disabled = true;
+      if ($('btnPrintSheet')) $('btnPrintSheet').disabled = true;
+      setStatus(text, true);
+    }
+    function checkBoundSaveStamp_() {
+      var id = boundSaveId();
+      if (!id || !boundSavedAt || workJobHydrating) {
+        if (!id) clearSaveLock_();
+        return;
+      }
+      if (saveLock && saveLock.saveId === id) return;
+      var token = ++saveStampCheckToken;
+      google.script.run
+        .withSuccessHandler(function (info) {
+          if (token !== saveStampCheckToken) return;
+          if (boundSaveId() !== id || workJobHydrating) return;
+          if (!info || info.found === false) {
+            showSaveLock_({ found: false });
+            return;
+          }
+          if (info.savedAt && info.savedAt !== boundSavedAt) {
+            showSaveLock_(info);
+            return;
+          }
+          if (saveLock && saveLock.saveId === id) clearSaveLock_();
+        })
+        .withFailureHandler(function () {})
+        .peekInvoiceSaveStamp(id);
+    }
+    function guardFreshOverwrite_(payload, send) {
+      if (!payload || payload.saveMode !== 'overwrite' || payload.forceOverwrite) {
+        send(payload);
+        return;
+      }
+      if (saveLock && saveLock.saveId === payload.saveId) {
+        setBusy(false);
+        return;
+      }
+      setBusy(true);
+      google.script.run
+        .withSuccessHandler(function (info) {
+          if (boundSaveId() !== payload.saveId) {
+            setBusy(false);
+            return;
+          }
+          if (!info || info.found === false || (info.savedAt && boundSavedAt && info.savedAt !== boundSavedAt)) {
+            setBusy(false);
+            showSaveLock_(info || { found: false });
+            return;
+          }
+          send(payload);
+        })
+        .withFailureHandler(function () {
+          send(payload);
+        })
+        .peekInvoiceSaveStamp(payload.saveId);
+    }
+    function viewSavedBesideDraft_() {
+      var id = boundSaveId();
+      if (!id) return;
+      if (workJobs.length >= WORK_JOB_MAX) {
+        setStatus('作業中が最大 ' + WORK_JOB_MAX + ' 件です。どれか閉じてから、もう一度押してください。', true);
+        return;
+      }
+      snapshotActiveJob(true);
+      setBusy(true);
+      setStatus('保存された内容を開いています…');
+      google.script.run
+        .withSuccessHandler(function (data) {
+          setBusy(false);
+          var job = makeWorkJob();
+          workJobs.push(job);
+          workJobId = job.id;
+          workJobHydrating = true;
+          try {
+            applySavedPayload(data, true, true);
+            $('invoiceTemplate').value = '';
+            bindCurrentSave(id, (data && data.header && data.header.kNo) || '', (data && data.savedAt) || '');
+          } finally {
+            workJobHydrating = false;
+          }
+          clearSaveLock_();
+          snapshotActiveJob(true);
+          renderDraftTabs();
+          showAppView('input');
+          setStatus('保存された内容を別タブで開きました。編集していた内容は元のタブに残しています。');
+        })
+        .withFailureHandler(function (err) {
+          setBusy(false);
+          setStatus(err.message || String(err), true);
+        })
+        .loadInvoiceDraft(id);
+    }
     function keepDraftAfterSaveFailure_(err) {
       setBusy(false);
       try {
         snapshotActiveJob(true);
       } catch (e) {}
       var msg = (err && err.message) || String(err || '保存に失敗しました。');
+      if (msg.indexOf('他の人が先に保存') !== -1 || msg.indexOf('見つかりません') !== -1) {
+        var whoMatch = msg.match(/他の人が先に保存しています（([^）]+)）/);
+        showSaveLock_({
+          found: msg.indexOf('見つかりません') === -1,
+          saver: whoMatch ? whoMatch[1] : ''
+        });
+        return;
+      }
       if (msg.indexOf('この画面の入力は残っています') === -1) {
         msg += ' この画面の入力は残っています。もう一度保存できます。';
       }
       setStatus(msg, true);
     }
-    function runSave(mode) {
+    function runSave(mode, force) {
       if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
@@ -2933,21 +3083,25 @@
         payload.saveMode = 'new';
         payload.expectedSavedAt = '';
       }
-      setBusy(true);
-      setStatus(payload.saveMode === 'overwrite' ? '上書き保存しています…' : '新規保存しています…');
-      google.script.run
-        .withSuccessHandler(function (res) {
-          setBusy(false);
-          bindCurrentSave(res.saveId, res.kNo || payload.header.kNo, res.savedAt);
-          snapshotActiveJob(true);
-          renderDraftTabs();
-          var kind = res.overwritten ? '上書き保存' : '新規保存';
-          setStatus(withOrderNote_(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || payload.header.kNo) || payload.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）'));
-        })
-        .withFailureHandler(function (err) {
-          keepDraftAfterSaveFailure_(err);
-        })
-        .saveInvoiceDraft(payload);
+      payload.forceOverwrite = !!(force && payload.saveMode === 'overwrite');
+      guardFreshOverwrite_(payload, function (body) {
+        setBusy(true);
+        setStatus(body.saveMode === 'overwrite' ? '上書き保存しています…' : '新規保存しています…');
+        google.script.run
+          .withSuccessHandler(function (res) {
+            setBusy(false);
+            clearSaveLock_();
+            bindCurrentSave(res.saveId, res.kNo || body.header.kNo, res.savedAt);
+            snapshotActiveJob(true);
+            renderDraftTabs();
+            var kind = res.overwritten ? '上書き保存' : '新規保存';
+            setStatus(withOrderNote_(kind + 'しました（K-No ' + (normalizeKNo(res.kNo || body.header.kNo) || body.header.kNo) + ' / ' + formatYmd(res.savedAt) + ' / 明細 ' + res.lineCount + ' 行）'));
+          })
+          .withFailureHandler(function (err) {
+            keepDraftAfterSaveFailure_(err);
+          })
+          .saveInvoiceDraft(body);
+      });
     }
     function runPrintSheet(mode) {
       if (!validateInvoiceNumbersForSave_()) return;
@@ -2963,12 +3117,14 @@
         payload.saveMode = 'new';
         payload.expectedSavedAt = '';
       }
+      guardFreshOverwrite_(payload, function (body) {
       setBusy(true);
-      setStatus(payload.saveMode === 'overwrite' ? '上書き保存して PDF を作成しています…' : '保存して PDF を作成しています…');
+      setStatus(body.saveMode === 'overwrite' ? '上書き保存して PDF を作成しています…' : '保存して PDF を作成しています…');
       google.script.run
         .withSuccessHandler(function (res) {
           setBusy(false);
-          bindCurrentSave(res.saveId, res.kNo || payload.header.kNo, res.savedAt);
+          clearSaveLock_();
+          bindCurrentSave(res.saveId, res.kNo || body.header.kNo, res.savedAt);
           snapshotActiveJob(true);
           renderDraftTabs();
           finishWorkJobAfterPrint();
@@ -2984,7 +3140,8 @@
         .withFailureHandler(function (err) {
           keepDraftAfterSaveFailure_(err);
         })
-        .publishInvoicePdf(payload);
+        .publishInvoicePdf(body);
+      });
     }
     function openPdfDownload(res) {
       if (!res || !res.pdfBase64) return false;
@@ -5210,15 +5367,14 @@
 
       var partPct = clampPct($('partPct').value);
       $('partPct').value = partPct;
-      var partExtra = Math.round(partList * partPct / 100);
-      var partDisc = partLineDisc + partExtra;
-      if (partDisc > partList) partDisc = partList;
-      var partNet = Math.max(0, partList - partDisc);
+      var partSub = partList - partLineDisc;
+      var partDisc = Math.round(partSub * partPct / 100);
+      var partNet = partSub - partDisc;
 
       $('techSub').textContent = yen(techSum);
       $('techDiscShow').textContent = yen(techDisc);
       $('techTotal').textContent = yen(techNet);
-      $('partSub').textContent = yen(partList);
+      $('partSub').textContent = yen(partSub);
       $('partDiscShow').textContent = yen(partDisc);
       $('partTotal').textContent = yen(partNet);
       $('grand').textContent = yen(techNet + partNet);
@@ -5228,7 +5384,7 @@
         techDisc: techDisc,
         techPct: techPct,
         techTotal: techNet,
-        partSub: partList,
+        partSub: partSub,
         partDisc: partDisc,
         partPct: partPct,
         partTotal: partNet,
@@ -5283,6 +5439,19 @@
         return;
       }
       runSave(boundSaveId() ? 'overwrite' : 'new');
+    });
+    if ($('btnSeeSaved')) $('btnSeeSaved').addEventListener('click', viewSavedBesideDraft_);
+    if ($('btnForceOverwrite')) {
+      $('btnForceOverwrite').addEventListener('click', function () {
+        clearSaveLock_();
+        runSave('overwrite', true);
+      });
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') checkBoundSaveStamp_();
+    });
+    window.addEventListener('focus', function () {
+      checkBoundSaveStamp_();
     });
     $('btnSaveNew').addEventListener('click', function () {
       var payload = collectPayload();

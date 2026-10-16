@@ -177,7 +177,7 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
   }
   const currentStamp = invoiceSavedAtStamp_(found.row[2]);
   const expected = invoiceSavedAtStamp_(payload.expectedSavedAt);
-  if (expected && currentStamp && !invoiceSavedAtMatches_(expected, currentStamp)) {
+  if (!payload.forceOverwrite && expected && currentStamp && !invoiceSavedAtMatches_(expected, currentStamp)) {
     throw invoiceConflictError_(found);
   }
   const ss = index.getParent();
@@ -265,7 +265,25 @@ function invoiceConflictError_(found) {
   const idx = INVOICE_INDEX_HEADERS_.indexOf('保存アカウント');
   const who = invoiceAccountLabel_(idx >= 0 && found && found.row ? found.row[idx] : '');
   const whoText = who ? '（' + who + '）' : '';
-  return new Error('他の人が先に保存しています' + whoText + '。この画面の入力は残っています。残すには「新規保存」を押してください。');
+  return new Error('他の人が先に保存しています' + whoText + '。編集を止めています。');
+}
+
+function peekInvoiceSaveStamp(saveId) {
+  const id = String(saveId || '').trim();
+  if (!id) {
+    return invoiceJsonSafe_({ found: false, savedAt: '', saver: '' });
+  }
+  const index = ensureInvoiceSaveIndexSheet_(true);
+  const found = findInvoiceIndexRow_(index, id);
+  if (!found) {
+    return invoiceJsonSafe_({ found: false, savedAt: '', saver: '' });
+  }
+  const idx = INVOICE_INDEX_HEADERS_.indexOf('保存アカウント');
+  return invoiceJsonSafe_({
+    found: true,
+    savedAt: invoiceSavedAtStamp_(found.row[2]),
+    saver: invoiceAccountLabel_(idx >= 0 ? found.row[idx] : '')
+  });
 }
 
 function invoicePrintSheetName_(row) {
