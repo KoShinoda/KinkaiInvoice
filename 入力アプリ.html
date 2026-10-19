@@ -4096,13 +4096,6 @@
       return false;
     }
 
-    function firstAppendPartRow() {
-      var last = -1;
-      for (var i = 0; i < items.length; i++) {
-        if (hasPart(items[i])) last = i;
-      }
-      return last + 1;
-    }
     function appendSide(start, side, details) {
       if (!details || !details.length) return;
       padItems();
@@ -4134,7 +4127,7 @@
         return true;
       });
       if (!rows.length) return;
-      appendSide(firstAppendPartRow(), 'part', rows);
+      appendSide(rowIndex, 'part', rows);
     }
     function writeBelow(rowIndex, kind, details) {
       var side = kind === 'part' ? 'part' : 'work';
