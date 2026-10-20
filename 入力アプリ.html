@@ -967,6 +967,10 @@
       color: #b42318;
       border-color: #f04438;
     }
+    #tbody .diff-cell {
+      background: #fde8e8;
+      box-shadow: inset 0 0 0 1px #e35d5d;
+    }
     button {
       border: 0;
       border-radius: 8px;
@@ -2583,6 +2587,10 @@
     var workSaveBusy = false;
     var workSaveAgain = false;
     var workJobHydrating = false;
+    var workJobEditSeq = 0;
+    function noteWorkJobEdit_() {
+      workJobEditSeq += 1;
+    }
     function persistWorkJobs(immediate) {
       try {
         localStorage.setItem(workJobStoreKey(), JSON.stringify({
@@ -2777,15 +2785,21 @@
       }
       if (!skipPersist) persistWorkJobs(false);
       invoiceDirty = String(job.editing || '') === '1';
-      clearSaveLock_();
-      if (invoiceDirty) {
+      if (job.saveLock) {
+        showSaveLock_(job.saveLock);
         startEditWatch_();
         checkBoundSaveStamp_();
-        checkSameInvoiceEditors_();
       } else {
-        stopEditWatch_();
+        clearSaveLock_();
+        if (invoiceDirty) {
+          startEditWatch_();
+          checkBoundSaveStamp_();
+          checkSameInvoiceEditors_();
+        } else {
+          stopEditWatch_();
+        }
       }
-      if (!quietStatus) setStatus('作業中の請求書を表示しています');
+      if (!quietStatus && !job.saveLock) setStatus('作業中の請求書を表示しています');
     }
     function renderDraftTabs() {
       var box = $('draftTabs');
@@ -2911,9 +2925,11 @@
         applyDefaultReceptionist();
         applyDiscPctDefaults();
       }
+      var editSeqAtLoad = workJobEditSeq;
       google.script.run
         .withSuccessHandler(function (state) {
           applyWorkOperator(state);
+          if (editSeqAtLoad !== workJobEditSeq) return;
           var again = readLocalWorkJobState();
           if (workIsolated && state && state.jobs && state.jobs.length) {
             applyWorkJobState(mergeWorkJobState(again, state));
@@ -3016,6 +3032,8 @@
         .listWorkJobConflicts(id);
     }
     function clearSaveLock_() {
+      var job = findWorkJob(workJobId);
+      if (job) delete job.saveLock;
       saveLock = null;
       if ($('saveLock')) $('saveLock').hidden = true;
       if ($('viewInput')) $('viewInput').classList.remove('is-save-locked');
@@ -3027,7 +3045,9 @@
       info = info || {};
       var id = boundSaveId();
       if (!id) return;
-      saveLock = { saveId: id, savedAt: info.savedAt || '', saver: info.saver || '' };
+      saveLock = { saveId: id, savedAt: info.savedAt || '', saver: info.saver || '', found: info.found !== false };
+      var job = findWorkJob(workJobId);
+      if (job) job.saveLock = saveLock;
       var who = info.saver || '他の人';
       var text = info.found === false
         ? 'この保存データが見つかりません。編集を止めています。今の入力はこのタブに残しています。'
@@ -3042,11 +3062,13 @@
     }
     function checkBoundSaveStamp_() {
       var id = boundSaveId();
-      if (!invoiceDirty || !id || !boundSavedAt || workJobHydrating) {
+      var job = findWorkJob(workJobId);
+      if (!id || workJobHydrating) {
         if (!id) clearSaveLock_();
         return;
       }
-      if (saveLock && saveLock.saveId === id) return;
+      if (!invoiceDirty && !(job && job.saveLock)) return;
+      if (!boundSavedAt) return;
       var token = ++saveStampCheckToken;
       google.script.run
         .withSuccessHandler(function (info) {
@@ -3149,7 +3171,29 @@
       }
       setStatus(msg, true);
     }
+    function flushGridEditors_() {
+      var nodes = document.querySelectorAll('#tbody textarea, #tbody input');
+      var list = [];
+      var n;
+      for (n = 0; n < nodes.length; n++) list.push(nodes[n]);
+      for (n = 0; n < list.length; n++) {
+        var el = list[n];
+        if (!el.dataset || el.dataset.i == null || !el.dataset.k) continue;
+        var row = Number(el.dataset.i);
+        var k = el.dataset.k;
+        if (!items[row]) continue;
+        if (k === 'mid' || k === 'partMid' || k === 'workerCode') {
+          var cur = k === 'workerCode' ? workerEditValue(items[row]) : String(items[row][k] == null ? '' : items[row][k]);
+          if (String(el.value || '') !== cur) prepareComboCommit(el, true);
+          continue;
+        }
+        if (String(items[row][k] == null ? '' : items[row][k]) !== String(el.value || '')) {
+          items[row][k] = el.value;
+        }
+      }
+    }
     function runSave(mode, force) {
+      flushGridEditors_();
       if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
@@ -3185,6 +3229,7 @@
       });
     }
     function runPrintSheet(mode) {
+      flushGridEditors_();
       if (!validateInvoiceNumbersForSave_()) return;
       var payload = collectPayload();
       if (!String(payload.header.kNo || '').trim()) {
@@ -3804,6 +3849,40 @@
       c.amount.value = it.amount == null || it.amount === '' ? '' : it.amount;
       c.discYen.value = it.discYen == null || it.discYen === '' ? '' : it.discYen;
       paintDiscWarn(tr, it);
+      paintRowDiff_(tr, i);
+    }
+    function diffCellText_(value) {
+      return String(value == null ? '' : value).replace(/\u3000/g, ' ').replace(/,/g, '').trim();
+    }
+    function draftBesideConflict_() {
+      var cur = findWorkJob(workJobId);
+      if (!cur || !isConflictTab_(cur)) return null;
+      var id = String(cur.saveId || '');
+      var i;
+      for (i = 0; i < workJobs.length; i++) {
+        var job = workJobs[i];
+        if (!job || job.id === cur.id || isConflictTab_(job)) continue;
+        if (String(job.saveId || '') === id) return job;
+      }
+      return null;
+    }
+    function paintRowDiff_(tr, i) {
+      var keys = ['major', 'mid', 'fee', 'workerCode', 'partMajor', 'partMid', 'unitPrice', 'qty', 'amount', 'discYen'];
+      var draftJob = draftBesideConflict_();
+      var draft = draftJob && draftJob.payload && draftJob.payload.items ? draftJob.payload.items[i] : null;
+      var it = items[i] || {};
+      var c = tr._cells || {};
+      keys.forEach(function (k) {
+        var el = c[k];
+        if (!el) return;
+        var changed = false;
+        if (draftJob) {
+          var saved = diffCellText_(k === 'workerCode' ? (it.workerCode || it.workerName) : it[k]);
+          var edited = diffCellText_(draft ? (k === 'workerCode' ? (draft.workerCode || draft.workerName) : draft[k]) : '');
+          changed = saved !== edited && !!(saved || edited);
+        }
+        el.classList.toggle('diff-cell', changed);
+      });
     }
 
     function lineCount() {
@@ -5350,6 +5429,7 @@
     $('tbody').addEventListener('change', function (e) {
       var t = e.target;
       if (!t.dataset || t.dataset.i == null) return;
+      noteWorkJobEdit_();
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
       if (k === 'mid' || k === 'partMid' || k === 'workerCode') return;
@@ -5366,6 +5446,7 @@
     $('tbody').addEventListener('input', function (e) {
       var t = e.target;
       if (!t.dataset || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+      noteWorkJobEdit_();
       markInvoiceDirty_();
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
@@ -5509,12 +5590,14 @@
     if (headerGrid) {
       headerGrid.addEventListener('input', function (e) {
         if (e.target && e.target.id === 'invoiceTemplate') return;
+        noteWorkJobEdit_();
         markInvoiceDirty_();
         updateSaveChrome();
         snapshotActiveJob(false);
       });
       headerGrid.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'invoiceTemplate') return;
+        noteWorkJobEdit_();
         markInvoiceDirty_();
         updateSaveChrome();
         snapshotActiveJob(false);
