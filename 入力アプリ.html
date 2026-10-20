@@ -971,6 +971,18 @@
       background: #fde8e8;
       box-shadow: inset 0 0 0 1px #e35d5d;
     }
+    #tbody .diff-ghost {
+      position: absolute;
+      left: 4px;
+      right: 8px;
+      top: 3px;
+      color: #b42318;
+      font-weight: 600;
+      line-height: 1.3;
+      white-space: pre-wrap;
+      overflow: hidden;
+      pointer-events: none;
+    }
     button {
       border: 0;
       border-radius: 8px;
@@ -2800,6 +2812,24 @@
         }
       }
       if (!quietStatus && !job.saveLock) setStatus('作業中の請求書を表示しています');
+      if (boundSaveId() && !boundSavedAt) rememberBoundStamp_();
+    }
+    function rememberBoundStamp_() {
+      var id = boundSaveId();
+      if (!id || boundSavedAt) return;
+      var jobId = workJobId;
+      var seq = workJobEditSeq;
+      google.script.run
+        .withSuccessHandler(function (info) {
+          if (workJobId !== jobId || boundSaveId() !== id || boundSavedAt) return;
+          if (workJobEditSeq !== seq) return;
+          if (!info || !info.savedAt) return;
+          bindCurrentSave(id, boundKNo, info.savedAt);
+          var job = findWorkJob(jobId);
+          if (job) job.savedAt = info.savedAt;
+        })
+        .withFailureHandler(function () {})
+        .peekInvoiceSaveStamp(id);
     }
     function renderDraftTabs() {
       var box = $('draftTabs');
@@ -3045,13 +3075,15 @@
       info = info || {};
       var id = boundSaveId();
       if (!id) return;
-      saveLock = { saveId: id, savedAt: info.savedAt || '', saver: info.saver || '', found: info.found !== false };
+      saveLock = { saveId: id, savedAt: info.savedAt || '', saver: info.saver || '', found: info.found !== false, missingStamp: !!info.missingStamp };
       var job = findWorkJob(workJobId);
       if (job) job.saveLock = saveLock;
       var who = info.saver || '他の人';
-      var text = info.found === false
-        ? 'この保存データが見つかりません。編集を止めています。今の入力はこのタブに残しています。'
-        : who + ' が保存しました。編集を止めています。今の入力はこのタブに残しています。';
+      var text = info.missingStamp
+        ? 'この画面は保存時刻を持っていません。上書きを止めています。先に保存された内容を確認してください。'
+        : info.found === false
+          ? 'この保存データが見つかりません。編集を止めています。今の入力はこのタブに残しています。'
+          : who + ' が保存しました。編集を止めています。今の入力はこのタブに残しています。';
       if ($('saveLockText')) $('saveLockText').textContent = text;
       if ($('saveLock')) $('saveLock').hidden = false;
       if ($('viewInput')) $('viewInput').classList.add('is-save-locked');
@@ -3090,6 +3122,11 @@
     function guardFreshOverwrite_(payload, send) {
       if (!payload || payload.saveMode !== 'overwrite' || payload.forceOverwrite) {
         send(payload);
+        return;
+      }
+      if (!boundSavedAt) {
+        setBusy(false);
+        showSaveLock_({ missingStamp: true, found: true });
         return;
       }
       if (saveLock && saveLock.saveId === payload.saveId) {
@@ -3867,6 +3904,9 @@
       return null;
     }
     function paintRowDiff_(tr, i) {
+      var old = tr.querySelectorAll('.diff-ghost');
+      var n;
+      for (n = 0; n < old.length; n++) old[n].parentNode.removeChild(old[n]);
       var keys = ['major', 'mid', 'fee', 'workerCode', 'partMajor', 'partMid', 'unitPrice', 'qty', 'amount', 'discYen'];
       var draftJob = draftBesideConflict_();
       var draft = draftJob && draftJob.payload && draftJob.payload.items ? draftJob.payload.items[i] : null;
@@ -3875,13 +3915,22 @@
       keys.forEach(function (k) {
         var el = c[k];
         if (!el) return;
-        var changed = false;
-        if (draftJob) {
-          var saved = diffCellText_(k === 'workerCode' ? (it.workerCode || it.workerName) : it[k]);
-          var edited = diffCellText_(draft ? (k === 'workerCode' ? (draft.workerCode || draft.workerName) : draft[k]) : '');
-          changed = saved !== edited && !!(saved || edited);
-        }
-        el.classList.toggle('diff-cell', changed);
+        el.classList.remove('diff-cell');
+        if (!draftJob) return;
+        var savedRaw = k === 'workerCode' ? (it.workerCode || it.workerName || '') : it[k];
+        var editedRaw = draft ? (k === 'workerCode' ? (draft.workerCode || draft.workerName || '') : draft[k]) : '';
+        var saved = diffCellText_(savedRaw);
+        var edited = diffCellText_(editedRaw);
+        if (saved === edited || (!saved && !edited)) return;
+        el.classList.add('diff-cell');
+        if (saved || !edited) return;
+        var td = el.closest ? el.closest('td') : el.parentNode;
+        if (!td) return;
+        td.style.position = 'relative';
+        var ghost = document.createElement('div');
+        ghost.className = 'diff-ghost';
+        ghost.textContent = String(editedRaw == null ? '' : editedRaw);
+        td.appendChild(ghost);
       });
     }
 

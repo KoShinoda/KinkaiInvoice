@@ -177,7 +177,7 @@ function overwriteInvoiceDraft_(index, saveId, payload, items, kNo, savedAtOpt) 
   }
   const currentStamp = invoiceSavedAtStamp_(found.row[2]);
   const expected = invoiceSavedAtStamp_(payload.expectedSavedAt);
-  if (!payload.forceOverwrite && expected && currentStamp && !invoiceSavedAtMatches_(expected, currentStamp)) {
+  if (!payload.forceOverwrite && currentStamp && (!expected || !invoiceSavedAtMatches_(expected, currentStamp))) {
     throw invoiceConflictError_(found);
   }
   const ss = index.getParent();
