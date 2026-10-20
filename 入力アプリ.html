@@ -228,6 +228,9 @@
       border: 1px solid #e8c98a;
       border-radius: 8px;
     }
+    .save-lock[hidden] {
+      display: none;
+    }
     .save-lock p {
       margin: 0;
       flex: 1 1 220px;
@@ -2474,17 +2477,23 @@
       }
       return null;
     }
+    function isConflictTab_(job) {
+      return String(job && job.id || '').indexOf('dup') === 0;
+    }
     function workJobLabel(job) {
       var k = normalizeKNo((job && job.payload && job.payload.header && job.payload.header.kNo) || (job && job.boundKNo) || '');
-      if (!k) return '新規';
+      var conflict = isConflictTab_(job);
+      if (!k) return conflict ? '重複' : '新規';
       var n = 0;
       var i;
       for (i = 0; i < workJobs.length; i++) {
         if (workJobs[i].id === job.id) break;
+        if (isConflictTab_(workJobs[i]) !== conflict) continue;
         var other = normalizeKNo((workJobs[i].payload && workJobs[i].payload.header && workJobs[i].payload.header.kNo) || workJobs[i].boundKNo || '');
         if (other === k) n += 1;
       }
-      return n ? ('K-' + k + ' (' + (n + 1) + ')') : ('K-' + k);
+      var base = n ? ('K-' + k + ' (' + (n + 1) + ')') : ('K-' + k);
+      return conflict ? ('重複 ' + base) : base;
     }
     function jobHasContent(job) {
       var p = job && job.payload ? job.payload : {};
@@ -3098,6 +3107,7 @@
         .withSuccessHandler(function (data) {
           setBusy(false);
           var job = makeWorkJob();
+          job.id = 'dup' + String(job.id || '').replace(/^w/, '');
           workJobs.push(job);
           workJobId = job.id;
           workJobHydrating = true;
