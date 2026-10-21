@@ -1963,9 +1963,6 @@
       if (!el || el.dataset.comboBound) return;
       el.dataset.comboBound = '1';
       initPlateAreaCombo();
-      el.addEventListener('focus', function () {
-        showComboList(el);
-      });
       el.addEventListener('input', function () {
         showComboList(el);
       });
@@ -5159,6 +5156,22 @@
     document.addEventListener('input', function (e) {
       if (isComboField_(e.target)) disarmComboEscBlank_();
     }, true);
+    function openComboOnFocus_(input) {
+      if (!isComboField_(input)) return;
+      hideComboLists();
+      hideWorkerPicker();
+      if (input.getAttribute('data-k') === 'workerCode' && input.getAttribute('data-i') != null) {
+        input.value = workerEditValue(items[Number(input.getAttribute('data-i'))]);
+      } else {
+        rememberComboQuery(input);
+      }
+      showComboList(input);
+      try { input.select(); } catch (err) {}
+      if (isGrowTextarea(input)) fitMidHeight(input);
+    }
+    document.addEventListener('focusin', function (e) {
+      openComboOnFocus_(e.target);
+    });
     function comboExactOptionIndex(list, typed) {
       var t = String(typed || '').replace(/\u3000/g, ' ').trim();
       if (!t || !list) return -1;
@@ -5602,20 +5615,6 @@
       if (!e.target.dataset) return;
       hideDiffGhost_(e.target);
       if (e.target.dataset.i != null && e.target.dataset.k) captureFieldOrigin_(e.target);
-      if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid' || e.target.dataset.k === 'workerCode') {
-        hideComboLists();
-        hideWorkerPicker();
-        if (e.target.dataset.k === 'workerCode') {
-          e.target.value = workerEditValue(items[Number(e.target.dataset.i)]);
-          showComboList(e.target);
-          e.target.select();
-        } else {
-          rememberComboQuery(e.target);
-          showComboList(e.target);
-          try { e.target.select(); } catch (err) {}
-        }
-        if (isMidTextarea(e.target)) fitMidHeight(e.target);
-      }
     });
     $('tbody').addEventListener('mousedown', function (e) {
       if (e.target.dataset && e.target.dataset.k === 'workerCode' && document.activeElement !== e.target) {
@@ -6850,17 +6849,6 @@
         if (isGrowTextarea(t)) fitMidHeight(t);
         updateListWorkPreview();
       });
-      $('listWorkBody').addEventListener('focusin', function (e) {
-        var t = e.target;
-        if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
-        if (isListSuggestCombo_(t)) {
-          hideComboLists();
-          rememberComboQuery(t);
-          showComboList(t);
-          try { t.select(); } catch (err) {}
-        }
-        if (isGrowTextarea(t)) fitMidHeight(t);
-      });
       $('listWorkBody').addEventListener('keydown', function (e) {
         var t = e.target;
         if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
@@ -6919,13 +6907,6 @@
         listPartRows[i][k] = t.value;
         if (k === 'set') showComboList(t);
         updateListPartPreview();
-      });
-      $('listPartBody').addEventListener('focusin', function (e) {
-        var t = e.target;
-        if (!isListSuggestCombo_(t)) return;
-        hideComboLists();
-        showComboList(t);
-        try { t.select(); } catch (err) {}
       });
       $('listPartBody').addEventListener('focusout', function (e) {
         var t = e.target;
