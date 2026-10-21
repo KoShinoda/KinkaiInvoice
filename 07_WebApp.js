@@ -88,6 +88,7 @@ function getInvoiceMaster() {
     plateAreas: (service.plateAreas && service.plateAreas.length)
       ? service.plateAreas
       : ['苫小牧', '室蘭', '北九州'],
+    users: loadUserNames_(),
     defaultReceptionist: receptionistForOperator_(service, workJobUserKey_()),
     defaultTechPct: clampInvoicePct_(service.techPct, 3),
     defaultPartPct: clampInvoicePct_(service.partPct, 10),
@@ -98,6 +99,21 @@ function getInvoiceMaster() {
     linesPerPage: CONFIG.print.linesPerPage,
     ordersPending: !!ctx.ordersPending
   };
+}
+
+function loadUserNames_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.users.sheetName);
+  if (!sh) return [];
+  const vals = sh.getDataRange().getValues();
+  if (!vals.length) return [];
+  const cols = resolveColumns_(vals[0], CONFIG.users.headers);
+  const col = cols.name ? cols.name - 1 : 0;
+  const start = cols.name ? 1 : 0;
+  const names = [];
+  for (let i = start; i < vals.length; i++) {
+    names.push(vals[i][col]);
+  }
+  return uniqueValues_(names);
 }
 
 function imageUrlFromCell_(value, formula) {

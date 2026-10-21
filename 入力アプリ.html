@@ -873,7 +873,8 @@
       min-width: 0;
     }
     .plate-wrap .combo input { width: 100%; }
-    .plate-wrap .combo-list { z-index: 40; }
+    .plate-wrap .combo-list,
+    .header-grid .combo-list { z-index: 40; }
     .plate-wrap input { flex: 1; min-width: 0; }
     .combo { position: relative; }
     .combo input { width: 100%; }
@@ -1218,7 +1219,13 @@
             <button type="button" class="btn-clear-all" id="btnClearHeader">ヘッダー全消去</button>
           </div>
         </div>
-        <div><label>ユーザー</label><input id="userName"></div>
+        <div>
+          <label>ユーザー</label>
+          <div class="combo">
+            <input id="userName" autocomplete="off">
+            <div class="combo-list" hidden></div>
+          </div>
+        </div>
         <div>
           <label>K-No</label>
           <div class="kno-wrap">
@@ -1598,6 +1605,7 @@
       allServiceTypes: [],
       receptionists: [],
       plateAreas: ['苫小牧', '室蘭', '北九州'],
+      users: [],
       templateNames: [],
       lineCount: 120
     };
@@ -1921,6 +1929,7 @@
       fillHeaderSelect($('receptionist'), master.receptionists || [], $('receptionist').value);
       if (!$('receptionist').value) applyDefaultReceptionist();
       initPlateAreaCombo();
+      initUserNameCombo();
       if (master.templateNames && master.templateNames.length) {
         fillHeaderSelect($('invoiceTemplate'), master.templateNames, $('invoiceTemplate').value);
       }
@@ -1958,11 +1967,18 @@
       if (!el) return;
       el.dataset.options = JSON.stringify([''].concat(plateAreas()));
     }
-    function bindPlateAreaCombo() {
-      var el = $('plateArea');
+    function userNames() {
+      return (master.users && master.users.length) ? master.users : [];
+    }
+    function initUserNameCombo() {
+      var el = $('userName');
+      if (!el) return;
+      el.dataset.options = JSON.stringify([''].concat(userNames()));
+    }
+    function bindHeaderCombo_(el, init) {
       if (!el || el.dataset.comboBound) return;
       el.dataset.comboBound = '1';
-      initPlateAreaCombo();
+      if (init) init();
       el.addEventListener('input', function () {
         showComboList(el);
       });
@@ -1972,6 +1988,12 @@
           hideComboLists();
         }, 120);
       });
+    }
+    function bindPlateAreaCombo() {
+      bindHeaderCombo_($('plateArea'), initPlateAreaCombo);
+    }
+    function bindUserNameCombo() {
+      bindHeaderCombo_($('userName'), initUserNameCombo);
     }
     function clearHeaderFields() {
       $('userName').value = '';
@@ -5016,7 +5038,7 @@
     }
     function isComboField_(el) {
       if (!el || !el.getAttribute) return false;
-      if (el.id === 'plateArea') return true;
+      if (el.id === 'plateArea' || el.id === 'userName') return true;
       if (isListSuggestCombo_(el)) return true;
       var k = el.getAttribute('data-k');
       return el.getAttribute('data-i') != null && (k === 'mid' || k === 'partMid' || k === 'workerCode');
@@ -5083,6 +5105,15 @@
         }
         hideComboLists();
         $('plateNo').focus();
+        return true;
+      }
+      if (input.id === 'userName') {
+        var userList = comboListEl(input);
+        if (userList && !userList.hidden && comboActiveIndex >= 0 && userList.children[comboActiveIndex]) {
+          input.value = comboDivValue(userList.children[comboActiveIndex]);
+        }
+        hideComboLists();
+        $('kNo').focus();
         return true;
       }
       if (input.getAttribute('data-list-part') != null) {
@@ -7083,6 +7114,7 @@
         fillWorkerPicker();
         renderGrid();
         bindPlateAreaCombo();
+        bindUserNameCombo();
         initHeaderMasters();
         if (typeof refreshListDatalists === 'function') refreshListDatalists();
         bindDateField('inDate', 'inDateCal');

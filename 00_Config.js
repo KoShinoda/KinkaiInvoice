@@ -110,6 +110,15 @@ const CONFIG = {
     }
   },
 
+  /** 請求ヘッダーのユーザー候補。A列を上から。リストにない名前も手入力できる。 */
+  users: {
+    sheetName: 'ユーザーリスト',
+    headerRow: 1,
+    headers: {
+      name: ['ユーザー', 'ユーザー名', '顧客']
+    }
+  },
+
   /**
    * 作業リスト／部品リスト。図形に refreshAllMasterLists を割り当ててまとめて更新できる。
    * 普段はシートごと（refreshWorkListSheet / refreshPartsListSheet / 表示中は refreshActiveMasterList）。
