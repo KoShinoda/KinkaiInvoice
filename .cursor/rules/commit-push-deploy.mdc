@@ -1,0 +1,29 @@
+---
+description: 依頼した変更はコミット、プッシュ、同じウェブアプリへのデプロイまで行う
+alwaysApply: true
+---
+
+# 変更後はコミット、プッシュ、デプロイ
+
+このリポジトリで、ユーザーが頼んだコード変更を終えたら、確認を待たずにコミット、`origin` の `main` へのプッシュ、既存ウェブアプリへのデプロイまで行う。
+
+次のときは行わない。
+
+- コードを変えていない（考察、質問、確認だけ）
+- ユーザーがコミットまたはデプロイをしないよう言った
+- 秘密情報（`.env`、認証情報）が含まれる
+
+デプロイは新しい配備を作らない。次の ID を更新する。
+
+`AKfycbwKUKv-SW5PxiSsLvpNdN_iwjRxAprp22jJqjUaKmKBnaw6EdqaWRvqLkE8rVYBWCapog`
+
+`appsscript.json` の `webapp` は `executeAs: USER_DEPLOYING`、`access: MYSELF` のままにする。
+
+手順:
+
+1. `git status`、`git diff`、`git log` を見て、このリポジトリの日本語の一文に合わせたメッセージを書く
+2. 関係するファイルだけ `git add` してコミットする。PowerShell では `git commit -m "メッセージ"` を使う
+3. `git push origin HEAD`
+4. `clasp push` のあと `clasp deploy -i AKfycbwKUKv-SW5PxiSsLvpNdN_iwjRxAprp22jJqjUaKmKBnaw6EdqaWRvqLkE8rVYBWCapog -d "短い説明"`
+
+`git push --force` はしない。Windows ではサンドボックスを外して実行する。
