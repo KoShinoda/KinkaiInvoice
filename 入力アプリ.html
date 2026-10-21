@@ -3080,16 +3080,16 @@
       if (job) job.saveLock = saveLock;
       var who = info.saver || '他の人';
       var text = info.missingStamp
-        ? 'この画面は保存時刻を持っていません。上書きを止めています。先に保存された内容を確認してください。'
+        ? 'この画面は保存時刻を持っていません。このタブは編集できます。上書きするときは、この内容で保存します。'
         : info.found === false
-          ? 'この保存データが見つかりません。編集を止めています。今の入力はこのタブに残しています。'
-          : who + ' が保存しました。編集を止めています。今の入力はこのタブに残しています。';
+          ? 'この保存データが見つかりません。このタブは編集できます。上書きするときは、この内容で保存します。'
+          : who + ' が保存しました。このタブは編集できます。上書きするときは、この内容で保存します。';
       if ($('saveLockText')) $('saveLockText').textContent = text;
       if ($('saveLock')) $('saveLock').hidden = false;
-      if ($('viewInput')) $('viewInput').classList.add('is-save-locked');
-      if ($('btnSave')) $('btnSave').disabled = true;
-      if ($('btnSaveNew')) $('btnSaveNew').disabled = true;
-      if ($('btnPrintSheet')) $('btnPrintSheet').disabled = true;
+      if ($('viewInput')) $('viewInput').classList.remove('is-save-locked');
+      if ($('btnSave')) $('btnSave').disabled = false;
+      if ($('btnSaveNew')) $('btnSaveNew').disabled = false;
+      if ($('btnPrintSheet')) $('btnPrintSheet').disabled = false;
       setStatus(text, true);
     }
     function checkBoundSaveStamp_() {
@@ -3167,6 +3167,9 @@
           setBusy(false);
           var job = makeWorkJob();
           job.id = 'dup' + String(job.id || '').replace(/^w/, '');
+          job.saveId = id;
+          job.savedAt = (data && data.savedAt) || '';
+          job.boundKNo = normalizeKNo((data && data.header && data.header.kNo) || '');
           workJobs.push(job);
           workJobId = job.id;
           workJobHydrating = true;
@@ -3244,7 +3247,9 @@
         payload.saveMode = 'new';
         payload.expectedSavedAt = '';
       }
-      payload.forceOverwrite = !!(force && payload.saveMode === 'overwrite');
+      if (payload.saveMode === 'overwrite' && (force || (saveLock && saveLock.saveId === payload.saveId))) {
+        payload.forceOverwrite = true;
+      }
       guardFreshOverwrite_(payload, function (body) {
         setBusy(true);
         setStatus(body.saveMode === 'overwrite' ? '上書き保存しています…' : '新規保存しています…');
@@ -3711,11 +3716,15 @@
     function partSetName(w) {
       var setName = String(w && w.set != null ? w.set : '').replace(/\u3000/g, ' ').trim();
       if (setName && !numericCell(setName)) return setName;
-      var c = String(w && w.content != null ? w.content : '').replace(/\u3000/g, ' ').trim();
-      if (c && !numericCell(c)) return c;
-      if (w && w.fromParts) return '';
+      if (w && w.fromParts) {
+        var c = String(w.content == null ? '' : w.content).replace(/\u3000/g, ' ').trim();
+        if (c && !numericCell(c)) return c;
+        return '';
+      }
       var pm = String(w && w.partMid != null ? w.partMid : '').replace(/\u3000/g, ' ').trim();
       if (pm && !numericCell(pm)) return pm;
+      var midName = String(w && w.mid != null ? w.mid : '').replace(/\u3000/g, ' ').trim();
+      if (midName && !numericCell(midName)) return midName;
       return '';
     }
 
@@ -3772,7 +3781,7 @@
         pushComboPackName('work', r.major, r.mid, r.content);
       });
       (master.partLines || []).forEach(function (r) {
-        if (r && r.fromParts === false) return;
+        if (!r || !r.fromParts) return;
         pushComboPackName('part', r.major || r.partMajor, r.mid, partSetName(r));
       });
     }
@@ -3923,7 +3932,7 @@
         var edited = diffCellText_(editedRaw);
         if (saved === edited || (!saved && !edited)) return;
         el.classList.add('diff-cell');
-        if (saved || !edited) return;
+        if (saved || !edited || document.activeElement === el) return;
         var td = el.closest ? el.closest('td') : el.parentNode;
         if (!td) return;
         td.style.position = 'relative';
@@ -3932,6 +3941,22 @@
         ghost.textContent = String(editedRaw == null ? '' : editedRaw);
         td.appendChild(ghost);
       });
+    }
+    function hideDiffGhost_(el) {
+      var td = el && el.closest ? el.closest('td') : null;
+      if (!td) return;
+      var ghosts = td.querySelectorAll('.diff-ghost');
+      var i;
+      for (i = 0; i < ghosts.length; i++) {
+        if (ghosts[i].parentNode) ghosts[i].parentNode.removeChild(ghosts[i]);
+      }
+    }
+    function repaintDiffRow_(el) {
+      if (!el || !el.dataset || el.dataset.i == null) return;
+      if (document.activeElement === el) return;
+      var tr = el.closest ? el.closest('tr') : null;
+      if (!tr || !tr.parentNode) return;
+      paintRowDiff_(tr, Number(el.dataset.i));
     }
 
     function lineCount() {
@@ -4265,7 +4290,35 @@
         return true;
       });
       if (!rows.length) return;
-      appendSide(rowIndex, 'part', rows);
+      padItems();
+      if (rowIndex < 0) rowIndex = 0;
+      var pending = [];
+      var i = rowIndex;
+      var r;
+      for (r = 0; r < rows.length; r++) {
+        if (i < items.length && items[i] && !hasPart(items[i])) {
+          copyPartFields(items[i], rows[r]);
+          items[i].kind = rows[r].kind || 'part';
+          refreshKind(items[i]);
+          i++;
+        } else {
+          pending.push(rows[r]);
+        }
+      }
+      if (!pending.length) return;
+      var dest = 0;
+      var p;
+      for (p = 0; p < items.length; p++) {
+        if (hasPart(items[p])) dest = p + 1;
+      }
+      for (r = 0; r < pending.length; r++) {
+        while (dest < items.length && hasPart(items[dest])) dest++;
+        if (dest >= items.length) break;
+        copyPartFields(items[dest], pending[r]);
+        items[dest].kind = pending[r].kind || 'part';
+        refreshKind(items[dest]);
+        dest++;
+      }
     }
     function writeBelow(rowIndex, kind, details) {
       var side = kind === 'part' ? 'part' : 'work';
@@ -4486,6 +4539,8 @@
         row.kind = 'part';
         calcFromQtyPrice(row);
         return row;
+      }).filter(function (row) {
+        return foldKey(row.partMid) !== foldKey(it.partMid);
       });
       if (details.length) writeBelow(rowIndex, 'part', details);
       renderGrid();
@@ -5377,6 +5432,7 @@
     });
     $('tbody').addEventListener('focusin', function (e) {
       if (!e.target.dataset) return;
+      hideDiffGhost_(e.target);
       if (e.target.dataset.i != null && e.target.dataset.k) captureFieldOrigin_(e.target);
       if (e.target.dataset.k === 'mid' || e.target.dataset.k === 'partMid' || e.target.dataset.k === 'workerCode') {
         hideComboLists();
@@ -5465,15 +5521,18 @@
       }
     });
     $('tbody').addEventListener('focusout', function (e) {
-      if (!e.target.dataset) return;
-      if (e.target.dataset.k !== 'mid' && e.target.dataset.k !== 'partMid' && e.target.dataset.k !== 'workerCode') return;
       var input = e.target;
+      if (!input.dataset || input.dataset.i == null) return;
+      var combo = input.dataset.k === 'mid' || input.dataset.k === 'partMid' || input.dataset.k === 'workerCode';
       setTimeout(function () {
-        if (!items[Number(input.dataset.i)]) return;
-        if (document.activeElement === input) return;
-        commitCombo(input);
-        if (isMidTextarea(input)) fitMidHeight(input);
-      }, 120);
+        if (combo) {
+          if (!items[Number(input.dataset.i)]) return;
+          if (document.activeElement === input) return;
+          commitCombo(input);
+          if (isMidTextarea(input)) fitMidHeight(input);
+        }
+        repaintDiffRow_(input);
+      }, combo ? 140 : 0);
     });
     $('tbody').addEventListener('change', function (e) {
       var t = e.target;
