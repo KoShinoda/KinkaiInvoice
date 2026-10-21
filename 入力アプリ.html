@@ -1967,51 +1967,13 @@
         showComboList(el);
       });
       el.addEventListener('input', function () {
-        disarmComboEscBlank_();
         showComboList(el);
-      });
-      el.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          moveComboHighlight(el, 1);
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          moveComboHighlight(el, -1);
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          disarmComboEscBlank_();
-          var list = comboListEl(el);
-          if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
-            el.value = comboDivValue(list.children[comboActiveIndex]);
-          }
-          hideComboLists();
-          $('plateNo').focus();
-        } else if (e.key === 'Escape') {
-          if (clearArmedCombo_()) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          hideComboLists();
-        }
       });
       el.addEventListener('blur', function () {
         setTimeout(function () {
           if (document.activeElement === el) return;
           hideComboLists();
         }, 120);
-      });
-      var wrap = el.closest('.plate-wrap');
-      if (!wrap) return;
-      wrap.addEventListener('mousedown', function (e) {
-        var opt = e.target.closest('.combo-list div');
-        if (!opt) return;
-        e.preventDefault();
-        armComboEscBlank_(el);
-        el.value = comboDivValue(opt);
-        hideComboLists();
-        comboIgnoreBlur = true;
-        $('plateNo').focus();
       });
     }
     function clearHeaderFields() {
@@ -5049,7 +5011,154 @@
       var full = comboDivValue(list.children[comboActiveIndex]);
       armComboEscBlank_(input);
       input.value = (isMidPartCombo(input) && !isListSuggestCombo_(input)) ? comboChosenValue(comboFilterQuery, full) : full;
+      if (input.getAttribute('data-list-part') != null) {
+        var pi = Number(input.getAttribute('data-list-part'));
+        if (!listPartRows[pi]) listPartRows[pi] = emptyListPartRow();
+        listPartRows[pi].set = input.value;
+      }
     }
+    function isComboField_(el) {
+      if (!el || !el.getAttribute) return false;
+      if (el.id === 'plateArea') return true;
+      if (isListSuggestCombo_(el)) return true;
+      var k = el.getAttribute('data-k');
+      return el.getAttribute('data-i') != null && (k === 'mid' || k === 'partMid' || k === 'workerCode');
+    }
+    function comboInputFromList_(list) {
+      return list && list.parentNode ? list.parentNode.querySelector('textarea, input') : null;
+    }
+    function chooseComboOption_(input, raw) {
+      if (!input) return;
+      var chosen = raw;
+      if (isMidPartCombo(input) && !isListSuggestCombo_(input)) chosen = comboChosenValue(comboFilterQuery, chosen);
+      armComboEscBlank_(input);
+      input.value = chosen;
+      hideComboLists();
+      comboIgnoreBlur = true;
+      if (isMidTextarea(input)) fitMidHeight(input);
+      if (input.id === 'plateArea') {
+        $('plateNo').focus();
+        return;
+      }
+      var listWork = input.getAttribute('data-list-work');
+      if (listWork != null) {
+        var li = Number(listWork);
+        var lk = input.getAttribute('data-k');
+        if (!listWorkRows[li]) listWorkRows[li] = emptyListWorkRow();
+        if (lk) listWorkRows[li][lk] = chosen;
+        return;
+      }
+      var listPart = input.getAttribute('data-list-part');
+      if (listPart != null) {
+        var pi = Number(listPart);
+        if (!listPartRows[pi]) listPartRows[pi] = emptyListPartRow();
+        listPartRows[pi].set = chosen;
+        return;
+      }
+      var i = Number(input.dataset.i);
+      var k = input.dataset.k;
+      if (!items[i]) return;
+      if (k === 'mid') {
+        items[i].mid = chosen;
+        onMidChosen(i);
+      } else if (k === 'partMid') {
+        items[i].partMid = chosen;
+        onPartMidChosen(i);
+      } else if (k === 'workerCode') {
+        commitWorkerAt(i, chosen, { fillDown: true });
+        recalc();
+      }
+    }
+    function acceptComboEnter_(e, input) {
+      if (isGrowTextarea(input) && isNewlineEnter(e)) return false;
+      if (e.isComposing || e.keyCode === 229) return false;
+      if (input.getAttribute('data-i') != null) {
+        var now = Date.now();
+        if (e.repeat && now - enterMoveAt_ < 160) return true;
+        enterMoveAt_ = now;
+      }
+      e.preventDefault();
+      disarmComboEscBlank_();
+      if (input.id === 'plateArea') {
+        var plateList = comboListEl(input);
+        if (plateList && !plateList.hidden && comboActiveIndex >= 0 && plateList.children[comboActiveIndex]) {
+          input.value = comboDivValue(plateList.children[comboActiveIndex]);
+        }
+        hideComboLists();
+        $('plateNo').focus();
+        return true;
+      }
+      if (input.getAttribute('data-list-part') != null) {
+        var partList = comboListEl(input);
+        if (partList && !partList.hidden && comboActiveIndex >= 0 && partList.children[comboActiveIndex]) {
+          input.value = comboDivValue(partList.children[comboActiveIndex]);
+        }
+        var pi = Number(input.getAttribute('data-list-part'));
+        if (!listPartRows[pi]) listPartRows[pi] = emptyListPartRow();
+        listPartRows[pi].set = input.value;
+        hideComboLists();
+        return true;
+      }
+      if (input.getAttribute('data-list-work') != null) {
+        var wk = input.getAttribute('data-k');
+        if (wk === 'partMid' || wk === 'content') confirmComboIfOpen(input);
+        var li = Number(input.getAttribute('data-list-work'));
+        if (!listWorkRows[li]) listWorkRows[li] = emptyListWorkRow();
+        listWorkRows[li][wk] = input.value;
+        hideComboLists();
+        moveListWorkField(input, e.shiftKey ? -1 : 1);
+        return true;
+      }
+      confirmComboIfOpen(input);
+      moveDown(input, e.shiftKey ? -1 : 1);
+      return true;
+    }
+    function comboArrowBlocked_(e, input) {
+      var k = input.getAttribute('data-k');
+      if ((e.isComposing || e.keyCode === 229) && (k === 'mid' || k === 'partMid' || k === 'content')) return true;
+      if (input.getAttribute('data-i') != null && (k === 'mid' || k === 'partMid') && caretStaysInText_(input)) return true;
+      return false;
+    }
+    document.addEventListener('keydown', function (e) {
+      var input = e.target;
+      if (!isComboField_(input)) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (comboArrowBlocked_(e, input)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        moveComboHighlight(input, e.key === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (!acceptComboEnter_(e, input)) return;
+        e.stopPropagation();
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (clearArmedCombo_()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        var openList = comboListEl(input);
+        if (openList && !openList.hidden && input.getAttribute('data-i') == null) {
+          e.preventDefault();
+          hideComboLists();
+        }
+      }
+    }, true);
+    document.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest && e.target.closest('.combo-list div');
+      if (!opt) return;
+      var input = comboInputFromList_(opt.parentNode);
+      if (!input || !isComboField_(input)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      chooseComboOption_(input, comboDivValue(opt));
+    }, true);
+    document.addEventListener('input', function (e) {
+      if (isComboField_(e.target)) disarmComboEscBlank_();
+    }, true);
     function comboExactOptionIndex(list, typed) {
       var t = String(typed || '').replace(/\u3000/g, ' ').trim();
       if (!t || !list) return -1;
@@ -5480,32 +5589,6 @@
       e.preventDefault();
       deleteSide(Number(btn.dataset.i), btn.dataset.side);
     });
-    $('tbody').addEventListener('mousedown', function (e) {
-      var opt = e.target.closest('.combo-list div');
-      if (!opt) return;
-      e.preventDefault();
-      var input = opt.parentNode.parentNode.querySelector('[data-k="mid"], [data-k="partMid"], [data-k="workerCode"]');
-      if (!input) return;
-      armComboEscBlank_(input);
-      var chosen = comboDivValue(opt);
-      if (isMidPartCombo(input)) chosen = comboChosenValue(comboFilterQuery, chosen);
-      input.value = chosen;
-      hideComboLists();
-      comboIgnoreBlur = true;
-      var i = Number(input.dataset.i);
-      if (input.dataset.k === 'mid') {
-        items[i].mid = chosen;
-        fitMidHeight(input);
-        onMidChosen(i);
-      } else if (input.dataset.k === 'partMid') {
-        items[i].partMid = chosen;
-        fitMidHeight(input);
-        onPartMidChosen(i);
-      } else if (input.dataset.k === 'workerCode') {
-        commitWorkerAt(i, chosen, { fillDown: true });
-        recalc();
-      }
-    });
     document.addEventListener('mouseover', function (e) {
       var opt = e.target.closest('.combo-list > div');
       if (!opt) return;
@@ -5577,25 +5660,12 @@
         var now = Date.now();
         if (e.repeat && now - enterMoveAt_ < 160) return;
         enterMoveAt_ = now;
-        disarmComboEscBlank_();
-        confirmComboIfOpen(e.target);
         moveDown(e.target, e.shiftKey ? -1 : 1);
         return;
       }
       if (k === 'workerCode' || k === 'mid' || k === 'partMid') {
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          if ((k === 'mid' || k === 'partMid') && (e.isComposing || e.keyCode === 229)) return;
-          if ((k === 'mid' || k === 'partMid') && caretStaysInText_(e.target)) return;
-          e.preventDefault();
-          moveComboHighlight(e.target, e.key === 'ArrowDown' ? 1 : -1);
-          return;
-        }
         if (e.key === 'Escape') {
           e.preventDefault();
-          if (clearArmedCombo_()) {
-            e.stopPropagation();
-            return;
-          }
           if (restoreFieldOrigin_()) {
             e.stopPropagation();
             return;
@@ -5646,7 +5716,6 @@
       if (!t.dataset || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       noteWorkJobEdit_();
       markInvoiceDirty_();
-      disarmComboEscBlank_();
       var i = Number(t.dataset.i);
       var k = t.dataset.k;
       if (!(e.isComposing || e.keyCode === 229) && isInvoiceHalfWidthField_(k)) {
@@ -6774,7 +6843,6 @@
         var k = t.getAttribute('data-k');
         if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
         listWorkRows[i][k] = t.value;
-        disarmComboEscBlank_();
         if (k === 'partMid' || k === 'content') {
           rememberComboQuery(t);
           showComboList(t);
@@ -6793,26 +6861,9 @@
         }
         if (isGrowTextarea(t)) fitMidHeight(t);
       });
-      $('listWorkBody').addEventListener('mousedown', function (e) {
-        var opt = e.target.closest('.combo-list div');
-        if (!opt) return;
-        e.preventDefault();
-        var input = opt.parentNode.parentNode.querySelector('textarea[data-k="partMid"], textarea[data-k="content"]');
-        if (!input) return;
-        armComboEscBlank_(input);
-        var chosen = comboDivValue(opt);
-        input.value = chosen;
-        hideComboLists();
-        comboIgnoreBlur = true;
-        var i = Number(input.getAttribute('data-list-work'));
-        if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
-        listWorkRows[i][input.getAttribute('data-k')] = chosen;
-        fitMidHeight(input);
-      });
       $('listWorkBody').addEventListener('keydown', function (e) {
         var t = e.target;
         if (!t.getAttribute || !t.getAttribute('data-list-work')) return;
-        var k = t.getAttribute('data-k');
         if (isGrowTextarea(t) && isNewlineEnter(e)) {
           if (e.isComposing || e.keyCode === 229) return;
           e.preventDefault();
@@ -6822,30 +6873,9 @@
         if (e.key === 'Enter') {
           if (e.isComposing || e.keyCode === 229) return;
           e.preventDefault();
-          disarmComboEscBlank_();
-          if (k === 'partMid' || k === 'content') confirmComboIfOpen(t);
-          if (k === 'partMid' || k === 'content') {
-            var i = Number(t.getAttribute('data-list-work'));
-            if (!listWorkRows[i]) listWorkRows[i] = emptyListWorkRow();
-            listWorkRows[i][k] = t.value;
-          }
           hideComboLists();
           moveListWorkField(t, e.shiftKey ? -1 : 1);
           return;
-        }
-        if ((k === 'partMid' || k === 'content') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-          if (e.isComposing || e.keyCode === 229) return;
-          e.preventDefault();
-          moveComboHighlight(t, e.key === 'ArrowDown' ? 1 : -1);
-          return;
-        }
-        if (e.key === 'Escape') {
-          if (clearArmedCombo_()) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          hideComboLists();
         }
       });
       $('listWorkBody').addEventListener('focusout', function (e) {
@@ -6887,7 +6917,6 @@
         var k = t.getAttribute('data-k');
         if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
         listPartRows[i][k] = t.value;
-        disarmComboEscBlank_();
         if (k === 'set') showComboList(t);
         updateListPartPreview();
       });
@@ -6897,56 +6926,6 @@
         hideComboLists();
         showComboList(t);
         try { t.select(); } catch (err) {}
-      });
-      $('listPartBody').addEventListener('mousedown', function (e) {
-        var opt = e.target.closest('.combo-list div');
-        if (!opt) return;
-        e.preventDefault();
-        var input = opt.parentNode.parentNode.querySelector('input[data-k="set"]');
-        if (!input) return;
-        armComboEscBlank_(input);
-        var chosen = comboDivValue(opt);
-        input.value = chosen;
-        hideComboLists();
-        comboIgnoreBlur = true;
-        var i = Number(input.getAttribute('data-list-part'));
-        if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
-        listPartRows[i].set = chosen;
-      });
-      $('listPartBody').addEventListener('keydown', function (e) {
-        var t = e.target;
-        if (!t.getAttribute || t.getAttribute('data-k') !== 'set') return;
-        if (e.key === 'Enter') {
-          if (e.isComposing || e.keyCode === 229) return;
-          e.preventDefault();
-          disarmComboEscBlank_();
-          var list = comboListEl(t);
-          if (list && !list.hidden && comboActiveIndex >= 0 && list.children[comboActiveIndex]) {
-            t.value = comboDivValue(list.children[comboActiveIndex]);
-          }
-          var i = Number(t.getAttribute('data-list-part'));
-          if (!listPartRows[i]) listPartRows[i] = emptyListPartRow();
-          listPartRows[i].set = t.value;
-          hideComboLists();
-          return;
-        }
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          if (e.isComposing || e.keyCode === 229) return;
-          e.preventDefault();
-          moveComboHighlight(t, e.key === 'ArrowDown' ? 1 : -1);
-          var ai = Number(t.getAttribute('data-list-part'));
-          if (!listPartRows[ai]) listPartRows[ai] = emptyListPartRow();
-          listPartRows[ai].set = t.value;
-          return;
-        }
-        if (e.key === 'Escape') {
-          if (clearArmedCombo_()) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          hideComboLists();
-        }
       });
       $('listPartBody').addEventListener('focusout', function (e) {
         var t = e.target;
