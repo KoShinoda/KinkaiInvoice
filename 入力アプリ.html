@@ -1614,6 +1614,7 @@
     var comboActiveIndex = -1;
     var comboIgnoreBlur = false;
     var fieldOrigin = null;
+    var headerFieldOrigin = null;
     var gridUndo = null;
     var workerSelectOnMouseUp = null;
     var currentSaveId = '';
@@ -2205,6 +2206,26 @@
       renderGrid();
       pendingFocus = { i: i, k: k };
       applyPendingFocus();
+      setStatus('入力を元に戻しました');
+      return true;
+    }
+    function captureHeaderFieldOrigin_(el) {
+      if (!el || el.id !== 'userName') return;
+      headerFieldOrigin = {
+        id: 'userName',
+        value: String(el.value == null ? '' : el.value)
+      };
+    }
+    function restoreHeaderFieldOrigin_() {
+      if (!headerFieldOrigin) return false;
+      var el = document.activeElement;
+      if (!el || el.id !== headerFieldOrigin.id) return false;
+      if (String(el.value || '') === headerFieldOrigin.value) return false;
+      el.value = headerFieldOrigin.value;
+      hideComboLists();
+      hideComboPreview();
+      showComboList(el);
+      try { el.select(); } catch (err) {}
       setStatus('入力を元に戻しました');
       return true;
     }
@@ -5168,6 +5189,11 @@
           e.stopPropagation();
           return;
         }
+        if (restoreHeaderFieldOrigin_()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         var openList = comboListEl(input);
         if (openList && !openList.hidden && input.getAttribute('data-i') == null) {
           e.preventDefault();
@@ -5189,6 +5215,7 @@
     }, true);
     function openComboOnFocus_(input) {
       if (!isComboField_(input)) return;
+      captureHeaderFieldOrigin_(input);
       hideComboLists();
       hideWorkerPicker();
       if (input.getAttribute('data-k') === 'workerCode' && input.getAttribute('data-i') != null) {
@@ -5601,6 +5628,10 @@
       }
       if (!document.body.classList.contains('is-input-view') || ($('viewInput') && $('viewInput').hidden)) return;
       if (clearArmedCombo_()) {
+        e.preventDefault();
+        return;
+      }
+      if (restoreHeaderFieldOrigin_()) {
         e.preventDefault();
         return;
       }
